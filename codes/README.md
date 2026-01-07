@@ -1,35 +1,65 @@
-# codes 目录说明（预留结构）
+# codes directory overview
 
-> 说明：已在 `codes/` 下预留后端与前端的目录结构；**不移动任何现有代码**。  
-> 现有文件仍保留在：`codes/backend/*.py` 与 `codes/frontend/index.html|app.js|style.css`。
+This folder hosts the minimal runnable prototype: FastAPI backend, static frontend, and on-disk character data.
 
-## 目录结构（预留）
+## Quick entrypoints
+- Backend entry: `backend/app/main.py` (compat entry: `backend/main.py`)
+- Frontend entry: `frontend/public/index.html`
+- Character tool page: `/character`
+- Character data directory: `data/characters/`
+
+## Run (PowerShell)
+```
+.\.venv\Scripts\Activate.ps1
+$env:DEEPSEEK_API_KEY="YOUR_KEY"
+python -m uvicorn backend.app.main:app --reload
+```
+Open: `http://127.0.0.1:8000/`
+
+## Key modules
+- `backend/services/llm_client.py`: /turn uses DeepSeek with strict JSON validation + retry
+- `backend/services/character_service.py`: character generation, rename, and save (DeepSeek JSON + comment)
+- `frontend/public/app.js`: index chat logic
+- `frontend/public/character.js`: character tool UI logic
+
+## Current structure
 ```text
 codes/
+  .venv/                # local virtual environment
   backend/
-    app/            # 应用入口/依赖注入/生命周期
-    api/            # 路由层（HTTP API）
-    agents/         # 多 Agent/LLM 调度与策略
-    core/           # 配置、常量、错误码、权限
-    services/       # 业务服务层（turn/session/state）
-    tools/          # 工具调用层（state_patch/summary_writeback 等）
-    storage/        # 存储适配（SQLite/JSON）
-    schemas/        # Pydantic/JSON Schema
-    tests/          # 单元/集成测试
-    scripts/        # 运维脚本/迁移脚本
-    data/           # 本地开发数据
-    logs/           # 本地日志（开发环境）
+    app/                # app entry
+      main.py
+    services/           # business services
+      llm_client.py
+      character_service.py
+    api/                # reserved
+    agents/             # reserved
+    core/               # reserved
+    tools/              # reserved
+    storage/            # reserved
+    schemas/            # reserved
+    tests/              # reserved
+    scripts/            # reserved
+    data/               # reserved
+    logs/               # reserved
+    requirements.txt
+    README.md
+    main.py             # compat entry
   frontend/
-    public/         # 静态资源（favicon 等）
-    src/
-      components/   # UI 组件
-      services/     # API 调用封装
-      state/        # 前端状态管理
-      utils/        # 工具函数
-      styles/       # 样式
-      assets/       # 图片/字体
+    public/
+      index.html
+      app.js
+      style.css
+      character.html
+      character.js
+      character.css
+    src/                # reserved
+  data/
+    characters/         # character JSON files
+      *.json
 ```
 
-## 约定
-- 空目录已放置 `.gitkeep` 以便版本管理保留结构。
-- 后续如需迁移到 `frontend/src`，建议先稳定 API 再搬迁静态入口文件。
+## Conventions
+- Character filename = `character.name + .json` after filename-safe sanitization
+- JSON is saved as UTF-8 with indent=2
+- `DEEPSEEK_API_KEY` must be set for LLM-backed features

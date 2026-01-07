@@ -1,0 +1,6 @@
+{
+  "ok": false,
+  "error_code": "SOME_CODE",
+  "message": "human readable message",
+  "details": {}
+}

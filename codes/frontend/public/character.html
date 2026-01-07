@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Character Generator</title>
+    <link rel="stylesheet" href="/static/character.css" />
+  </head>
+  <body>
+    <main class="generator">
+      <a class="nav-link" href="/">Back to Index</a>
+      <h1>Character Generator</h1>
+      <label class="field">
+        <span>Input</span>
+        <textarea id="userText" rows="4" placeholder="Describe the character idea"></textarea>
+      </label>
+      <button id="generateBtn" type="button">Generate</button>
+      <section class="field">
+        <span>Prompt Example (copyable)</span>
+        <pre id="promptExample"></pre>
+      </section>
+      <section class="field">
+        <span>Comment</span>
+        <pre id="comment" aria-live="polite"></pre>
+      </section>
+      <section class="field">
+        <span>Status</span>
+        <pre id="status" aria-live="polite"></pre>
+      </section>
+    </main>
+    <script src="/static/character.js"></script>
+  </body>
+</html>

@@ -21,4 +21,5 @@ Thumbs.db
 # Logs / data (local dev)
 codes/backend/logs/
 codes/backend/data/
+codes/data/
 

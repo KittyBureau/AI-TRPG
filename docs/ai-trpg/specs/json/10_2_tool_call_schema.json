@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ToolCall",
+  "type": ["object", "null"],
+  "required": ["name", "arguments"],
+  "properties": {
+    "name": {"type": "string", "minLength": 1},
+    "arguments": {"type": "object"}
+  },
+  "additionalProperties": false
+}

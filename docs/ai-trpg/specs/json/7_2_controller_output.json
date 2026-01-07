@@ -1,0 +1,6 @@
+{
+  "gate": "pass",
+  "current_milestone_id": "M2",
+  "required_next_actions": ["collect_second_source"],
+  "correction_plan": {"type":"redirect","note":"need M2 proof"}
+}

@@ -5,6 +5,36 @@
 
 ---
 
+## JSON ????
+- 3.1 Campaign?`docs/ai-trpg/specs/json/3_1_campaign.json`
+- 3.2 Session?`docs/ai-trpg/specs/json/3_2_session.json`
+- 3.3 Player（权威状态示例）?`docs/ai-trpg/specs/json/3_3_player.json`
+- 3.4 PromptState（低 token：只给 LLM）?`docs/ai-trpg/specs/json/3_4_prompt_state.json`
+- 3.5 EventLog / AuditLog（工具写入）?`docs/ai-trpg/specs/json/3_5_event_log.json`
+- 4.1 POST `/session/new` - Request?`docs/ai-trpg/specs/json/4_1_session_new_request.json`
+- 4.1 POST `/session/new` - Response?`docs/ai-trpg/specs/json/4_1_session_new_response.json`
+- 4.2 POST `/turn` - Request?`docs/ai-trpg/specs/json/4_2_turn_request.json`
+- 4.2 POST `/turn` - Response（TurnOutput）?`docs/ai-trpg/specs/json/4_2_turn_response.json`
+- 4.3 GET `/state` - Response?`docs/ai-trpg/specs/json/4_3_state_response.json`
+- 4.4 GET `/logs` - Response?`docs/ai-trpg/specs/json/4_4_logs_response.json`
+- 4.5.1 POST `/tools/player_hp_reduce`（必须包含，兼容子工具） - Request?`docs/ai-trpg/specs/json/4_5_1_player_hp_reduce_request.json`
+- 4.5.1 POST `/tools/player_hp_reduce`（必须包含，兼容子工具） - Response（ToolResult）?`docs/ai-trpg/specs/json/4_5_1_player_hp_reduce_response.json`
+- 4.5.2 POST `/tools/summary_writeback`（必须包含） - Request?`docs/ai-trpg/specs/json/4_5_2_summary_writeback_request.json`
+- 4.5.2 POST `/tools/summary_writeback`（必须包含） - Response?`docs/ai-trpg/specs/json/4_5_2_summary_writeback_response.json`
+- 4.5.3 POST `/tools/state_patch`（必须包含，推荐唯一白名单工具） - Request?`docs/ai-trpg/specs/json/4_5_3_state_patch_request.json`
+- 4.5.3 POST `/tools/state_patch`（必须包含，推荐唯一白名单工具） - Response?`docs/ai-trpg/specs/json/4_5_3_state_patch_response.json`
+- 4.6 错误码（统一结构）?`docs/ai-trpg/specs/json/4_6_error_response.json`
+- 7.2 Agent I/O（示例 schema，均为短 JSON） - RouterAgent 输出?`docs/ai-trpg/specs/json/7_2_router_agent_output.json`
+- 7.2 Agent I/O（示例 schema，均为短 JSON） - Controller 输出?`docs/ai-trpg/specs/json/7_2_controller_output.json`
+- 7.2 Agent I/O（示例 schema，均为短 JSON） - Guard 输出?`docs/ai-trpg/specs/json/7_2_guard_output.json`
+- 7.2 Agent I/O（示例 schema，均为短 JSON） - GMAgent 输出（含可选 tool_call）?`docs/ai-trpg/specs/json/7_2_gm_agent_output.json`
+- 7.2 Agent I/O（示例 schema，均为短 JSON） - SummaryAgent 输出?`docs/ai-trpg/specs/json/7_2_summary_agent_output.json`
+- 10.1 TurnInput Schema?`docs/ai-trpg/specs/json/10_1_turn_input_schema.json`
+- 10.2 ToolCall Schema?`docs/ai-trpg/specs/json/10_2_tool_call_schema.json`
+- 10.3 TurnOutput Schema?`docs/ai-trpg/specs/json/10_3_turn_output_schema.json`
+- 10.4 ToolResult Schema?`docs/ai-trpg/specs/json/10_4_tool_result_schema.json`
+- 10.5 Summary Schema?`docs/ai-trpg/specs/json/10_5_summary_schema.json`
+
 ## 1. 概述（目标、非目标、核心约束）
 
 ### 1.1 目标
@@ -66,78 +96,19 @@
 > 重要：区分 **权威状态（Authoritative State）** 与 **PromptState（给 LLM 的最小闭包）**。
 
 ### 3.1 Campaign
-```json
-{
-  "campaign_id": "c_0",
-  "name": "demo_campaign",
-  "created_at": "2026-01-07T00:00:00Z"
-}
-```
+JSON ???`docs/ai-trpg/specs/json/3_1_campaign.json`
 
 ### 3.2 Session
-```json
-{
-  "session_id": "s_0001",
-  "campaign_id": "c_0",
-  "status": "active",
-  "current_scene_id": "scene_001",
-  "current_milestone_id": "M1",
-  "summary": {
-    "version": 3,
-    "facts": ["F12", "F18"],
-    "relations": ["R3"],
-    "irreversible": ["C2"],
-    "open_questions": ["Q7"]
-  },
-  "created_at": "2026-01-07T00:00:00Z",
-  "updated_at": "2026-01-07T00:10:00Z"
-}
-```
+JSON ???`docs/ai-trpg/specs/json/3_2_session.json`
 
 ### 3.3 Player（权威状态示例）
-```json
-{
-  "player_id": "p_redkitty",
-  "campaign_id": "c_0",
-  "name": "Red",
-  "hp_current": 12,
-  "hp_max": 12,
-  "status": "alive"
-}
-```
+JSON ???`docs/ai-trpg/specs/json/3_3_player.json`
 
 ### 3.4 PromptState（低 token：只给 LLM）
-```json
-{
-  "campaign_id": "c_0",
-  "session_id": "s_0001",
-  "scene_id": "scene_001",
-  "actors": ["p_redkitty", "npc_02"],
-  "milestone_id": "M1",
-  "risk_tier": "R2",
-  "info_clarity_tier": "IC1",
-  "last_event_id": "E_0009",
-  "intent": "continue",
-  "allowed_tools": ["state_patch"]
-}
-```
+JSON ???`docs/ai-trpg/specs/json/3_4_prompt_state.json`
 
 ### 3.5 EventLog / AuditLog（工具写入）
-```json
-{
-  "log_id": "log_9f3c2a",
-  "campaign_id": "c_0",
-  "session_id": "s_0001",
-  "player_id": "p_redkitty",
-  "type": "hp_reduce",
-  "before": {"hp_current": 12},
-  "after": {"hp_current": 9},
-  "reason": "被短刀划伤",
-  "source": "turn_commit",
-  "idempotency_key": "c_0:s_0001:t_0007:hp_reduce",
-  "timestamp": "2026-01-07T00:11:00Z"
-}
-```
+JSON ???`docs/ai-trpg/specs/json/3_5_event_log.json`
 
 ---
 
@@ -152,84 +123,31 @@
 创建新 session（必要时创建 campaign）。
 
 **Request**
-```json
-{
-  "campaign_id": "c_0",
-  "player_ids": ["p_redkitty"],
-  "seed_scene_id": "scene_001"
-}
-```
+JSON ???`docs/ai-trpg/specs/json/4_1_session_new_request.json`
 
 **Response**
-```json
-{
-  "ok": true,
-  "campaign_id": "c_0",
-  "session_id": "s_0001"
-}
-```
+JSON ???`docs/ai-trpg/specs/json/4_1_session_new_response.json`
 
 ### 4.2 POST `/turn`
 单回合入口：后端编排 LLM/Agents，最多一次 Tool 调用。
 
 **Request**
-```json
-{
-  "campaign_id": "c_0",
-  "session_id": "s_0001",
-  "turn_id": "t_0007",
-  "user_text": "我选择调查现场。",
-  "intent": "continue"
-}
-```
+JSON ???`docs/ai-trpg/specs/json/4_2_turn_request.json`
 
 **Response（TurnOutput）**
-```json
-{
-  "ok": true,
-  "say": "……（玩家可见叙事）……你现在打算做什么？",
-  "options": [
-    {"id": "A", "text": "低调观察并记录时间点"},
-    {"id": "B", "text": "询问商户是否出现过短时异常"}
-  ],
-  "tool_result": null,
-  "server_time": "2026-01-07T00:12:00Z"
-}
-```
+JSON ???`docs/ai-trpg/specs/json/4_2_turn_response.json`
 
 ### 4.3 GET `/state`
 给 UI 展示的权威状态（可含数值）。**不得回灌给 LLM prompt**。
 
 **Response**
-```json
-{
-  "ok": true,
-  "campaign_id": "c_0",
-  "session_id": "s_0001",
-  "players": [
-    {"player_id": "p_redkitty", "hp_current": 9, "hp_max": 12, "status": "alive"}
-  ],
-  "session": {
-    "status": "active",
-    "current_scene_id": "scene_001",
-    "current_milestone_id": "M2"
-  }
-}
-```
+JSON ???`docs/ai-trpg/specs/json/4_3_state_response.json`
 
 ### 4.4 GET `/logs`
 读取审计日志/事件日志（分页）。
 
 **Response**
-```json
-{
-  "ok": true,
-  "items": [
-    {"log_id": "log_9f3c2a", "type": "hp_reduce", "timestamp": "2026-01-07T00:11:00Z"}
-  ],
-  "next_cursor": "cursor_002"
-}
-```
+JSON ???`docs/ai-trpg/specs/json/4_4_logs_response.json`
 
 ---
 
@@ -242,111 +160,35 @@
 **用途**：单一扣血（调试/兼容）；生产建议通过 `state_patch` 聚合调用。
 
 **Request**
-```json
-{
-  "campaign_id": "c_0",
-  "session_id": "s_0001",
-  "player_id": "p_redkitty",
-  "amount": 3,
-  "reason": "被短刀划伤",
-  "source": "turn_commit",
-  "idempotency_key": "c_0:s_0001:t_0007:hp_reduce"
-}
-```
+JSON ???`docs/ai-trpg/specs/json/4_5_1_player_hp_reduce_request.json`
 
 **Response（ToolResult）**
-```json
-{
-  "ok": true,
-  "tool": "player_hp_reduce",
-  "log_id": "log_9f3c2a",
-  "result": {
-    "player_id": "p_redkitty",
-    "status": "alive"
-  }
-}
-```
+JSON ???`docs/ai-trpg/specs/json/4_5_1_player_hp_reduce_response.json`
 
 #### 4.5.2 POST `/tools/summary_writeback`（必须包含）
 **用途**：Session 结束写入 summary（以及可选的里程碑/压缩记录）。
 
 **Request**
-```json
-{
-  "campaign_id": "c_0",
-  "session_id": "s_0001",
-  "summary": {
-    "version": 4,
-    "facts": ["F12", "F18"],
-    "relations": ["R3"],
-    "irreversible": ["C2"],
-    "open_questions": ["Q7"]
-  },
-  "source": "session_end",
-  "idempotency_key": "c_0:s_0001:t_0007:summary"
-}
-```
+JSON ???`docs/ai-trpg/specs/json/4_5_2_summary_writeback_request.json`
 
 **Response**
-```json
-{
-  "ok": true,
-  "tool": "summary_writeback",
-  "log_id": "log_aaaaaa",
-  "result": {"session_id": "s_0001", "summary_version": 4}
-}
-```
+JSON ???`docs/ai-trpg/specs/json/4_5_2_summary_writeback_response.json`
 
 #### 4.5.3 POST `/tools/state_patch`（必须包含，推荐唯一白名单工具）
 **用途**：一回合一次性提交：状态变更（如扣血/状态变更/风险升级）+ 可选 summary 写回 + 审计日志。  
 **优势**：满足“一回合最多一次 tool_call”，避免 session_end 需要第二次工具调用。
 
 **Request**
-```json
-{
-  "campaign_id": "c_0",
-  "session_id": "s_0001",
-  "turn_id": "t_0007",
-  "operations": [
-    {"op": "hp_reduce", "player_id": "p_redkitty", "amount": 3, "reason": "被短刀划伤"}
-  ],
-  "summary": {
-    "version": 4,
-    "facts": ["F12"],
-    "relations": [],
-    "irreversible": [],
-    "open_questions": ["Q1"]
-  },
-  "source": "turn_commit",
-  "idempotency_key": "c_0:s_0001:t_0007:commit"
-}
-```
+JSON ???`docs/ai-trpg/specs/json/4_5_3_state_patch_request.json`
 
 **Response**
-```json
-{
-  "ok": true,
-  "tool": "state_patch",
-  "log_ids": ["log_9f3c2a", "log_aaaaaa"],
-  "result": {
-    "applied_ops": ["hp_reduce"],
-    "summary_written": true
-  }
-}
-```
+JSON ???`docs/ai-trpg/specs/json/4_5_3_state_patch_response.json`
 
 ---
 
 ### 4.6 错误码（统一结构）
 所有 API/Tool 统一返回：
-```json
-{
-  "ok": false,
-  "error_code": "SOME_CODE",
-  "message": "human readable message",
-  "details": {}
-}
-```
+JSON ???`docs/ai-trpg/specs/json/4_6_error_response.json`
 
 建议错误码集合：
 - `INVALID_REQUEST`：请求缺字段/类型错误
@@ -446,46 +288,19 @@
 ### 7.2 Agent I/O（示例 schema，均为短 JSON）
 
 **RouterAgent 输出**
-```json
-{"route":"turn|end_session|meta","intent":"continue"}
-```
+JSON ???`docs/ai-trpg/specs/json/7_2_router_agent_output.json`
 
 **Controller 输出**
-```json
-{
-  "gate": "pass",
-  "current_milestone_id": "M2",
-  "required_next_actions": ["collect_second_source"],
-  "correction_plan": {"type":"redirect","note":"need M2 proof"}
-}
-```
+JSON ???`docs/ai-trpg/specs/json/7_2_controller_output.json`
 
 **Guard 输出**
-```json
-{"risk_tier":"R3","info_clarity_tier":"IC2","abnormal_delta":1,"guard_effect":"warn"}
-```
+JSON ???`docs/ai-trpg/specs/json/7_2_guard_output.json`
 
 **GMAgent 输出（含可选 tool_call）**
-```json
-{
-  "say": "……你现在打算做什么？",
-  "options": [{"id":"A","text":"……"}],
-  "tool_call": null
-}
-```
+JSON ???`docs/ai-trpg/specs/json/7_2_gm_agent_output.json`
 
 **SummaryAgent 输出**
-```json
-{
-  "summary": {
-    "version": 4,
-    "facts": ["F12"],
-    "relations": [],
-    "irreversible": [],
-    "open_questions": ["Q1"]
-  }
-}
-```
+JSON ???`docs/ai-trpg/specs/json/7_2_summary_agent_output.json`
 
 ### 7.3 工具调用权限
 - 建议：所有 Agent **都不直接调用工具**；只有 `TurnService` 可以执行工具（最多一次），并且只执行白名单工具。
@@ -568,114 +383,17 @@
 > 为便于原型落地，示例采用 draft-07 风格（不依赖复杂关键字）。
 
 ### 10.1 TurnInput Schema
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "TurnInput",
-  "type": "object",
-  "required": ["campaign_id", "session_id", "turn_id", "user_text", "intent"],
-  "properties": {
-    "campaign_id": {"type": "string", "minLength": 1},
-    "session_id": {"type": "string", "minLength": 1},
-    "turn_id": {"type": "string", "minLength": 1},
-    "user_text": {"type": "string", "minLength": 1, "maxLength": 2000},
-    "intent": {"type": "string", "enum": ["continue", "end_session"]}
-  },
-  "additionalProperties": false
-}
-```
+JSON ???`docs/ai-trpg/specs/json/10_1_turn_input_schema.json`
 
 ### 10.2 ToolCall Schema
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "ToolCall",
-  "type": ["object", "null"],
-  "required": ["name", "arguments"],
-  "properties": {
-    "name": {"type": "string", "minLength": 1},
-    "arguments": {"type": "object"}
-  },
-  "additionalProperties": false
-}
-```
+JSON ???`docs/ai-trpg/specs/json/10_2_tool_call_schema.json`
 
 ### 10.3 TurnOutput Schema
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "TurnOutput",
-  "type": "object",
-  "required": ["say", "options", "tool_call"],
-  "properties": {
-    "say": {"type": "string", "minLength": 1, "maxLength": 4000},
-    "options": {
-      "type": "array",
-      "minItems": 0,
-      "maxItems": 6,
-      "items": {
-        "type": "object",
-        "required": ["id", "text"],
-        "properties": {
-          "id": {"type": "string", "minLength": 1, "maxLength": 20},
-          "text": {"type": "string", "minLength": 1, "maxLength": 120}
-        },
-        "additionalProperties": false
-      }
-    },
-    "tool_call": {"$ref": "#/definitions/ToolCall"}
-  },
-  "definitions": {
-    "ToolCall": {
-      "type": ["object", "null"],
-      "required": ["name", "arguments"],
-      "properties": {
-        "name": {"type": "string"},
-        "arguments": {"type": "object"}
-      },
-      "additionalProperties": false
-    }
-  },
-  "additionalProperties": false
-}
-```
+JSON ???`docs/ai-trpg/specs/json/10_3_turn_output_schema.json`
 
 ### 10.4 ToolResult Schema
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "ToolResult",
-  "type": "object",
-  "required": ["ok", "tool"],
-  "properties": {
-    "ok": {"type": "boolean"},
-    "tool": {"type": "string"},
-    "log_id": {"type": "string"},
-    "log_ids": {"type": "array", "items": {"type": "string"}},
-    "result": {"type": "object"},
-    "error_code": {"type": "string"},
-    "message": {"type": "string"},
-    "details": {"type": "object"}
-  },
-  "additionalProperties": true
-}
-```
+JSON ???`docs/ai-trpg/specs/json/10_4_tool_result_schema.json`
 
 ### 10.5 Summary Schema
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Summary",
-  "type": "object",
-  "required": ["version", "facts", "relations", "irreversible", "open_questions"],
-  "properties": {
-    "version": {"type": "integer", "minimum": 1},
-    "facts": {"type": "array", "maxItems": 30, "items": {"type": "string"}},
-    "relations": {"type": "array", "maxItems": 30, "items": {"type": "string"}},
-    "irreversible": {"type": "array", "maxItems": 30, "items": {"type": "string"}},
-    "open_questions": {"type": "array", "maxItems": 30, "items": {"type": "string"}}
-  },
-  "additionalProperties": false
-}
-```
+JSON ???`docs/ai-trpg/specs/json/10_5_summary_schema.json`
 

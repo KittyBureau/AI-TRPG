@@ -1,0 +1,16 @@
+{
+  "session_id": "s_0001",
+  "campaign_id": "c_0",
+  "status": "active",
+  "current_scene_id": "scene_001",
+  "current_milestone_id": "M1",
+  "summary": {
+    "version": 3,
+    "facts": ["F12", "F18"],
+    "relations": ["R3"],
+    "irreversible": ["C2"],
+    "open_questions": ["Q7"]
+  },
+  "created_at": "2026-01-07T00:00:00Z",
+  "updated_at": "2026-01-07T00:10:00Z"
+}

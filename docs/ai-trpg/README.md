@@ -11,6 +11,19 @@
 6. 现实护栏库（Guards）：`docs/ai-trpg/design/reality_guards.md`
 7. 可选 D20 概率裁定层：`docs/ai-trpg/design/probabilistic_resolution_layer.md`
 
+
+## 设计思路分块（快速定位）
+- 总览与目标：`docs/ai-trpg/design/framework.md`
+- 多Agent分工与提示词入口：`docs/ai-trpg/prompts/multi_agent_task_prompt.md`
+- 工具协议与读写闭环：`docs/ai-trpg/specs/tool_spec.md`
+- 主线门槛与偏离纠正：`docs/ai-trpg/design/mainline_milestones.md`
+- 主线保护与复利式风险：`docs/ai-trpg/design/mainline_protection_mechanism.md`
+- 现实护栏库（Guards）：`docs/ai-trpg/design/reality_guards.md`
+- 概率裁定层（D20）：`docs/ai-trpg/design/probabilistic_resolution_layer.md`
+- 跑团记录与测试样例：`docs/ai-trpg/runs/2026-01-06_trpg_test/internal_notes.md`，`docs/ai-trpg/runs/2026-01-06_trpg_test/milestone_log.md`，`docs/ai-trpg/prompts/trpg_test_prompt.md`
+- 工程待办与里程碑拆分：`docs/ai-trpg/project/todo.md`
+- 跨工具协作流程：`docs/Cursor_ChatGPT_Codex_工作流.md`
+
 ## 目录结构
 ```text
 docs/ai-trpg/

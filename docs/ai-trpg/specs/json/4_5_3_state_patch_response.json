@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "tool": "state_patch",
+  "log_ids": ["log_9f3c2a", "log_aaaaaa"],
+  "result": {
+    "applied_ops": ["hp_reduce"],
+    "summary_written": true
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "campaign_id": "c_0",
+  "session_id": "s_0001",
+  "summary": {
+    "version": 4,
+    "facts": ["F12", "F18"],
+    "relations": ["R3"],
+    "irreversible": ["C2"],
+    "open_questions": ["Q7"]
+  },
+  "source": "session_end",
+  "idempotency_key": "c_0:s_0001:t_0007:summary"
+}
