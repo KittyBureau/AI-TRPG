@@ -1,11 +1,17 @@
 import json
-import os
+from getpass import getpass
 
 import httpx
 
-API_KEY_ENV = "DEEPSEEK_API_KEY"
-BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+from backend.secrets.manager import (
+    ConfigError,
+    SecretsError,
+    SecretsLockedError,
+    get_client_params_for_feature,
+    unlock,
+)
+
+FEATURE_NAME = "chat"
 
 SYSTEM_PROMPT = (
     "你是跑团主持人\n"
@@ -38,24 +44,29 @@ def _shorten(text: str, limit: int = 200) -> str:
 
 
 async def _call_once(player_text: str) -> str:
-    api_key = os.getenv(API_KEY_ENV)
-    if not api_key:
-        raise LLMRequestError(f"Missing environment variable {API_KEY_ENV}.")
+    try:
+        params = get_client_params_for_feature(FEATURE_NAME)
+    except SecretsLockedError:
+        password = getpass("Secrets password: ")
+        unlock(password)
+        params = get_client_params_for_feature(FEATURE_NAME)
+    except (SecretsError, ConfigError) as exc:
+        raise LLMRequestError(str(exc)) from exc
 
-    url = f"{BASE_URL.rstrip('/')}/v1/chat/completions"
+    url = f"{params['base_url'].rstrip('/')}/chat/completions"
     payload = {
-        "model": MODEL,
+        "model": params["model"],
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": player_text},
         ],
-        "temperature": 0.7,
+        "temperature": params["temperature"],
         "max_tokens": 200,
     }
-    headers = {"Authorization": f"Bearer {api_key}"}
+    headers = {"Authorization": f"Bearer {params['api_key']}"}
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=params["timeout_seconds"]) as client:
             response = await client.post(url, headers=headers, json=payload)
     except httpx.HTTPError as exc:
         raise LLMRequestError(f"LLM request error: {exc}") from exc

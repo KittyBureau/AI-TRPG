@@ -1,0 +1,14 @@
+﻿{
+  "time": 0,
+  "blocked_edges": [
+    "loc_bridge->loc_forest_edge"
+  ],
+  "entities": [
+    {
+      "id": "pc_001",
+      "location_id": "loc_town_gate",
+      "flags": ["has_pass"]
+    }
+  ],
+  "facts": []
+}

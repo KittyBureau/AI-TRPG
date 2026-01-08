@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "routing": {
+    "all": "providerA",
+    "chat": "providerA",
+    "world_gen": "providerB",
+    "character_gen": "providerA"
+  },
+  "providers": {
+    "providerA": {
+      "base_url": "https://example.com/v1",
+      "model": "gpt-4o-mini",
+      "temperature": 0.7,
+      "timeout_seconds": 60
+    },
+    "providerB": {
+      "base_url": "https://example.com/v1",
+      "model": "some-model",
+      "temperature": 0.2,
+      "timeout_seconds": 60
+    }
+  }
+}

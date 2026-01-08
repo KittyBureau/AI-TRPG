@@ -1,3 +1,4 @@
+from getpass import getpass
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -5,8 +6,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from backend.services import llm_client
+from backend.secrets.manager import is_unlocked, SecretsError, unlock
 from backend.services import character_service
+from backend.services import llm_client
+from backend.services import world_movement
 
 app = FastAPI()
 
@@ -34,6 +37,29 @@ class CharacterRenameRequest(BaseModel):
     character: dict
     new_name: str
     comment: str | None = None
+
+
+class MovementPathsRequest(BaseModel):
+    entity_id: str
+    max_depth: int = 3
+    max_paths: int = 20
+    risk_ceiling: str = "medium"
+
+
+class ApplyMoveRequest(BaseModel):
+    entity_id: str
+    path_id: str
+
+
+@app.on_event("startup")
+async def ensure_secrets_unlocked() -> None:
+    if is_unlocked():
+        return
+    try:
+        password = getpass("Secrets password: ")
+        unlock(password)
+    except SecretsError as exc:
+        raise RuntimeError(str(exc)) from exc
 
 
 @app.get("/", include_in_schema=False)
@@ -99,4 +125,25 @@ async def rename_and_save(req: CharacterRenameRequest):
             "message": "Character name already exists.",
         }
     except character_service.CharacterError as exc:
+        return JSONResponse(status_code=400, content={"status": "ERROR", "message": str(exc)})
+
+
+@app.post("/api/world/get_movement_paths")
+async def get_movement_paths(req: MovementPathsRequest):
+    try:
+        return world_movement.get_movement_paths(
+            req.entity_id,
+            max_depth=req.max_depth,
+            max_paths=req.max_paths,
+            risk_ceiling=req.risk_ceiling,
+        )
+    except world_movement.WorldMovementError as exc:
+        return JSONResponse(status_code=400, content={"status": "ERROR", "message": str(exc)})
+
+
+@app.post("/api/world/apply_move")
+async def apply_move(req: ApplyMoveRequest):
+    try:
+        return world_movement.apply_move(req.entity_id, req.path_id)
+    except world_movement.WorldMovementError as exc:
         return JSONResponse(status_code=400, content={"status": "ERROR", "message": str(exc)})
