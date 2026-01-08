@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend.secrets.manager import is_unlocked, SecretsError, unlock
+from backend.services import chat_service
 from backend.services import character_service
 from backend.services import llm_client
 from backend.services import world_movement
@@ -49,6 +50,19 @@ class MovementPathsRequest(BaseModel):
 class ApplyMoveRequest(BaseModel):
     entity_id: str
     path_id: str
+
+
+class ChatSendRequest(BaseModel):
+    conversation_id: str | None = None
+    user_text: str
+    mode: str | None = None
+    context_strategy: str | None = None
+
+
+class ChatSendResponse(BaseModel):
+    conversation_id: str
+    assistant_text: str
+    token_usage: dict | None = None
 
 
 @app.on_event("startup")
@@ -147,3 +161,24 @@ async def apply_move(req: ApplyMoveRequest):
         return world_movement.apply_move(req.entity_id, req.path_id)
     except world_movement.WorldMovementError as exc:
         return JSONResponse(status_code=400, content={"status": "ERROR", "message": str(exc)})
+
+
+@app.post("/api/chat/send", response_model=ChatSendResponse)
+async def chat_send(req: ChatSendRequest):
+    try:
+        return await chat_service.send_chat(
+            user_text=req.user_text,
+            conversation_id=req.conversation_id,
+            mode=req.mode,
+            context_strategy=req.context_strategy,
+        )
+    except chat_service.ChatLockedError as exc:
+        return JSONResponse(status_code=409, content={"status": "ERROR", "message": str(exc)})
+    except chat_service.ChatNotFoundError as exc:
+        return JSONResponse(status_code=404, content={"status": "ERROR", "message": str(exc)})
+    except chat_service.ChatRequestError as exc:
+        return JSONResponse(status_code=400, content={"status": "ERROR", "message": str(exc)})
+    except chat_service.ChatConfigError as exc:
+        return JSONResponse(status_code=500, content={"status": "ERROR", "message": str(exc)})
+    except chat_service.ChatLLMError as exc:
+        return JSONResponse(status_code=500, content={"status": "ERROR", "message": str(exc)})

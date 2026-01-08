@@ -1,5 +1,16 @@
 {
   "version": 1,
+  "context_strategy": "full_context",
+  "injection_priority": [
+    "character_sheet",
+    "rules_text",
+    "world_state"
+  ],
+  "character_sheet_path": "data/characters",
+  "rules_text_path": "",
+  "world_state_path": "",
+  "log_tokens": true,
+  "persona_lock_enabled": true,
   "routing": {
     "all": "providerA",
     "chat": "providerA",

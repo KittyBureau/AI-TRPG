@@ -21,6 +21,7 @@ Open: `http://127.0.0.1:8000/`
 - If a feature route is missing, `routing.all` is used as fallback.
 
 ## AI Documentation Index
+- Required: before implementing context features, read `docs/TODO_CONTEXT.md`.
 - `docs/ai/AI_INDEX.md` (entry point)
 - `docs/ai/CONVENTIONS.md` (data placement + naming)
 - `docs/ai/ARCHITECTURE.md` (current layering)

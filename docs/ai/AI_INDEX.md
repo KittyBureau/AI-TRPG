@@ -17,4 +17,5 @@ This directory provides a minimal index for AI-related documentation and coding 
 
 ## Update rules
 - Keep entries short and stable; expand details in the target document.
-- If an item is uncertain, mark it as "待确认" and propose a default.
+- Required before context work: read `docs/TODO_CONTEXT.md`.
+- If an item is uncertain, mark it as "덤횅훰" and propose a default.
