@@ -17,7 +17,7 @@
 - 本地密钥与配置管理已落地：加密 secrets + 明文 config + CLI 写入与路由配置。
 
 ## 3. 会话 / 上下文系统的功能性说明
-- 会话以 `conversation_id` 作为索引，存储于 `codes/backend/data/conversations/`，记录创建/更新时间与消息列表。
+- 会话以 `conversation_id` 作为索引，存储于 `backend/data/conversations/`，记录创建/更新时间与消息列表。
 - 并发控制采用进程内锁：同一会话在发送期间加锁，防止并行写入。
 - `context_strategy` 支持 `full_context` / `compact_context` / `auto`（profile 默认可覆盖）；compact 模式按 summary/key_facts/recent_turns 组装。
 - system prompt 支持按 `dialog_type + response_style` 映射文件，或显式 `mode` 指定。
@@ -32,7 +32,7 @@
 
 ## 5. 配置与可扩展点概览
 - 配置与密钥集中在用户目录（`%USERPROFILE%\.ai-trpg\`），支持 provider 路由与多模型配置。
-- `codes/backend/storage/config_template.json` 提供上下文策略、注入优先级、路由表与 profiles 模板，便于实例化。
+- `backend/storage/config_template.json` 提供上下文策略、注入优先级、路由表与 profiles 模板，便于实例化。
 - 后端预留 `api/agents/tools/core` 等目录，便于后续扩展多 Agent 编排与工具服务。
 - 世界移动模块支持自定义 world/state 路径与风险过滤，路径 ID 采用稳定签名。
 - 前端为最小静态页面，当前仅提供对话与角色生成入口，便于替换为更完整的 UI。

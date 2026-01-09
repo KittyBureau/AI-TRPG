@@ -4,7 +4,7 @@
 Validate dialog routing decisions, context profile selection, block inclusion/exclusion, and guard behavior without modifying business logic.
 
 ## Preconditions
-- `config.json` includes `dialog_routes` and `context_profiles` (copy from `codes/backend/storage/config_template.json` if needed).
+- `config.json` includes `dialog_routes` and `context_profiles` (copy from `backend/storage/config_template.json` if needed).
 - Ensure `rules_text_path` is set in `%USERPROFILE%\.ai-trpg\config.json` if validating rules-only output.
 - If testing `character_state`/`lore` blocks, set `character_state_path` / `lore_path` to readable files or directories.
 - The repository root is the working directory for commands below.
@@ -68,13 +68,13 @@ Expected checks:
 - `narrative.scene_general` and `action_intent.light` include character_state/world_state when paths exist.
 - `recent_turns_n` limits history only when `context_strategy` resolves to `compact_context`.
 
-Note: `conversation_store.create_conversation()` writes a file under `codes/backend/data/conversations/`. Remove it after testing if needed.
+Note: `conversation_store.create_conversation()` writes a file under `backend/data/conversations/`. Remove it after testing if needed.
 
 ## Method B: API-level routing check (requires LLM access)
 1) Start the server:
 
 ```powershell
-cd e:\202410\Repos\DocumentsAndDirectives\codes
+cd e:\202410\Repos\DocumentsAndDirectives
 python -m uvicorn backend.app.main:app --reload
 ```
 
@@ -97,7 +97,7 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/chat/send `
   -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
 ```
 
-3) Inspect the conversation file under `codes/backend/data/conversations/` and verify:
+3) Inspect the conversation file under `backend/data/conversations/` and verify:
 - `meta.dialog_route.dialog_type`, `variant`, and `context_profile` match the request.
 - `meta.dialog_route.context_strategy` matches the resolved profile strategy.
 - `meta.dialog_route.guards` reflects the guard list (default or overridden).

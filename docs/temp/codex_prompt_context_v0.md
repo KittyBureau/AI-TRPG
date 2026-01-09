@@ -69,7 +69,7 @@
 ---
 
 ### 2.2 配置文件（本地 JSON；不做 UI）
-1) 新增或扩展一个本地配置文件（例如 `codes/data/config.json` 或 `codes/data/llm_config.json`，以项目实际为准），包含：
+1) 新增或扩展一个本地配置文件（例如 `data/config.json` 或 `data/llm_config.json`，以项目实际为准），包含：
    - `context_strategy`: `"full_context"`（默认）
    - `injection_priority`: `["character_sheet", "rules_text", "world_state"]`
    - 角色信息文件路径（或目录规则）
@@ -186,7 +186,7 @@
 
 ## 7. 开始执行前的仓库扫描要求（防止放错位置）
 - 先在仓库中搜索：
-  - 已有 routes 结构（例如 `backend/routes` 或 `codes/backend/routes`）
+  - 已有 routes 结构（例如 `backend/routes` 或 `backend/routes`）
   - 已有 storage/services 目录命名方式
   - 规范入口文件路径
 - 避免改动旧代码：优先“新增文件 + 轻量接线”方式接入。

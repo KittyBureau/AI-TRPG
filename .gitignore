@@ -19,7 +19,7 @@ Thumbs.db
 .DS_Store
 
 # Logs / data (local dev)
-codes/backend/logs/
-codes/backend/data/
-codes/data/
+backend/logs/
+backend/data/
+data/
 

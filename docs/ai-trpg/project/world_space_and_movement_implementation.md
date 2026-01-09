@@ -4,10 +4,10 @@
 
 ## 目录与文件
 
-- 静态世界：`codes/backend/storage/worlds/sample_world.json`
+- 静态世界：`backend/storage/worlds/sample_world.json`
   - `locations`：地点节点列表
   - `edges`：单向边列表（`from/to/type/time/risk/requires`）
-- 动态状态与事实：`codes/backend/storage/runs/sample_world_state.json`
+- 动态状态与事实：`backend/storage/runs/sample_world_state.json`
   - `time`：世界时间
   - `blocked_edges`：封锁边列表（格式 `loc_a->loc_b`）
   - `entities`：实体列表（`id/location_id/flags`）
@@ -17,7 +17,7 @@
 
 ## 服务模块
 
-实现位于 `codes/backend/services/world_movement.py`：
+实现位于 `backend/services/world_movement.py`：
 
 - `get_movement_paths(...)`
   - 从 `entity.location_id` 出发枚举 1..N 跳路径
