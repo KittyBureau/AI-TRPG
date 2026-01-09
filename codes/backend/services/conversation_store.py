@@ -77,6 +77,10 @@ def create_conversation(meta: Dict[str, Any] | None = None) -> Dict[str, Any]:
         "created_at": now,
         "updated_at": now,
         "messages": [],
+        "summary": None,
+        "key_facts": [],
+        "last_summarized_at": None,
+        "last_summarized_turn": None,
         "meta": meta or {},
     }
     save_conversation(payload)

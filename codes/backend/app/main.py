@@ -57,6 +57,11 @@ class ChatSendRequest(BaseModel):
     user_text: str
     mode: str | None = None
     context_strategy: str | None = None
+    dialog_type: str | None = None
+    variant: str | None = None
+    context_profile: str | None = None
+    response_style: str | None = None
+    guards: list[str] | None = None
 
 
 class ChatSendResponse(BaseModel):
@@ -171,6 +176,11 @@ async def chat_send(req: ChatSendRequest):
             conversation_id=req.conversation_id,
             mode=req.mode,
             context_strategy=req.context_strategy,
+            dialog_type=req.dialog_type,
+            variant=req.variant,
+            context_profile=req.context_profile,
+            response_style=req.response_style,
+            guards=req.guards,
         )
     except chat_service.ChatLockedError as exc:
         return JSONResponse(status_code=409, content={"status": "ERROR", "message": str(exc)})

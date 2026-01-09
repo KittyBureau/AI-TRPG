@@ -4,9 +4,9 @@ This document tracks the follow-up work for context compression and key-fact
 substitution. Read this before implementing or modifying any context pipeline.
 
 ## 4.1 Context compression plan (key facts)
-- [ ] TODO(context): implement compact_context strategy (wire mode switch).
-- [ ] TODO(context): replace full history with compact key facts per this doc.
-- [ ] compact_context strategy: keep key facts only (character sheet highlights
+- [x] TODO(context): implement compact_context strategy (wire mode switch).
+- [x] TODO(context): replace full history with compact key facts per this doc.
+- [x] compact_context strategy: keep key facts only (character sheet highlights
       + last N turns + world state summary).
 - [ ] Auto-summary trigger: when history exceeds token_budget * X%, generate a
       rolling summary (V1/V2).

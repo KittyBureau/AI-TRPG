@@ -26,6 +26,8 @@ Open: `http://127.0.0.1:8000/`
 - `docs/ai/CONVENTIONS.md` (data placement + naming)
 - `docs/ai/ARCHITECTURE.md` (current layering)
 - `docs/ai-trpg/README.md` (domain docs)
+- `docs/design/dialog_routing.md` (dialog routing + context profiles)
+- `docs/testing/dialog_routing_test_method.md` (routing test method)
 
 ## Use on Another Device
 1) Install Git and Python 3.13.1

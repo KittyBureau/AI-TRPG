@@ -29,6 +29,8 @@ Open: `http://127.0.0.1:8000/`
 
 ## Documentation
 - `docs/ai/AI_INDEX.md` (repo-wide index)
+- `docs/design/dialog_routing.md` (dialog routing + context profiles)
+- `docs/testing/dialog_routing_test_method.md` (routing test method)
 
 ## Key modules
 - `backend/services/llm_client.py`: /turn uses DeepSeek with strict JSON validation + retry

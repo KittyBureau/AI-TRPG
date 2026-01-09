@@ -2,11 +2,10 @@ import logging
 import re
 from typing import Any, Dict, Iterable, List
 
-from backend.services import conversation_store, context_builder, context_config, llm_client
+from backend.services import conversation_store, context_builder, context_config, dialog_router, llm_client
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODE = "context_full"
 PERSONA_LOCK_RESPONSE = (
     "I am the GM/narrative assistant and cannot take on PC or NPC identities. "
     "I will continue as the GM. What do you do next?"
@@ -103,6 +102,11 @@ async def send_chat(
     conversation_id: str | None = None,
     mode: str | None = None,
     context_strategy: str | None = None,
+    dialog_type: str | None = None,
+    variant: str | None = None,
+    context_profile: str | None = None,
+    response_style: str | None = None,
+    guards: List[str] | None = None,
 ) -> Dict[str, Any]:
     if not isinstance(user_text, str) or not user_text.strip():
         raise ChatRequestError("user_text must be non-empty text.")
@@ -112,8 +116,8 @@ async def send_chat(
     except context_config.ContextConfigError as exc:
         raise ChatConfigError(str(exc)) from exc
 
-    resolved_mode = mode or DEFAULT_MODE
-    resolved_strategy = context_strategy or config.context_strategy
+    resolved_mode = mode.strip() if isinstance(mode, str) and mode.strip() else None
+    initial_strategy = context_strategy or config.context_strategy
 
     conversation: Dict[str, Any]
     created_new = False
@@ -133,7 +137,7 @@ async def send_chat(
             raise ChatNotFoundError(str(exc)) from exc
     else:
         conversation = conversation_store.create_conversation(
-            meta={"mode": resolved_mode, "context_strategy": resolved_strategy}
+            meta={"mode": resolved_mode, "context_strategy": initial_strategy}
         )
         conversation_id = conversation["conversation_id"]
         created_new = True
@@ -145,15 +149,33 @@ async def send_chat(
             raise ChatRequestError(str(exc)) from exc
 
     try:
+        route = dialog_router.resolve_dialog_route(
+            config=config,
+            dialog_type=dialog_type,
+            variant=variant,
+            context_profile=context_profile,
+            response_style=response_style,
+            guards=guards,
+        )
+        profile = config.context_profiles[route.context_profile]
+        resolved_strategy = context_strategy or profile.strategy
+        persona_lock_guard = config.persona_lock_enabled and "persona_lock" in route.guards
+        role_confusion_guard = (
+            config.persona_lock_enabled and "role_confusion_guard" in route.guards
+        )
+
         messages = context_builder.build_messages(
             conversation=conversation,
             user_text=user_text,
             config=config,
+            route=route,
+            profile=profile,
             mode=resolved_mode,
             context_strategy=resolved_strategy,
+            persona_lock_enabled=persona_lock_guard,
         )
         assistant_text, usage, params = await llm_client.chat_completion(messages)
-        if config.persona_lock_enabled:
+        if role_confusion_guard:
             character_names = context_builder.get_character_names(config)
             if _detect_persona_drift(assistant_text, character_names):
                 assistant_text = PERSONA_LOCK_RESPONSE
@@ -181,8 +203,18 @@ async def send_chat(
         )
         if usage and config.log_tokens:
             meta["last_token_usage"] = usage
+        meta["dialog_route"] = {
+            "dialog_type": route.dialog_type,
+            "variant": route.variant,
+            "context_profile": route.context_profile,
+            "response_style": route.response_style,
+            "guards": route.guards,
+            "context_strategy": resolved_strategy,
+        }
         conversation_store.save_conversation(conversation)
     except context_builder.ContextBuilderError as exc:
+        raise ChatRequestError(str(exc)) from exc
+    except dialog_router.DialogRoutingError as exc:
         raise ChatRequestError(str(exc)) from exc
     except llm_client.LLMError as exc:
         raise ChatLLMError(str(exc)) from exc
