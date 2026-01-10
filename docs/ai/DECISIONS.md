@@ -1,22 +1,22 @@
-# Decisions
+# 决策
 
-## Default decisions
-1) Data placement
-- Decision: Keep versioned sample/fixture data in `backend/storage/`.
-- Rationale: Git-tracked, reproducible, and separated from local runtime outputs.
-- Status: default (??? by owner).
+## 默认决策
+1) 数据放置
+- 决策：版本化的样例/夹具数据放在 `backend/storage/`。
+- 理由：可由 Git 跟踪、可复现，并与本地运行期输出隔离。
+- 状态：默认（??? 由负责人确认）。
 
-2) Service boundaries
-- Decision: API layer stays thin; logic lives in `backend/services/`.
-- Rationale: Easier testing and reuse across endpoints.
-- Status: default (??? by owner).
+2) 服务边界
+- 决策：接口层保持轻薄；逻辑放在 `backend/services/`。
+- 理由：更易测试与复用。
+- 状态：默认（??? 由负责人确认）。
 
-3) API validation and errors
-- Decision: New endpoints must validate input with Pydantic models and return `status/message` JSON on errors.
-- Rationale: Consistent client behavior and debuggability.
-- Status: default (??? by owner).
+3) 接口校验与错误
+- 决策：新端点必须用 Pydantic 校验输入，并在错误时返回 `status/message` 的 JSON。
+- 理由：客户端行为一致且易排查。
+- 状态：默认（??? 由负责人确认）。
 
-4) Movement path identity
-- Decision: Use signature-style `path_id` (e.g., `loc_a->loc_b->loc_c`).
-- Rationale: Deterministic IDs support re-validation in `apply_move`.
-- Status: default (??? by owner).
+4) 移动路径标识
+- 决策：使用签名风格 `path_id`（例如 `loc_a->loc_b->loc_c`）。
+- 理由：确定性 ID 支持 `apply_move` 复验。
+- 状态：默认（??? 由负责人确认）。

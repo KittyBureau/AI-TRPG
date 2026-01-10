@@ -1,29 +1,40 @@
 # TODO_CONTEXT
 
-This document tracks the follow-up work for context compression and key-fact
-substitution. Read this before implementing or modifying any context pipeline.
 
-## 4.1 Context compression plan (key facts)
-- [x] TODO(context): implement compact_context strategy (wire mode switch).
-- [x] TODO(context): replace full history with compact key facts per this doc.
-- [x] compact_context strategy: keep key facts only (character sheet highlights
-      + last N turns + world state summary).
-- [ ] Auto-summary trigger: when history exceeds token_budget * X%, generate a
-      rolling summary (V1/V2).
-- [ ] Key fact extraction: extract people, goals, places, items, quest progress
-      into structured JSON.
-- [ ] Pin fixed info: key character/rules entries never trimmed.
-- [ ] Configurable priority and max length per injection block.
-- [ ] Token budget estimation + visibility (log first, UI later).
-- [ ] Regression checks: same input under full_context vs compact_context stays
-      stable enough for gameplay.
-- [ ] Role confusion guard: reinforce GM identity in system prompt and wrap
-      character sheet injection to prevent PC self-identification.
-- [ ] GM persona lock: prompt rules + input interception + output fallback
-      validation (tighten detection and labeling rules).
 
-## 4.2 Acceptance criteria
-- V0: full-context works; character injection works; overlong input errors out;
-      per-conversation lock blocks concurrent send; conversation file recovers.
-- V1: compact_context toggle works; key-fact substitution works; token cost down
-      without obvious drift.
+本文档跟踪上下文压缩与关键事实替换的后续工作。在实现或修改任何上下文管线前请先阅读。
+
+
+
+## 4.1 上下文压缩计划（关键事实）
+
+- [x] TODO(context)：实现 compact_context 策略（接入模式切换）。
+
+- [x] TODO(context)：按本文档用紧凑关键事实替换完整历史。
+
+- [x] compact_context 策略：仅保留关键事实（角色卡摘要 + 最近 N 轮 + 世界状态摘要）。
+
+- [ ] 自动摘要触发：当历史超过 token_budget * X% 时生成滚动摘要（V1/V2）。
+
+- [ ] 关键事实抽取：抽取人物、目标、地点、物品、任务进度为结构化 JSON。
+
+- [ ] 固定信息 pin：关键角色/规则条目永不裁剪。
+
+- [ ] 注入块优先级与最大长度可配置。
+
+- [ ] token 预算估算 + 可见性（先日志，后 UI）。
+
+- [ ] 回归检查：full_context 与 compact_context 对同一输入的输出足够稳定。
+
+- [ ] 角色混淆防护：加强系统提示 GM 身份，并包裹角色卡注入，防止 PC 自我认同。
+
+- [ ] GM persona lock：提示规则 + 输入拦截 + 输出兜底校验（收紧检测与标注规则）。
+
+
+
+## 4.2 验收标准
+
+- V0：full-context 可用；角色注入可用；过长输入报错；单会话锁阻止并发发送；会话文件可恢复。
+
+- V1：compact_context 开关可用；关键事实替换可用；token 成本下降且无明显漂移。
+

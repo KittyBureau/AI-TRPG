@@ -105,6 +105,16 @@ async def character_page():
     return JSONResponse(status_code=404, content={"status": "ERROR", "message": "Character page not found."})
 
 
+@app.get("/chat_history.html", include_in_schema=False)
+async def chat_history_page():
+    page_file = FRONTEND_DIR / "chat_history.html"
+    if page_file.exists():
+        return FileResponse(page_file)
+    return JSONResponse(
+        status_code=404, content={"status": "ERROR", "message": "Chat history page not found."}
+    )
+
+
 @app.post("/api/characters/generate")
 async def generate_character(req: CharacterGenerateRequest):
     try:

@@ -1,6 +1,6 @@
-# Pre-commit checklist
+# 提交前检查清单
 
-- Format: ??? (default: `python -m black backend`).
-- Lint: ??? (default: `python -m ruff check backend`).
-- Type: ??? (default: `python -m mypy backend`).
-- Tests: ??? (default: `python -m pytest`).
+- 格式化：???（默认：`python -m black backend`）。
+- 代码检查：???（默认：`python -m ruff check backend`）。
+- 类型检查：???（默认：`python -m mypy backend`）。
+- 测试：???（默认：`python -m pytest`）。

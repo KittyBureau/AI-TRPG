@@ -1,14 +1,33 @@
-﻿{
-  "time": 0,
+{
+  "time": 6,
   "blocked_edges": [
     "loc_bridge->loc_forest_edge"
   ],
   "entities": [
     {
       "id": "pc_001",
-      "location_id": "loc_town_gate",
-      "flags": ["has_pass"]
+      "location_id": "loc_farm",
+      "flags": [
+        "has_pass"
+      ]
     }
   ],
-  "facts": []
+  "facts": [
+    {
+      "type": "move",
+      "time": 2,
+      "entity_id": "pc_001",
+      "from": "loc_town_gate",
+      "to": "loc_market",
+      "path_id": "loc_town_gate->loc_market"
+    },
+    {
+      "type": "move",
+      "time": 6,
+      "entity_id": "pc_001",
+      "from": "loc_market",
+      "to": "loc_farm",
+      "path_id": "loc_market->loc_farm"
+    }
+  ]
 }
