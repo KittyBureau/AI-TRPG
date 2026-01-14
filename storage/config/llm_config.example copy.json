@@ -1,0 +1,13 @@
+{
+  "current_profile": "default",
+  "profiles": {
+    "default": {
+      "base_url": "https://api.openai.com/v1",
+      "model": "gpt-4.1-mini",
+      "temperature": 0.2,
+      "timeout_sec": 30,
+      "max_tokens": 2000,
+      "api_key_ref": "llm_default"
+    }
+  }
+}

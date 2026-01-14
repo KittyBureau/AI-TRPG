@@ -6,12 +6,13 @@ debug retries. Authoritative state always wins.
 ## LLM Client
 
 The LLM client uses an OpenAI-compatible `chat/completions` endpoint with a
-JSON response format. Configuration is read from environment variables:
+JSON response format. Configuration is loaded from:
 
-- `LLM_BASE_URL` (default `https://api.openai.com/v1`)
-- `LLM_API_KEY` (required)
-- `LLM_MODEL` (default `gpt-4o-mini`)
-- `LLM_TEMPERATURE` (default `0.2`)
+- `storage/config/llm_config.json` (current_profile + profiles)
+- `storage/secrets/keyring.json` (encrypted API keys)
+
+The keyring is created on first run via interactive input (no echo). There is
+no environment-variable fallback.
 
 The model must return a JSON object:
 

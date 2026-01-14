@@ -14,15 +14,16 @@
 uvicorn backend.api.main:app --reload
 ```
 
-### 1.2 环境变量（Stage 4）
-```bash
-LLM_BASE_URL=...
-LLM_API_KEY=...
-LLM_MODEL=...
-LLM_TEMPERATURE=0.2
-```
+### 1.2 LLM 配置（Stage 4）
+1. 复制模板：
+   - `storage/config/llm_config.example.json` → `storage/config/llm_config.json`
+2. 编辑 `storage/config/llm_config.json` 的 `current_profile` 与 profile 字段
+3. 首次调用 `/api/chat/turn` 时：
+   - 控制台会提示输入 API key（不回显）
+   - 然后提示设置/输入本地口令（不回显）
+   - key 会加密保存至 `storage/secrets/keyring.json`
 
-> 说明：Stage 4 依赖真实 LLM；若未配置 `LLM_API_KEY`，请仅执行 Stage 1–3 步骤。
+> 说明：Stage 4 依赖真实 LLM；若未配置 llm_config.json 或未输入 key，将无法执行 Stage 4 的步骤。
 
 ---
 

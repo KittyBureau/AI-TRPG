@@ -23,3 +23,6 @@ backend/logs/
 backend/data/
 data/
 
+# LLM config / secrets (local dev)
+storage/config/llm_config.json
+storage/secrets/keyring.json
