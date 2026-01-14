@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 
 from backend.app.conflict_detector import detect_conflicts
 from backend.app.tool_executor import execute_tool_calls
-from backend.domain.dialog_classifier import DialogTypeClassifier
+from backend.domain.dialog_rules import DEFAULT_DIALOG_TYPE, DIALOG_TYPES
 from backend.domain.models import (
     AssistantStructured,
     Campaign,
@@ -31,7 +31,6 @@ from backend.infra.llm_client import LLMClient
 class TurnService:
     def __init__(self, repo: FileRepo) -> None:
         self.repo = repo
-        self.classifier = DialogTypeClassifier()
         self.llm = LLMClient()
 
     def create_campaign(
@@ -95,11 +94,7 @@ class TurnService:
         active_actor_id = actor_id or campaign.selected.active_actor_id
         if active_actor_id not in campaign.selected.party_character_ids:
             raise ValueError("actor_id not in party_character_ids")
-        dialog_type, dialog_type_source = self.classifier.classify(
-            user_input,
-            auto_type_enabled=campaign.settings_snapshot.dialog.auto_type_enabled,
-        )
-        system_prompt = _build_system_prompt(campaign, dialog_type)
+        system_prompt = _build_system_prompt(campaign)
         retry_count = 0
         last_conflicts = []
         debug_append = None
@@ -107,6 +102,9 @@ class TurnService:
 
         while True:
             llm_output = self.llm.generate(system_prompt, user_input, debug_append)
+            dialog_type, dialog_type_source = _resolve_dialog_type(
+                llm_output.get("dialog_type")
+            )
             tool_calls = _parse_tool_calls(llm_output.get("tool_calls", []))
             state_before = _snapshot_state(campaign)
             applied_actions, tool_feedback = execute_tool_calls(
@@ -114,7 +112,8 @@ class TurnService:
             )
             state_after = _state_summary_dict(campaign)
             conflicts = detect_conflicts(
-                llm_output.get("text", ""),
+                llm_output.get("assistant_text", ""),
+                dialog_type,
                 applied_actions,
                 tool_feedback,
                 state_before,
@@ -152,7 +151,7 @@ class TurnService:
                 dialog_type=dialog_type,
                 dialog_type_source=dialog_type_source,
                 settings_revision=campaign.settings_revision,
-                assistant_text=llm_output.get("text", ""),
+                assistant_text=llm_output.get("assistant_text", ""),
                 assistant_structured=AssistantStructured(tool_calls=tool_calls),
                 applied_actions=applied_actions,
                 tool_feedback=tool_feedback,
@@ -244,9 +243,10 @@ def _state_summary_dict(campaign: Campaign) -> Dict[str, object]:
     }
 
 
-def _build_system_prompt(campaign: Campaign, dialog_type: str) -> str:
+def _build_system_prompt(campaign: Campaign) -> str:
     payload = {
-        "dialog_type": dialog_type,
+        "dialog_types": DIALOG_TYPES,
+        "default_dialog_type": DEFAULT_DIALOG_TYPE,
         "allowlist": campaign.allowlist,
         "selected": _model_to_dict(campaign.selected),
         "settings_snapshot": _model_to_dict(campaign.settings_snapshot),
@@ -255,12 +255,13 @@ def _build_system_prompt(campaign: Campaign, dialog_type: str) -> str:
         "hp": campaign.hp,
         "character_states": campaign.character_states,
         "response_format": {
-            "text": "string narrative",
+            "assistant_text": "string narrative",
+            "dialog_type": "one of dialog_types",
             "tool_calls": "array of tool calls",
         },
     }
     return (
-        "You are the AI GM. Output JSON with keys 'text' and 'tool_calls'. "
+        "You are the AI GM. Output JSON with keys 'assistant_text', 'dialog_type', and 'tool_calls'. "
         "Never claim state changes unless they are requested as tool_calls. "
         "Do not modify rules, maps, or character sheets. "
         f"Context: {json.dumps(payload, ensure_ascii=True)}"
@@ -277,6 +278,14 @@ def _build_debug_append(conflicts: List[object], campaign: Campaign) -> str:
         "Fix narrative/tool_calls to comply. "
         f"Debug: {json.dumps(payload, ensure_ascii=True)}"
     )
+
+
+def _resolve_dialog_type(value: object) -> tuple[str, str]:
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in DIALOG_TYPES:
+            return normalized, "model"
+    return DEFAULT_DIALOG_TYPE, "fallback"
 
 
 def _build_success_response(

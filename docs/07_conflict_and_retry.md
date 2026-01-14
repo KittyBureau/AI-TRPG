@@ -17,7 +17,8 @@ The model must return a JSON object:
 
 ```json
 {
-  "text": "Narrative response",
+  "assistant_text": "Narrative response",
+  "dialog_type": "scene_description",
   "tool_calls": [
     { "id": "call_001", "tool": "move", "args": {}, "reason": "..." }
   ]
@@ -31,6 +32,8 @@ Conflicts are detected before logging and can trigger retries:
 - `state_mismatch`: narrative claims state changes without applied actions.
 - `tool_result_mismatch`: narrative implies success while tool calls failed.
 - `forbidden_change`: narrative attempts to change rules, maps, or world data.
+
+When `dialog_type` is `rule_explanation`, only `forbidden_change` is evaluated.
 
 Example conflict report:
 

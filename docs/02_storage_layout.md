@@ -102,7 +102,7 @@ Each line is a JSON object:
   "timestamp": "2026-01-14T16:05:30+00:00",
   "user_input": "I light a torch.",
   "dialog_type": "scene_description",
-  "dialog_type_source": "auto",
+  "dialog_type_source": "model",
   "settings_revision": 0,
   "assistant_text": "Echo: I light a torch.",
   "assistant_structured": {
@@ -165,7 +165,7 @@ Each line is a JSON object:
 | timestamp | string | ISO timestamp. |
 | user_input | string | Raw player input. |
 | dialog_type | string | Classified dialog type. |
-| dialog_type_source | string | `auto` or `fixed`. |
+| dialog_type_source | string | `model` or `fallback`. |
 | settings_revision | int | Settings revision at this turn. |
 | assistant_text | string | LLM output. |
 | assistant_structured | object | Tool calls container. |

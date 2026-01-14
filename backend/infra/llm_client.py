@@ -4,7 +4,7 @@ import json
 import os
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 
 @dataclass
@@ -91,12 +91,17 @@ def _parse_model_output(content: str) -> Dict[str, Any]:
     try:
         data = json.loads(content)
     except json.JSONDecodeError:
-        return {"text": content, "tool_calls": []}
+        return {"assistant_text": content, "dialog_type": "", "tool_calls": []}
     if not isinstance(data, dict):
-        return {"text": content, "tool_calls": []}
-    text = data.get("text") or data.get("narrative_text") or ""
+        return {"assistant_text": content, "dialog_type": "", "tool_calls": []}
+    assistant_text = data.get("assistant_text") or data.get("text") or ""
+    dialog_type = data.get("dialog_type") or ""
     tool_calls = data.get("tool_calls", [])
     if not isinstance(tool_calls, list):
         tool_calls = []
     tool_calls = [item for item in tool_calls if isinstance(item, dict)]
-    return {"text": text, "tool_calls": tool_calls}
+    return {
+        "assistant_text": assistant_text,
+        "dialog_type": dialog_type,
+        "tool_calls": tool_calls,
+    }

@@ -11,6 +11,12 @@ class DialogRule(BaseModel):
 
 
 DEFAULT_DIALOG_TYPE = "scene_description"
+DIALOG_TYPES = [
+    "scene_description",
+    "action_prompt",
+    "resolution_summary",
+    "rule_explanation",
+]
 
 DEFAULT_RULES: List[DialogRule] = [
     DialogRule(

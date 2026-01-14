@@ -7,6 +7,7 @@ from backend.domain.models import AppliedAction, ConflictItem, ToolFeedback
 
 def detect_conflicts(
     narrative_text: str,
+    dialog_type: str,
     applied_actions: List[AppliedAction],
     tool_feedback: Optional[ToolFeedback],
     state_before: Dict[str, Any],
@@ -25,20 +26,21 @@ def detect_conflicts(
             )
         )
 
-    if _mentions_state_change(lowered) and not applied_actions:
-        conflicts.append(
-            ConflictItem(
-                type="state_mismatch",
-                field="applied_actions",
-                expected="no_state_change",
-                found_in_text=_extract_snippet(lowered, "move"),
+    if dialog_type != "rule_explanation":
+        if _mentions_state_change(lowered) and not applied_actions:
+            conflicts.append(
+                ConflictItem(
+                    type="state_mismatch",
+                    field="applied_actions",
+                    expected="no_state_change",
+                    found_in_text=_extract_snippet(lowered, "move"),
+                )
             )
-        )
 
-    if tool_feedback:
-        conflicts.extend(_detect_failed_tool_mentions(lowered, tool_feedback))
+        if tool_feedback:
+            conflicts.extend(_detect_failed_tool_mentions(lowered, tool_feedback))
 
-    conflicts.extend(_detect_state_claim_mismatch(lowered, state_after))
+        conflicts.extend(_detect_state_claim_mismatch(lowered, state_after))
 
     return conflicts
 

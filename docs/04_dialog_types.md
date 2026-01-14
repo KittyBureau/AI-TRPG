@@ -1,4 +1,4 @@
-# Dialog Types (Stage 2)
+# Dialog Types (Stage 4)
 
 ## Types
 
@@ -7,28 +7,19 @@
 - `resolution_summary`
 - `rule_explanation`
 
-## Rule-Based Classification
+Enum source: `backend/domain/dialog_rules.py` (`DIALOG_TYPES`).
 
-Dialog type classification uses a rule engine (not LLM). Rules are defined in
-`backend/domain/dialog_rules.py` and can be updated without changing the
-classifier implementation.
+## Model Output
 
-When `dialog.auto_type_enabled` is `false`, the classifier always returns the
-default type (`scene_description`) and records source as `fixed`.
-
-Default ordering:
-
-1. `rule_explanation`
-2. `resolution_summary`
-3. `action_prompt`
-4. fallback: `scene_description`
+Dialog type is provided by the LLM output. The system accepts only the enumerated
+values above. Missing or invalid values fall back to `scene_description`.
 
 ## Source Field
 
 Each turn log stores `dialog_type_source`:
 
-- `auto`: rules were applied (including fallback).
-- `fixed`: `dialog.auto_type_enabled` was `false`, so a fixed default type was used.
+- `model`: dialog type came from the model output.
+- `fallback`: missing/invalid dialog type, default applied.
 
 ## Examples
 
