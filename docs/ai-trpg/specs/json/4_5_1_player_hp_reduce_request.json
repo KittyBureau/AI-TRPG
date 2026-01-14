@@ -1,9 +1,0 @@
-{
-  "campaign_id": "c_0",
-  "session_id": "s_0001",
-  "player_id": "p_redkitty",
-  "amount": 3,
-  "reason": "被短刀划伤",
-  "source": "turn_commit",
-  "idempotency_key": "c_0:s_0001:t_0007:hp_reduce"
-}

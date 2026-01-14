@@ -1,5 +1,0 @@
-{
-  "say": "……你现在打算做什么？",
-  "options": [{"id":"A","text":"……"}],
-  "tool_call": null
-}

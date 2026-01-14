@@ -1,9 +1,0 @@
-{
-  "ok": true,
-  "tool": "player_hp_reduce",
-  "log_id": "log_9f3c2a",
-  "result": {
-    "player_id": "p_redkitty",
-    "status": "alive"
-  }
-}
