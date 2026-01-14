@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 from backend.app.conflict_detector import detect_conflicts
 from backend.app.tool_executor import execute_tool_calls
 from backend.domain.dialog_rules import DEFAULT_DIALOG_TYPE, DIALOG_TYPES
+from backend.domain.map_models import normalize_map
 from backend.domain.models import (
     AssistantStructured,
     Campaign,
@@ -15,7 +16,6 @@ from backend.domain.models import (
     ConflictReport,
     Goal,
     MapArea,
-    MapConnection,
     MapData,
     Milestone,
     Selected,
@@ -23,6 +23,11 @@ from backend.domain.models import (
     StateSummary,
     ToolCall,
     TurnLogEntry,
+)
+from backend.domain.state_utils import (
+    ensure_positions_child,
+    set_parent_position,
+    sync_state_positions,
 )
 from backend.infra.file_repo import FileRepo
 from backend.infra.llm_client import LLMClient
@@ -43,12 +48,16 @@ class TurnService:
         campaign_id = self.repo.next_campaign_id()
         starter_map = MapData(
             areas={
-                "area_001": MapArea(id="area_001", name="Starting Area"),
-                "area_002": MapArea(id="area_002", name="Side Room"),
+                "area_001": MapArea(
+                    id="area_001",
+                    name="Starting Area",
+                    reachable_area_ids=["area_002"],
+                ),
+                "area_002": MapArea(
+                    id="area_002", name="Side Room", reachable_area_ids=[]
+                ),
             },
-            connections=[
-                MapConnection(from_area_id="area_001", to_area_id="area_002")
-            ],
+            connections=[],
         )
         positions = {character_id: "area_001" for character_id in party_character_ids}
         hp = {character_id: 10 for character_id in party_character_ids}
@@ -72,6 +81,9 @@ class TurnService:
             hp=hp,
             character_states=character_states,
         )
+        sync_state_positions(campaign)
+        ensure_positions_child(campaign, party_character_ids)
+        normalize_map(campaign.map)
         self.repo.create_campaign(campaign)
         return campaign_id
 
@@ -159,6 +171,12 @@ class TurnService:
                 state_summary=StateSummary(active_actor_id=active_actor_id),
             )
             entry.state_summary.positions = dict(campaign.positions)
+            entry.state_summary.positions_parent = dict(
+                campaign.state.positions_parent
+            )
+            entry.state_summary.positions_child = dict(
+                campaign.state.positions_child
+            )
             entry.state_summary.hp = dict(campaign.hp)
             entry.state_summary.character_states = dict(campaign.character_states)
             self.repo.append_turn_log(campaign_id, entry)
@@ -170,17 +188,21 @@ def _ensure_minimum_state(campaign: Campaign) -> bool:
     if not campaign.map.areas:
         campaign.map = MapData(
             areas={
-                "area_001": MapArea(id="area_001", name="Starting Area"),
-                "area_002": MapArea(id="area_002", name="Side Room"),
+                "area_001": MapArea(
+                    id="area_001",
+                    name="Starting Area",
+                    reachable_area_ids=["area_002"],
+                ),
+                "area_002": MapArea(
+                    id="area_002", name="Side Room", reachable_area_ids=[]
+                ),
             },
-            connections=[
-                MapConnection(from_area_id="area_001", to_area_id="area_002")
-            ],
+            connections=[],
         )
         updated = True
     for character_id in campaign.selected.party_character_ids:
         if character_id not in campaign.positions:
-            campaign.positions[character_id] = "area_001"
+            set_parent_position(campaign, character_id, "area_001")
             updated = True
         if character_id not in campaign.hp:
             campaign.hp[character_id] = 10
@@ -188,6 +210,9 @@ def _ensure_minimum_state(campaign: Campaign) -> bool:
         if character_id not in campaign.character_states:
             campaign.character_states[character_id] = "alive"
             updated = True
+    sync_state_positions(campaign)
+    ensure_positions_child(campaign, campaign.selected.party_character_ids)
+    normalize_map(campaign.map)
     return updated
 
 
@@ -222,6 +247,7 @@ def _snapshot_state(campaign: Campaign) -> Dict[str, object]:
         map_copy = deepcopy(campaign.map)
     return {
         "positions": deepcopy(campaign.positions),
+        "state": deepcopy(campaign.state),
         "hp": deepcopy(campaign.hp),
         "character_states": deepcopy(campaign.character_states),
         "map": map_copy,
@@ -230,6 +256,7 @@ def _snapshot_state(campaign: Campaign) -> Dict[str, object]:
 
 def _restore_state(campaign: Campaign, snapshot: Dict[str, object]) -> None:
     campaign.positions = snapshot["positions"]
+    campaign.state = snapshot["state"]
     campaign.hp = snapshot["hp"]
     campaign.character_states = snapshot["character_states"]
     campaign.map = snapshot["map"]
@@ -238,6 +265,8 @@ def _restore_state(campaign: Campaign, snapshot: Dict[str, object]) -> None:
 def _state_summary_dict(campaign: Campaign) -> Dict[str, object]:
     return {
         "positions": dict(campaign.positions),
+        "positions_parent": dict(campaign.state.positions_parent),
+        "positions_child": dict(campaign.state.positions_child),
         "hp": dict(campaign.hp),
         "character_states": dict(campaign.character_states),
     }
@@ -251,6 +280,7 @@ def _build_system_prompt(campaign: Campaign) -> str:
         "selected": _model_to_dict(campaign.selected),
         "settings_snapshot": _model_to_dict(campaign.settings_snapshot),
         "map": _model_to_dict(campaign.map),
+        "state": _model_to_dict(campaign.state),
         "positions": campaign.positions,
         "hp": campaign.hp,
         "character_states": campaign.character_states,
@@ -327,6 +357,8 @@ def _build_failure_response(
 ) -> Dict[str, object]:
     state_summary = StateSummary(active_actor_id=active_actor_id)
     state_summary.positions = dict(campaign.positions)
+    state_summary.positions_parent = dict(campaign.state.positions_parent)
+    state_summary.positions_child = dict(campaign.state.positions_child)
     state_summary.hp = dict(campaign.hp)
     state_summary.character_states = dict(campaign.character_states)
     return {

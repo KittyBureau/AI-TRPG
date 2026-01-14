@@ -174,6 +174,15 @@ LLM_TEMPERATURE=0.2
 - 重新跑 Step 4–7
 - 对比 turn_log.jsonl 差异
 
+### map_generate 人工回归 / 冒烟（非确定性）
+- 入口脚本：`backend/tests/test_map.py`
+- 定位：人工回归 / 冒烟测试，允许 LLM 不发起 tool_calls
+- 结果判定：
+  - PASS：系统执行 map_generate 或明确拒绝（failed_calls）
+  - FAIL：应拒绝用例被执行，或出现权威状态副作用
+  - SKIP：LLM 未发起或输出不可解析（合法且预期）
+- 说明：该测试用于验证系统边界与健壮性，不作为 CI 严格回归
+
 ---
 
 ## 六、结论

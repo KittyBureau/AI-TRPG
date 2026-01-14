@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
+from backend.domain.map_models import migrate_map_dict, normalize_map, require_valid_map
 from backend.domain.models import Campaign, CampaignSummary, TurnLogEntry
+from backend.domain.state_utils import ensure_positions_child, sync_state_positions
 
 
 def _model_to_dict(model: object) -> Dict[str, Any]:
@@ -67,6 +69,10 @@ class FileRepo:
 
     def save_campaign(self, campaign: Campaign) -> None:
         path = self._campaign_path(campaign.id)
+        sync_state_positions(campaign)
+        ensure_positions_child(campaign, campaign.selected.party_character_ids)
+        require_valid_map(campaign.map)
+        normalize_map(campaign.map)
         data = _model_to_dict(campaign)
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
@@ -75,7 +81,14 @@ class FileRepo:
         if not path.exists():
             raise FileNotFoundError(f"Campaign not found: {campaign_id}")
         data = json.loads(path.read_text(encoding="utf-8"))
-        return _model_from_dict(Campaign, data)
+        map_data = data.get("map")
+        if isinstance(map_data, dict):
+            migrate_map_dict(map_data)
+        campaign = _model_from_dict(Campaign, data)
+        sync_state_positions(campaign)
+        ensure_positions_child(campaign, campaign.selected.party_character_ids)
+        normalize_map(campaign.map)
+        return campaign
 
     def list_campaigns(self) -> List[CampaignSummary]:
         summaries: List[CampaignSummary] = []

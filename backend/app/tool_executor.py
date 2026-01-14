@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
@@ -10,7 +11,12 @@ from backend.domain.models import (
     ToolCall,
     ToolFeedback,
 )
+from backend.domain.map_models import normalize_map, require_valid_map
 from backend.domain.state_machine import resolve_tool_permission
+from backend.domain.state_utils import set_parent_position
+from backend.infra.map_generators.deterministic_generator import (
+    DeterministicMapGenerator,
+)
 
 
 def execute_tool_calls(
@@ -109,7 +115,7 @@ def _apply_move(
         return None
     if not _is_connected(campaign, from_area_id, to_area_id):
         return None
-    campaign.positions[actor_id] = to_area_id
+    set_parent_position(campaign, actor_id, to_area_id)
     return AppliedAction(
         tool="move",
         args=call.args,
@@ -149,42 +155,100 @@ def _apply_hp_delta(
 def _apply_map_generate(
     campaign: Campaign, call: ToolCall, timestamp: str
 ) -> Optional[AppliedAction]:
-    parent_area_id = call.args.get("parent_area_id")
-    if not isinstance(parent_area_id, str):
+    parent_area_id = call.args.get("parent_area_id", None)
+    if parent_area_id is not None and not isinstance(parent_area_id, str):
         return None
-    if parent_area_id not in campaign.map.areas:
+    if parent_area_id is not None and parent_area_id not in campaign.map.areas:
         return None
 
-    next_index = len(campaign.map.areas) + 1
-    new_area_id = f"area_{next_index:03d}"
-    from backend.domain.models import MapArea
+    theme = call.args.get("theme", "Generated")
+    if theme is None:
+        theme = "Generated"
+    if not isinstance(theme, str):
+        return None
 
-    campaign.map.areas[new_area_id] = MapArea(
-        id=new_area_id,
-        name="Generated Area",
-        parent_area_id=parent_area_id,
+    constraints = call.args.get("constraints")
+    size = 6
+    seed: Optional[str] = None
+    if isinstance(constraints, dict):
+        if "size" in constraints:
+            size_value = constraints.get("size")
+            if not isinstance(size_value, int):
+                return None
+            size = size_value
+        if "seed" in constraints:
+            seed_value = constraints.get("seed")
+            if seed_value is not None and not isinstance(seed_value, str):
+                return None
+            seed = seed_value
+    elif constraints is not None:
+        return None
+    else:
+        if "size" in call.args:
+            size_value = call.args.get("size")
+            if not isinstance(size_value, int):
+                return None
+            size = size_value
+        if "seed" in call.args:
+            seed_value = call.args.get("seed")
+            if seed_value is not None and not isinstance(seed_value, str):
+                return None
+            seed = seed_value
+
+    if size < 1 or size > 30:
+        return None
+
+    if hasattr(campaign.map, "model_copy"):
+        snapshot = campaign.map.model_copy(deep=True)
+    elif hasattr(campaign.map, "copy"):
+        snapshot = campaign.map.copy(deep=True)
+    else:
+        snapshot = deepcopy(campaign.map)
+
+    before_connections = sum(
+        len(area.reachable_area_ids) for area in campaign.map.areas.values()
     )
-    campaign.map.connections.append(
-        _connection(parent_area_id, new_area_id)
+
+    generator = DeterministicMapGenerator()
+    result = generator.generate(
+        campaign.map, parent_area_id, theme, size, seed
+    )
+
+    for area_id, area in result.new_areas.items():
+        campaign.map.areas[area_id] = area
+    for from_id, to_id in result.new_edges:
+        if from_id not in campaign.map.areas or to_id not in campaign.map.areas:
+            campaign.map = snapshot
+            return None
+        reachable = campaign.map.areas[from_id].reachable_area_ids
+        if to_id not in reachable:
+            reachable.append(to_id)
+
+    try:
+        require_valid_map(campaign.map)
+    except ValueError:
+        campaign.map = snapshot
+        return None
+
+    normalize_map(campaign.map)
+    after_connections = sum(
+        len(area.reachable_area_ids) for area in campaign.map.areas.values()
     )
     return AppliedAction(
         tool="map_generate",
         args=call.args,
-        result={"new_area_id": new_area_id},
+        result={
+            "created_area_ids": result.created_area_ids,
+            "created_connections": after_connections - before_connections,
+            "root_parent_area_id": parent_area_id,
+            "warnings": result.warnings,
+        },
         timestamp=timestamp,
     )
 
 
 def _is_connected(campaign: Campaign, from_area_id: str, to_area_id: str) -> bool:
-    for connection in campaign.map.connections:
-        if connection.from_area_id == from_area_id and connection.to_area_id == to_area_id:
-            return True
-        if connection.from_area_id == to_area_id and connection.to_area_id == from_area_id:
-            return True
-    return False
-
-
-def _connection(from_area_id: str, to_area_id: str):
-    from backend.domain.models import MapConnection
-
-    return MapConnection(from_area_id=from_area_id, to_area_id=to_area_id)
+    area = campaign.map.areas.get(from_area_id)
+    if not area:
+        return False
+    return to_area_id in area.reachable_area_ids

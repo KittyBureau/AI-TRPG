@@ -25,12 +25,36 @@ storage/
   "allowlist": ["move", "hp_delta", "map_generate"],
   "map": {
     "areas": {
-      "area_001": { "id": "area_001", "name": "Starting Area", "parent_area_id": null },
-      "area_002": { "id": "area_002", "name": "Side Room", "parent_area_id": null }
+      "area_001": {
+        "id": "area_001",
+        "name": "Starting Area",
+        "parent_area_id": null,
+        "reachable_area_ids": ["area_002"]
+      },
+      "area_002": {
+        "id": "area_002",
+        "name": "Side Room",
+        "parent_area_id": null,
+        "reachable_area_ids": []
+      }
     },
     "connections": [
       { "from_area_id": "area_001", "to_area_id": "area_002" }
     ]
+  },
+  "state": {
+    "positions": {
+      "pc_001": "area_001",
+      "pc_002": "area_001"
+    },
+    "positions_parent": {
+      "pc_001": "area_001",
+      "pc_002": "area_001"
+    },
+    "positions_child": {
+      "pc_001": null,
+      "pc_002": null
+    }
   },
   "positions": {
     "pc_001": "area_001",
@@ -79,8 +103,13 @@ storage/
 | selected | object | World/map/party selection. |
 | settings_revision | int | Settings revision, increments on valid patch. |
 | allowlist | array | Allowed tools for this campaign. |
-| map | object | Areas and connections. |
-| positions | object | Character positions by id. |
+| map | object | Areas and derived connections. |
+| map.areas.*.reachable_area_ids | array | Authoritative outbound reachability list. |
+| map.connections | array | Derived from `reachable_area_ids` on write. |
+| state | object | Hierarchical position state. |
+| state.positions_parent | object | Parent-layer positions by entity id. |
+| state.positions_child | object | Child-layer positions by entity id (null if not in sub-map). |
+| positions | object | Backward-compatible parent positions by id. |
 | hp | object | Character HP by id. |
 | character_states | object | Character state by id. |
 | settings_snapshot | object | Current settings snapshot. |
@@ -145,6 +174,14 @@ Each line is a JSON object:
       "pc_001": "area_002",
       "pc_002": "area_001"
     },
+    "positions_parent": {
+      "pc_001": "area_002",
+      "pc_002": "area_001"
+    },
+    "positions_child": {
+      "pc_001": null,
+      "pc_002": null
+    },
     "hp": {
       "pc_001": 10,
       "pc_002": 10
@@ -172,4 +209,4 @@ Each line is a JSON object:
 | applied_actions | array | Applied tool results. |
 | tool_feedback | object | Failed tool calls with reasons. |
 | conflict_report | object | Conflict info when retries occur. |
-| state_summary | object | Includes `active_actor_id`, `positions`, `hp`, `character_states`. |
+| state_summary | object | Includes `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`. |

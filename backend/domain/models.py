@@ -10,6 +10,7 @@ class MapArea(BaseModel):
     id: str
     name: str
     parent_area_id: Optional[str] = None
+    reachable_area_ids: List[str] = Field(default_factory=list)
 
 
 class MapConnection(BaseModel):
@@ -63,6 +64,12 @@ class Milestone(BaseModel):
     last_advanced_turn: int = 0
 
 
+class CampaignState(BaseModel):
+    positions: Dict[str, str] = Field(default_factory=dict)
+    positions_parent: Dict[str, str] = Field(default_factory=dict)
+    positions_child: Dict[str, Optional[str]] = Field(default_factory=dict)
+
+
 class Campaign(BaseModel):
     id: str
     selected: Selected
@@ -72,6 +79,7 @@ class Campaign(BaseModel):
         default_factory=lambda: ["move", "hp_delta", "map_generate"]
     )
     map: MapData = Field(default_factory=MapData)
+    state: CampaignState = Field(default_factory=CampaignState)
     positions: Dict[str, str] = Field(default_factory=dict)
     hp: Dict[str, int] = Field(default_factory=dict)
     character_states: Dict[str, str] = Field(default_factory=dict)
@@ -126,6 +134,8 @@ class ConflictReport(BaseModel):
 class StateSummary(BaseModel):
     active_actor_id: str
     positions: Dict[str, str] = Field(default_factory=dict)
+    positions_parent: Dict[str, str] = Field(default_factory=dict)
+    positions_child: Dict[str, Optional[str]] = Field(default_factory=dict)
     hp: Dict[str, int] = Field(default_factory=dict)
     character_states: Dict[str, str] = Field(default_factory=dict)
 
