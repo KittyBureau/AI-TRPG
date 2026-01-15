@@ -7,27 +7,26 @@
 - Unproven: 3.
 - OK: 5.
 
-### Top 10 High-Risk Items
+### Top 9 High-Risk Items
 1) Legacy AI-TRPG reference specs (removed) listed `/session/new`, `/turn`, `/state`, `/logs`, `/tools/*` endpoints not implemented.
 2) Legacy AI-TRPG turn request schema snapshots (removed) define `session_id/turn_id/user_text/intent`, but API expects `campaign_id/user_input/actor_id`.
 3) Legacy AI-TRPG turn response schema snapshots (removed) define `say/options/tool_call` response, but API returns `narrative_text/tool_calls/applied_actions/...`.
 4) Legacy AI-TRPG tool_call schema snapshot (removed) defines `name/arguments`, but code requires `id/tool/args/reason`.
 5) Legacy AI-TRPG campaign snapshot (removed) does not match the persisted `Campaign` model (missing `selected`, `settings_snapshot`, `map`, etc.).
-6) `docs/03_reference/codex-start/CODEX_PROMPT_AI_TRPG_stepwise.md` requires `/api/tools/execute`, but no `/api/tools/*` endpoints exist.
-7) `docs/01_specs/architecture.md` says dialog_type is assigned by `DialogTypeClassifier` rules; runtime uses LLM output + fallback.
-8) `docs/01_specs/conflict_and_retry.md` conflict report example includes `has_conflict`, but code only returns `retries` + `conflicts`.
-9) `docs/02_guides/testing/api_test_guide.md` storage path claims `storage/{campaign_id}/campaign.json`, but code uses `storage/campaigns/<campaign_id>/campaign.json`.
-10) `docs/03_reference/design/dialog_routing.md` describes routing/context-profile pipeline and persona-lock guards with no implementation evidence.
+6) `docs/01_specs/architecture.md` says dialog_type is assigned by `DialogTypeClassifier` rules; runtime uses LLM output + fallback.
+7) `docs/01_specs/conflict_and_retry.md` conflict report example includes `has_conflict`, but code only returns `retries` + `conflicts`.
+8) `docs/02_guides/testing/api_test_guide.md` storage path claims `storage/{campaign_id}/campaign.json`, but code uses `storage/campaigns/<campaign_id>/campaign.json`.
+9) `docs/99_human_only/ai-trpg-design/dialog_routing.md` describes routing/context-profile pipeline and persona-lock guards with no implementation evidence.
 
 ## Findings (ordered by severity)
 
 ### 1) API endpoints in legacy spec do not exist
-- Document: Legacy AI-TRPG reference specs (removed) (API 4.1–4.6, Tools section)
-- Hard claim: “POST `/session/new` / `/turn` / GET `/state` / `/logs` and `/tools/*` APIs exist.”
+- Document: Legacy AI-TRPG reference specs (removed) (API 4.1-4.6, Tools section)
+- Hard claim: "POST `/session/new` / `/turn` / GET `/state` / `/logs` and `/tools/*` APIs exist."
 - Conclusion: Mismatch
 - Code evidence: `backend/api/routes/campaign.py` (`@router.post("/create")`), `backend/api/routes/chat.py` (`@router.post("/turn")`), `backend/api/routes/settings.py` (`@router.get("/schema")`, `@router.post("/apply")`); no `/session` or `/tools` routes (`rg -n "/session|/tools" backend`).
 - Minimal doc revision: Replace API list with current endpoints:
-  - “POST `/api/campaign/create`”, “GET `/api/campaign/list`”, “POST `/api/campaign/select_actor`”, “POST `/api/chat/turn`”, “GET `/api/settings/schema`”, “POST `/api/settings/apply`”.
+  - "POST `/api/campaign/create`", "GET `/api/campaign/list`", "POST `/api/campaign/select_actor`", "POST `/api/chat/turn`", "GET `/api/settings/schema`", "POST `/api/settings/apply`".
 - Impact: Misleads API clients, tests, and tooling; will cause 404s and incorrect integration.
 
 ### 2) Turn request schema does not match runtime API
@@ -119,15 +118,7 @@
 - Minimal doc revision: Replace with “可能记录 `state_mismatch`（无 tool_call 时）”.
 - Impact: Misinterprets conflict diagnostics during testing.
 
-### 13) “No .html files found” is false
-- Document: `docs/03_reference/reviews/capability_inventory.md` (Section H)
-- Hard claim: “No `.html` files found; no static serving configuration.”
-- Conclusion: Mismatch
-- Code evidence: `frontend/index.html` exists (`rg --files -g "*.html" frontend`).
-- Minimal doc revision: Change to “No static serving configured in backend; frontend HTML exists under `frontend/`.”
-- Impact: Misleads frontend discovery and packaging steps.
-
-### 14) “One tool_call per turn” claim conflicts with runtime
+### 13) “One tool_call per turn” claim conflicts with runtime
 - Document: Legacy AI-TRPG README (removed) (关键约束)
 - Hard claim: “一次对话最多一次 tool_call”.
 - Conclusion: Mismatch
@@ -135,31 +126,15 @@
 - Minimal doc revision: Add “当前实现允许多个 tool_calls；单次限制为设计目标” or mark as legacy constraint.
 - Impact: Misinforms tool integration and LLM prompt expectations.
 
-### 15) “/api/tools/execute” endpoint referenced but absent
-- Document: `docs/03_reference/codex-start/CODEX_PROMPT_AI_TRPG_stepwise.md` (Stage 3)
-- Hard claim: “POST `/api/tools/execute` exists.”
-- Conclusion: Mismatch
-- Code evidence: No `/api/tools` routers; only `backend/api/routes/campaign.py`, `backend/api/routes/chat.py`, `backend/api/routes/settings.py`.
-- Minimal doc revision: Mark as removed; describe tool execution only via `/api/chat/turn`.
-- Impact: Directs developers to implement or call a non-existent endpoint.
-
-### 16) LLM output schema in codex-start doc is wrong
-- Document: `docs/03_reference/codex-start/CODEX_PROMPT_AI_TRPG_stepwise.md` (Stage 4 output protocol)
-- Hard claim: “AI output must include `text` and `structured.tool_calls`.”
-- Conclusion: Mismatch
-- Code evidence: `backend/infra/llm_client.py` expects `assistant_text`, `dialog_type`, `tool_calls` at top level; `backend/app/turn_service.py` stores `assistant_structured.tool_calls`.
-- Minimal doc revision: Replace with `assistant_text`, `dialog_type`, `tool_calls` (top-level) and note `assistant_structured` is generated server-side.
-- Impact: Misaligns LLM prompt contract and parsing.
-
-### 17) Dialog routing pipeline claims have no implementation evidence
-- Document: `docs/03_reference/design/dialog_routing.md`
+### 14) Dialog routing pipeline claims have no implementation evidence
+- Document: `docs/99_human_only/ai-trpg-design/dialog_routing.md`
 - Hard claim: “full_context pipeline, system prompt file loading, persona lock, route-driven context_profile exist.”
 - Conclusion: Unproven
 - Code evidence: No references to `context_profile`, `persona_lock`, `rules_text_path`, or route tables in backend/frontend (`rg -n "context_profile|persona_lock|dialog_route" backend frontend`).
 - Minimal doc revision: Add a header disclaimer: “Design-only, not implemented; for future roadmap.”
 - Impact: Engineers may assume routing infrastructure exists; leads to incorrect usage.
 
-### 18) LLM test expectations are not enforced (nondeterministic)
+### 15) LLM test expectations are not enforced (nondeterministic)
 - Document: `docs/02_guides/testing/api_test_guide.md` (Step 4)
 - Hard claim: “无 tool_calls / applied_actions.”
 - Conclusion: Unproven
@@ -167,7 +142,7 @@
 - Minimal doc revision: Replace with “通常为空（不保证）；只需记录系统返回值即可.”
 - Impact: False failures in manual testing.
 
-### 19) Retry expectation is nondeterministic
+### 16) Retry expectation is nondeterministic
 - Document: `docs/02_guides/testing/api_test_guide.md` (Step 7)
 - Hard claim: “第一次生成被拦截，retry 发生.”
 - Conclusion: Unproven
@@ -175,7 +150,7 @@
 - Minimal doc revision: Replace with “可能触发 retry；为提高命中率，诱导叙事明确宣告状态变化.”
 - Impact: Manual testers may misinterpret success/failure.
 
-### 20) Storage layout validation rules match code
+### 17) Storage layout validation rules match code
 - Document: `docs/01_specs/storage_layout.md` (Map normalization and validation)
 - Hard claim: “reachable ids are strings, no duplicates, no self-loop, targets exist, parent group connected.”
 - Conclusion: OK
@@ -183,7 +158,7 @@
 - Minimal doc revision: None.
 - Impact: Validation expectations align with code.
 
-### 21) Dialog types list and fallback match code
+### 18) Dialog types list and fallback match code
 - Document: `docs/01_specs/dialog_types.md` (Types/Source Field)
 - Hard claim: `scene_description/action_prompt/resolution_summary/rule_explanation`, fallback to `scene_description`, source `model|fallback`.
 - Conclusion: OK
@@ -191,7 +166,7 @@
 - Minimal doc revision: None.
 - Impact: Safe to rely on enum/fallback behavior.
 
-### 22) Settings registry keys and validation match code
+### 19) Settings registry keys and validation match code
 - Document: `docs/01_specs/settings.md` (Registry keys, validation, range)
 - Hard claim: Five keys, mutual exclusion, range `0..10`.
 - Conclusion: OK
@@ -199,7 +174,7 @@
 - Minimal doc revision: None.
 - Impact: Settings tests align with runtime validation.
 
-### 23) Tool parameters and failure reasons match code
+### 20) Tool parameters and failure reasons match code
 - Document: `docs/01_specs/tools.md` (Allowed tools, required args, failure reasons)
 - Hard claim: `move`, `hp_delta`, `map_generate` with error reasons `tool_not_allowed`, `invalid_args`, `actor_state_restricted`, `invalid_actor_state`.
 - Conclusion: OK
@@ -207,7 +182,7 @@
 - Minimal doc revision: None.
 - Impact: Tool validation guidance matches runtime.
 
-### 24) MAP_TEST_* env flags match test script
+### 21) MAP_TEST_* env flags match test script
 - Document: `docs/02_guides/testing/map_generate_manual_test.md` (MAP_TEST_STRICT/MAP_TEST_MAX_ATTEMPTS)
 - Hard claim: Env vars `MAP_TEST_STRICT` and `MAP_TEST_MAX_ATTEMPTS` control test behavior.
 - Conclusion: OK

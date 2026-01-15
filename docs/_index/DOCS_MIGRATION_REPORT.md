@@ -26,10 +26,9 @@ Date: 2026-01-15
 | docs/02_guides/testing/api_test_guide.md | API test guide | guide | backend/api | Current API smoke/regression steps. |
 | docs/02_guides/testing/map_generate_manual_test.md | Manual map_generate test | guide | backend/tests/test_map.py | Focused regression/smoke guide. |
 | docs/99_human_only/ai-trpg-design/ | Legacy AI-TRPG design notes | human-only | legacy backend/services | Preserved for human context only. |
-| docs/03_reference/design/dialog_routing.md | Dialog routing design | reference (legacy) | legacy routing stack | Not wired in current code. |
+| docs/99_human_only/ai-trpg-design/dialog_routing.md | Dialog routing design | human-only | legacy routing stack | Not wired in current code. |
 | docs/03_reference/workflows/cursor_chatgpt_codex_workflow.md | Workflow notes | reference | docs | Process reference. |
 | docs/03_reference/reviews/CODE_REVIEW_2026-01-09.md | Legacy review | reference | legacy backend/services | Snapshot of earlier architecture. |
-| docs/03_reference/reviews/capability_inventory.md | Capability inventory | reference | backend | Snapshot of current code contracts. |
 | docs/_archive/2026-01-15/legacy/ | Legacy guides/tests | archived | legacy backend/services | Not aligned to current implementation. |
 | docs/_archive/2026-01-15/ai/ | Legacy AI index/rules | archived | docs | Superseded by AI_INDEX. |
 | docs/_archive/2026-01-15/temp/ | Temp prompts/drafts | archived | docs | Historical prompts/drafts. |
@@ -63,13 +62,9 @@ Date: 2026-01-15
 | docs/07_conflict_and_retry.md | docs/01_specs/conflict_and_retry.md | Spec moved under authoritative specs. |
 | docs/test/API_TEST_GUIDE.md | docs/02_guides/testing/api_test_guide.md | Guide moved into testing guides. |
 | docs/test/人工测试说明文档.md | docs/02_guides/testing/map_generate_manual_test.md | Guide renamed to ASCII filename and moved. |
-| docs/codex-start/CODEX_PROMPT_AI_TRPG_stepwise.md | docs/03_reference/codex-start/CODEX_PROMPT_AI_TRPG_stepwise.md | Reference input moved to reference section. |
-| docs/codex-start/AI_TRPG_PRD-lite_V1.1_SYNC.md | docs/03_reference/codex-start/AI_TRPG_PRD-lite_V1.1_SYNC.md | Reference input moved to reference section. |
-| docs/codex-start/AI_TRPG_Agent_Spec_V1.1_FULL.md | docs/03_reference/codex-start/AI_TRPG_Agent_Spec_V1.1_FULL.md | Reference input moved to reference section. |
-| docs/reviews/capability_inventory.md | docs/03_reference/reviews/capability_inventory.md | Review moved to reference section. |
 | docs/reviews/CODE_REVIEW_2026-01-09.md | docs/03_reference/reviews/CODE_REVIEW_2026-01-09.md | Review moved to reference section. |
 | docs/cursor_chatgpt_codex_workflow.md | docs/03_reference/workflows/cursor_chatgpt_codex_workflow.md | Workflow note moved to reference section. |
-| docs/design/dialog_routing.md | docs/03_reference/design/dialog_routing.md | Legacy design doc moved to reference. |
+| docs/design/dialog_routing.md | docs/99_human_only/ai-trpg-design/dialog_routing.md | Legacy design doc moved to human-only. |
 | docs/ai-trpg/design/framework.md | docs/99_human_only/ai-trpg-design/framework.md | Legacy design doc moved to human-only. |
 | docs/ai-trpg/design/mainline_milestones.md | docs/99_human_only/ai-trpg-design/mainline_milestones.md | Legacy design doc moved to human-only. |
 | docs/ai-trpg/design/mainline_protection_mechanism.md | docs/99_human_only/ai-trpg-design/mainline_protection_mechanism.md | Legacy design doc moved to human-only. |

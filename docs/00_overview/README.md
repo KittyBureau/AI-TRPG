@@ -22,7 +22,6 @@
 
 ## Reference Inputs (codex-start)
 
-- `docs/03_reference/codex-start/CODEX_PROMPT_AI_TRPG_stepwise.md`
 - `docs/03_reference/codex-start/AI_TRPG_PRD-lite_V1.1_SYNC.md`
 - `docs/03_reference/codex-start/AI_TRPG_Agent_Spec_V1.1_FULL.md`
 
@@ -43,7 +42,7 @@
 
 ## Reviews
 
-- `docs/03_reference/reviews/capability_inventory.md` - Code/contract inventory.
+- (No current review references; legacy reviews are archived or removed.)
 
 ## Latest Stage
 
