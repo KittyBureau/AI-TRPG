@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Raw Request Console</title>
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <div class="hero__content">
+        <p class="eyebrow">AI TRPG Raw Console</p>
+        <h1>Raw Request Console</h1>
+        <p class="lead">
+          Construct and send raw JSON to the FastAPI backend. No validation, no
+          guardrails.
+        </p>
+      </div>
+      <div class="status" id="statusLine">Idle.</div>
+    </header>
+
+    <main class="layout">
+      <section class="panel" id="connectionPanel">
+        <div class="panel__header">
+          <h2>Connection & Session</h2>
+          <p class="panel__hint">Base URL empty = same origin.</p>
+        </div>
+
+        <div class="grid grid--two">
+          <label class="field">
+            <span>Base URL</span>
+            <input
+              type="text"
+              id="baseUrl"
+              placeholder="http://127.0.0.1:8000"
+              autocomplete="off"
+            />
+          </label>
+
+          <div class="field">
+            <span>Campaign</span>
+            <div class="inline">
+              <select id="campaignSelect">
+                <option value="">Select campaign...</option>
+              </select>
+              <button class="ghost" id="refreshCampaigns">Refresh</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="inline inline--end">
+          <button class="ghost" id="saveSettings">Save Settings</button>
+        </div>
+
+        <div class="grid grid--two">
+          <div class="field">
+            <span>Create Campaign Raw JSON</span>
+            <textarea id="createCampaignRaw" rows="8"></textarea>
+            <div class="inline inline--end">
+              <button id="createCampaignBtn">Create Campaign</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <span>Active Actor</span>
+            <div class="inline">
+              <input
+                type="text"
+                id="activeActorInput"
+                placeholder="actor_id"
+                autocomplete="off"
+              />
+              <button class="ghost" id="applyActorToRaw">Apply to Raw</button>
+              <button id="selectActorBtn">Select Actor</button>
+            </div>
+            <span class="subtle">Select Actor Raw JSON</span>
+            <textarea id="selectActorRaw" rows="6"></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="turnPanel">
+        <div class="panel__header">
+          <h2>Turn Panel</h2>
+          <p class="panel__hint">Raw request is the source of truth.</p>
+        </div>
+
+        <div class="grid grid--two">
+          <div class="field">
+            <span>Raw Request JSON</span>
+            <textarea id="turnRaw" rows="12"></textarea>
+            <div class="inline inline--end">
+              <button id="sendTurn">Send Turn</button>
+            </div>
+          </div>
+          <div class="field">
+            <span>Quick Input</span>
+            <textarea id="turnUserInput" rows="6"></textarea>
+            <div class="inline">
+              <button class="ghost" id="applyUserInput">Apply to Raw</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <details open>
+            <summary>narrative_text</summary>
+            <pre id="turnNarrative"></pre>
+          </details>
+          <details>
+            <summary>dialog_type</summary>
+            <pre id="turnDialogType"></pre>
+          </details>
+          <details>
+            <summary>tool_calls</summary>
+            <pre id="turnToolCalls"></pre>
+          </details>
+          <details>
+            <summary>applied_actions</summary>
+            <pre id="turnAppliedActions"></pre>
+          </details>
+          <details>
+            <summary>tool_feedback</summary>
+            <pre id="turnToolFeedback"></pre>
+          </details>
+          <details>
+            <summary>conflict_report</summary>
+            <pre id="turnConflictReport"></pre>
+          </details>
+          <details>
+            <summary>state_summary</summary>
+            <pre id="turnStateSummary"></pre>
+          </details>
+          <details>
+            <summary>Raw Response JSON</summary>
+            <pre id="turnRawResponse"></pre>
+          </details>
+        </div>
+      </section>
+
+      <section class="panel" id="settingsPanel">
+        <div class="panel__header">
+          <h2>Settings Panel</h2>
+          <p class="panel__hint">Load schema, edit patch, apply.</p>
+        </div>
+
+        <div class="inline inline--end">
+          <button class="ghost" id="loadSchema">Load Schema</button>
+        </div>
+
+        <div class="grid grid--two">
+          <div class="field">
+            <span>definitions</span>
+            <pre id="settingsDefinitions"></pre>
+          </div>
+          <div class="field">
+            <span>snapshot</span>
+            <pre id="settingsSnapshot"></pre>
+          </div>
+        </div>
+
+        <div class="grid grid--two">
+          <div class="field">
+            <span>Raw Patch JSON</span>
+            <textarea id="settingsPatchRaw" rows="8"></textarea>
+            <div class="inline inline--end">
+              <button id="applySettings">Apply Settings</button>
+            </div>
+          </div>
+          <div class="field">
+            <span>Apply Response (snapshot)</span>
+            <pre id="settingsApplySnapshot"></pre>
+            <span>Apply Response (change_summary)</span>
+            <pre id="settingsApplySummary"></pre>
+            <span>Apply Response (raw)</span>
+            <pre id="settingsApplyRaw"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="historyPanel">
+        <div class="panel__header">
+          <h2>History</h2>
+          <p class="panel__hint">Newest first. Local only.</p>
+        </div>
+        <div class="inline">
+          <button class="ghost" id="exportHistory">Export All</button>
+          <button class="ghost" id="clearHistory">Clear History</button>
+        </div>
+        <div id="historyList" class="stack"></div>
+      </section>
+    </main>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>

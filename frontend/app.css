@@ -1,0 +1,259 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@400;600&display=swap");
+
+:root {
+  --bg: #f2eee8;
+  --bg-deep: #ece5db;
+  --surface: #fffaf2;
+  --surface-2: #f9f3e8;
+  --ink: #1e1a16;
+  --muted: #6b6158;
+  --accent: #0f766e;
+  --accent-soft: #d3f1ee;
+  --border: #d8cfc4;
+  --shadow: rgba(30, 26, 22, 0.08);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: linear-gradient(160deg, var(--bg) 0%, var(--bg-deep) 100%);
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 0.5rem 0;
+}
+
+pre,
+textarea,
+code {
+  font-family: "IBM Plex Mono", "Courier New", monospace;
+}
+
+.hero {
+  padding: 2.5rem 6vw 1.5rem;
+  background: radial-gradient(
+      circle at top left,
+      rgba(15, 118, 110, 0.12),
+      transparent 55%
+    ),
+    linear-gradient(120deg, #fffdf8, #f6efe4 70%);
+  border-bottom: 1px solid var(--border);
+}
+
+.hero__content {
+  max-width: 900px;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin: 0 0 0.5rem;
+}
+
+.lead {
+  margin: 0;
+  color: var(--muted);
+  max-width: 640px;
+}
+
+.status {
+  margin-top: 1rem;
+  padding: 0.6rem 0.9rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.layout {
+  padding: 2rem 6vw 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: 0 12px 30px -24px var(--shadow);
+}
+
+.panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.panel__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.grid--two {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.field span {
+  font-weight: 600;
+}
+
+.field .subtle {
+  font-weight: 500;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+input,
+select,
+textarea {
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.95rem;
+  background: #fff;
+  color: var(--ink);
+}
+
+textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+
+pre {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  padding: 0.75rem;
+  margin: 0;
+  min-height: 120px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+button {
+  border: none;
+  background: var(--accent);
+  color: white;
+  padding: 0.6rem 1rem;
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 8px 20px -14px rgba(15, 118, 110, 0.6);
+}
+
+button:hover {
+  transform: translateY(-1px);
+}
+
+button.ghost {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  box-shadow: none;
+}
+
+.inline {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.inline--end {
+  justify-content: flex-end;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+details {
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.5rem 0.75rem;
+}
+
+details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--accent);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+details summary::before {
+  content: ">";
+  font-size: 0.85rem;
+}
+
+details[open] summary::before {
+  content: "v";
+}
+
+.history-item summary {
+  color: var(--ink);
+}
+
+.history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+
+.history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+@media (max-width: 720px) {
+  .panel__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .status {
+    width: fit-content;
+  }
+}
