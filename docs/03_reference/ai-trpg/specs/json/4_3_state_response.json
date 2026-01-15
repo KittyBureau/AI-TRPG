@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "campaign_id": "c_0",
+  "session_id": "s_0001",
+  "players": [
+    {"player_id": "p_redkitty", "hp_current": 9, "hp_max": 12, "status": "alive"}
+  ],
+  "session": {
+    "status": "active",
+    "current_scene_id": "scene_001",
+    "current_milestone_id": "M2"
+  }
+}

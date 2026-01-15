@@ -1,0 +1,7 @@
+{
+  "ok": true,
+  "items": [
+    {"log_id": "log_9f3c2a", "type": "hp_reduce", "timestamp": "2026-01-07T00:11:00Z"}
+  ],
+  "next_cursor": "cursor_002"
+}

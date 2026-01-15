@@ -1,0 +1,158 @@
+{
+  "version": "1.0",
+  "sections": [
+    {
+      "id": "1",
+      "title": "Repository Structure & Layer Boundaries",
+      "paths": [
+        "backend/api/**",
+        "backend/app/**",
+        "backend/domain/**",
+        "backend/infra/**",
+        "storage/**",
+        "frontend/**"
+      ]
+    },
+    {
+      "id": "2",
+      "title": "API & Data Contracts",
+      "paths": [
+        "backend/api/routes/**",
+        "backend/domain/models.py",
+        "docs/01_specs/storage_layout.md",
+        "docs/02_guides/testing/api_test_guide.md"
+      ]
+    },
+    {
+      "id": "3",
+      "title": "Dialog Types & LLM Output Schema",
+      "paths": [
+        "backend/domain/dialog_rules.py",
+        "backend/app/turn_service.py",
+        "docs/01_specs/dialog_types.md"
+      ]
+    },
+    {
+      "id": "4",
+      "title": "Settings Registry & Validation",
+      "paths": [
+        "backend/domain/settings.py",
+        "backend/app/settings_service.py",
+        "backend/api/routes/settings.py",
+        "docs/01_specs/settings.md"
+      ]
+    },
+    {
+      "id": "5",
+      "title": "Tool Calls Protocol & Execution",
+      "paths": [
+        "backend/app/tool_executor.py",
+        "backend/domain/models.py",
+        "docs/01_specs/tools.md",
+        "backend/tests/test_map_generate.py"
+      ]
+    },
+    {
+      "id": "6",
+      "title": "Storage Layout & Persistence",
+      "paths": [
+        "backend/infra/file_repo.py",
+        "backend/services/llm_config.py",
+        "backend/services/keyring.py",
+        "storage/**",
+        "docs/01_specs/storage_layout.md"
+      ]
+    },
+    {
+      "id": "7",
+      "title": "Map Data Integrity & Generation",
+      "paths": [
+        "backend/domain/map_models.py",
+        "backend/app/tool_executor.py",
+        "docs/01_specs/storage_layout.md",
+        "docs/02_guides/testing/map_generate_manual_test.md"
+      ]
+    },
+    {
+      "id": "8",
+      "title": "Conflict Detection & Retry",
+      "paths": [
+        "backend/app/conflict_detector.py",
+        "backend/app/turn_service.py",
+        "docs/01_specs/conflict_and_retry.md"
+      ]
+    },
+    {
+      "id": "9",
+      "title": "State Machine & Tool Permissions",
+      "paths": [
+        "backend/domain/state_machine.py",
+        "backend/app/tool_executor.py",
+        "docs/01_specs/state_machine.md"
+      ]
+    },
+    {
+      "id": "10",
+      "title": "Tests & Gatekeeping",
+      "paths": [
+        "backend/tests/**",
+        "docs/02_guides/testing/**",
+        "docs/01_specs/**",
+        "docs/_index/**"
+      ]
+    },
+    {
+      "id": "11",
+      "title": "Change Process & Documentation Updates",
+      "paths": [
+        "docs/_index/**",
+        "docs/01_specs/**",
+        "backend/**",
+        "frontend/**",
+        "storage/**"
+      ]
+    }
+  ],
+  "triggers": [
+    {
+      "name": "Core contracts and flow",
+      "paths": [
+        "backend/api/**",
+        "backend/app/**",
+        "backend/domain/**"
+      ],
+      "requires": [
+        "docs/_index/AI_INDEX.md"
+      ]
+    },
+    {
+      "name": "Persistence and LLM config",
+      "paths": [
+        "backend/infra/**",
+        "backend/services/**",
+        "storage/**"
+      ],
+      "requires": [
+        "docs/_index/AI_INDEX.md"
+      ]
+    },
+    {
+      "name": "Spec docs changed",
+      "paths": [
+        "docs/01_specs/**"
+      ],
+      "requires": [
+        "docs/_index/AI_INDEX.md"
+      ]
+    }
+  ],
+  "sources_of_truth": [
+    "docs/01_specs/architecture.md",
+    "docs/01_specs/storage_layout.md",
+    "docs/01_specs/settings.md",
+    "docs/01_specs/dialog_types.md",
+    "docs/01_specs/tools.md",
+    "docs/01_specs/state_machine.md",
+    "docs/01_specs/conflict_and_retry.md"
+  ]
+}
