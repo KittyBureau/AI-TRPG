@@ -1,0 +1,5 @@
+cryptography
+fastapi
+pydantic
+pytest  # used by backend/tests
+uvicorn  # required to run the app via uvicorn (README)
