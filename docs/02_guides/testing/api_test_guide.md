@@ -16,7 +16,7 @@ uvicorn backend.api.main:app --reload
 
 ### 1.2 LLM 配置（Stage 4）
 1. 复制模板：
-   - `storage/config/llm_config.example.json` → `storage/config/llm_config.json`
+   - `storage/config/llm_config.example copy.json` → `storage/config/llm_config.json`
 2. 编辑 `storage/config/llm_config.json` 的 `current_profile` 与 profile 字段
 3. 首次调用 `/api/chat/turn` 时：
    - 控制台会提示输入 API key（不回显）
@@ -43,7 +43,7 @@ uvicorn backend.api.main:app --reload
 ```
 
 验证点：
-- storage/ 下生成 campaign.json
+- storage/campaigns/<campaign_id>/campaign.json 生成
 - settings_snapshot 与 settings_revision=0 存在
 
 ---
@@ -115,7 +115,7 @@ uvicorn backend.api.main:app --reload
 
 验证点：
 - hp 变化
-- character_states 正确进入 dying/dead
+- character_states 进入 dying（当前实现无 dead 自动切换）
 - rules.hp_zero_ends_game 生效
 
 ---
@@ -157,8 +157,8 @@ uvicorn backend.api.main:app --reload
 ## 四、文件级验证清单
 
 ### 必须存在
-- storage/{campaign_id}/campaign.json
-- storage/{campaign_id}/turn_log.jsonl
+- storage/campaigns/<campaign_id>/campaign.json
+- storage/campaigns/<campaign_id>/turn_log.jsonl
 
 ### turn_log.jsonl 每行必须包含
 - turn_id / timestamp

@@ -35,7 +35,7 @@
 
 ## conflict_report 的角色
 - 当 LLM 在叙事中声称执行/尝试工具，但未实际发起 tool_call 时：
-  - conflict_report 可能记录 `tool_result_mismatch`
+  - conflict_report 可能记录 `state_mismatch`（不保证每次触发）
   - 系统可能触发重试
 - 在人工回归中：
   - 该行为视为 guard / retry 机制正常工作

@@ -40,7 +40,6 @@ Example conflict report:
 
 ```json
 {
-  "has_conflict": true,
   "conflicts": [
     {
       "type": "state_mismatch",

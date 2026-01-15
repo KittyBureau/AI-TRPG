@@ -16,7 +16,8 @@ incremental delivery.
 1. `/api/chat/turn` receives `campaign_id` and `user_input` (`actor_id` optional).
 2. `TurnService` loads the campaign from file storage.
 3. If `actor_id` is not provided, `active_actor_id` is used for this turn.
-4. `DialogTypeClassifier` assigns `dialog_type` by rules.
+4. The LLM output provides `dialog_type`; missing/invalid values fall back to
+   `DEFAULT_DIALOG_TYPE`.
 5. `LLMClient` returns JSON with `assistant_text`, `dialog_type`, and `tool_calls`.
 6. A turn log entry is appended to `turn_log.jsonl`.
 7. The API responds with narrative text, dialog type, and state summary.

@@ -123,3 +123,16 @@ Use this as the default reference for every task.
 - Include a change list and contract impact summary with each task.
 **Scope**
 - `docs/_index/**`, `docs/01_specs/**`, `backend/**`, `frontend/**`, `storage/**`.
+
+## 12. Documentation Authority & Sync Obligations
+**Rules**
+- Authoritative docs: `docs/00_overview/**`, `docs/01_specs/**`, `docs/02_guides/**`.
+- Human-only docs: `docs/99_human_only/**`. Do not cite or rely on these unless the task explicitly allows it.
+- Reference/legacy docs are non-authoritative; do not treat them as implementation truth.
+- When modifying backend/frontend API routes, request/response fields, status codes, storage paths, JSON keys, enums, or settings keys/defaults/validation, you must update the matching docs.
+- Every code commit touching those areas must include at least one docs update, or add a tracked entry to `docs/01_specs/TODO_DOCS_ALIGNMENT.md` explaining why the docs change is deferred.
+**Checks**
+- Confirm updated docs cover API routes, storage layout, enums, and settings changes.
+- If docs are deferred, ensure `docs/01_specs/TODO_DOCS_ALIGNMENT.md` contains a dated entry with evidence.
+**Scope**
+- `backend/**`, `frontend/**`, `docs/00_overview/**`, `docs/01_specs/**`, `docs/02_guides/**`, `docs/01_specs/TODO_DOCS_ALIGNMENT.md`.

@@ -1,9 +1,0 @@
-{
-  "summary": {
-    "version": 4,
-    "facts": ["F12"],
-    "relations": [],
-    "irreversible": [],
-    "open_questions": ["Q1"]
-  }
-}

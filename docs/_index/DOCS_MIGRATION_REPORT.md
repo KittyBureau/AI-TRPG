@@ -25,7 +25,7 @@ Date: 2026-01-15
 | docs/01_specs/conflict_and_retry.md | Conflict guard + retry | authoritative spec | backend/app/conflict_detector.py | LLM config + retry flow. |
 | docs/02_guides/testing/api_test_guide.md | API test guide | guide | backend/api | Current API smoke/regression steps. |
 | docs/02_guides/testing/map_generate_manual_test.md | Manual map_generate test | guide | backend/tests/test_map.py | Focused regression/smoke guide. |
-| docs/03_reference/ai-trpg/ | Legacy AI-TRPG design/specs | reference (legacy) | legacy backend/services | Preserved for context only. |
+| docs/99_human_only/ai-trpg-design/ | Legacy AI-TRPG design notes | human-only | legacy backend/services | Preserved for human context only. |
 | docs/03_reference/design/dialog_routing.md | Dialog routing design | reference (legacy) | legacy routing stack | Not wired in current code. |
 | docs/03_reference/workflows/cursor_chatgpt_codex_workflow.md | Workflow notes | reference | docs | Process reference. |
 | docs/03_reference/reviews/CODE_REVIEW_2026-01-09.md | Legacy review | reference | legacy backend/services | Snapshot of earlier architecture. |
@@ -70,46 +70,14 @@ Date: 2026-01-15
 | docs/reviews/CODE_REVIEW_2026-01-09.md | docs/03_reference/reviews/CODE_REVIEW_2026-01-09.md | Review moved to reference section. |
 | docs/cursor_chatgpt_codex_workflow.md | docs/03_reference/workflows/cursor_chatgpt_codex_workflow.md | Workflow note moved to reference section. |
 | docs/design/dialog_routing.md | docs/03_reference/design/dialog_routing.md | Legacy design doc moved to reference. |
-| docs/ai-trpg/README.md | docs/03_reference/ai-trpg/README.md | Legacy domain docs moved to reference. |
-| docs/ai-trpg/design/framework.md | docs/03_reference/ai-trpg/design/framework.md | Legacy design doc moved to reference. |
-| docs/ai-trpg/design/mainline_milestones.md | docs/03_reference/ai-trpg/design/mainline_milestones.md | Legacy design doc moved to reference. |
-| docs/ai-trpg/design/mainline_protection_mechanism.md | docs/03_reference/ai-trpg/design/mainline_protection_mechanism.md | Legacy design doc moved to reference. |
-| docs/ai-trpg/design/probabilistic_resolution_layer.md | docs/03_reference/ai-trpg/design/probabilistic_resolution_layer.md | Legacy design doc moved to reference. |
-| docs/ai-trpg/design/reality_guards.md | docs/03_reference/ai-trpg/design/reality_guards.md | Legacy design doc moved to reference. |
-| docs/ai-trpg/project/todo.md | docs/03_reference/ai-trpg/project/todo.md | Legacy project notes moved to reference. |
-| docs/ai-trpg/project/world_space_and_movement_implementation.md | docs/03_reference/ai-trpg/project/world_space_and_movement_implementation.md | Legacy project notes moved to reference. |
-| docs/ai-trpg/prompts/multi_agent_task_prompt.md | docs/03_reference/ai-trpg/prompts/multi_agent_task_prompt.md | Legacy prompts moved to reference. |
-| docs/ai-trpg/prompts/trpg_test_prompt.md | docs/03_reference/ai-trpg/prompts/trpg_test_prompt.md | Legacy prompts moved to reference. |
-| docs/ai-trpg/specs/tool_spec.md | docs/03_reference/ai-trpg/specs/tool_spec.md | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/world_space_and_movement_spec.md | docs/03_reference/ai-trpg/specs/world_space_and_movement_spec.md | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/3_1_campaign.json | docs/03_reference/ai-trpg/specs/json/3_1_campaign.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/3_2_session.json | docs/03_reference/ai-trpg/specs/json/3_2_session.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/3_3_player.json | docs/03_reference/ai-trpg/specs/json/3_3_player.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/3_4_prompt_state.json | docs/03_reference/ai-trpg/specs/json/3_4_prompt_state.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/3_5_event_log.json | docs/03_reference/ai-trpg/specs/json/3_5_event_log.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/4_1_session_new_request.json | docs/03_reference/ai-trpg/specs/json/4_1_session_new_request.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/4_1_session_new_response.json | docs/03_reference/ai-trpg/specs/json/4_1_session_new_response.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/4_2_turn_request.json | docs/03_reference/ai-trpg/specs/json/4_2_turn_request.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/4_2_turn_response.json | docs/03_reference/ai-trpg/specs/json/4_2_turn_response.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/4_3_state_response.json | docs/03_reference/ai-trpg/specs/json/4_3_state_response.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/4_4_logs_response.json | docs/03_reference/ai-trpg/specs/json/4_4_logs_response.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/4_5_1_player_hp_reduce_request.json | docs/03_reference/ai-trpg/specs/json/4_5_1_player_hp_reduce_request.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/4_5_1_player_hp_reduce_response.json | docs/03_reference/ai-trpg/specs/json/4_5_1_player_hp_reduce_response.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/4_5_2_summary_writeback_request.json | docs/03_reference/ai-trpg/specs/json/4_5_2_summary_writeback_request.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/4_5_2_summary_writeback_response.json | docs/03_reference/ai-trpg/specs/json/4_5_2_summary_writeback_response.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/4_5_3_state_patch_request.json | docs/03_reference/ai-trpg/specs/json/4_5_3_state_patch_request.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/4_5_3_state_patch_response.json | docs/03_reference/ai-trpg/specs/json/4_5_3_state_patch_response.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/4_6_error_response.json | docs/03_reference/ai-trpg/specs/json/4_6_error_response.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/7_2_controller_output.json | docs/03_reference/ai-trpg/specs/json/7_2_controller_output.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/7_2_gm_agent_output.json | docs/03_reference/ai-trpg/specs/json/7_2_gm_agent_output.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/7_2_guard_output.json | docs/03_reference/ai-trpg/specs/json/7_2_guard_output.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/7_2_router_agent_output.json | docs/03_reference/ai-trpg/specs/json/7_2_router_agent_output.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/7_2_summary_agent_output.json | docs/03_reference/ai-trpg/specs/json/7_2_summary_agent_output.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/10_1_turn_input_schema.json | docs/03_reference/ai-trpg/specs/json/10_1_turn_input_schema.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/10_2_tool_call_schema.json | docs/03_reference/ai-trpg/specs/json/10_2_tool_call_schema.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/10_3_turn_output_schema.json | docs/03_reference/ai-trpg/specs/json/10_3_turn_output_schema.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/10_4_tool_result_schema.json | docs/03_reference/ai-trpg/specs/json/10_4_tool_result_schema.json | Legacy spec moved to reference. |
-| docs/ai-trpg/specs/json/10_5_summary_schema.json | docs/03_reference/ai-trpg/specs/json/10_5_summary_schema.json | Legacy spec moved to reference. |
+| docs/ai-trpg/design/framework.md | docs/99_human_only/ai-trpg-design/framework.md | Legacy design doc moved to human-only. |
+| docs/ai-trpg/design/mainline_milestones.md | docs/99_human_only/ai-trpg-design/mainline_milestones.md | Legacy design doc moved to human-only. |
+| docs/ai-trpg/design/mainline_protection_mechanism.md | docs/99_human_only/ai-trpg-design/mainline_protection_mechanism.md | Legacy design doc moved to human-only. |
+| docs/ai-trpg/design/probabilistic_resolution_layer.md | docs/99_human_only/ai-trpg-design/probabilistic_resolution_layer.md | Legacy design doc moved to human-only. |
+| docs/ai-trpg/design/reality_guards.md | docs/99_human_only/ai-trpg-design/reality_guards.md | Legacy design doc moved to human-only. |
+| docs/ai-trpg/specs/** | removed | Legacy specs removed from repo. |
+| docs/ai-trpg/project/** | removed | Legacy project notes removed from repo. |
+| docs/ai-trpg/prompts/** | removed | Legacy prompts removed from repo. |
 | docs/ai-trpg/runs/2026-01-06_trpg_test/internal_notes.md | docs/_archive/2026-01-15/ai-trpg/runs/2026-01-06_trpg_test/internal_notes.md | Run logs archived. |
 | docs/ai-trpg/runs/2026-01-06_trpg_test/milestone_log.md | docs/_archive/2026-01-15/ai-trpg/runs/2026-01-06_trpg_test/milestone_log.md | Run logs archived. |
 | docs/ai/AI_INDEX.md | docs/_archive/2026-01-15/ai/AI_INDEX.md | Legacy AI docs archived. |
@@ -139,8 +107,8 @@ Date: 2026-01-15
 
 ## Conflicts / Gaps Found
 
-- Legacy docs reference a different architecture (`backend/services`, `/api/chat/send`), so they were moved to `docs/03_reference/` or `docs/_archive/` to avoid mixing with current specs.
-- The AI/AI-TRPG legacy doc sets are kept for context but are not authoritative for the current backend.
+- Legacy docs reference a different architecture (`backend/services`, `/api/chat/send`), so they were moved to human-only or removed to avoid mixing with current specs.
+- The AI/AI-TRPG legacy doc sets are kept for context (human-only) but are not authoritative for the current backend.
 - API contract knowledge is split across code and guides; no single formal API schema exists for the current implementation.
 
 ## Maintenance Notes

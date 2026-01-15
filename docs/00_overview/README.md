@@ -26,13 +26,9 @@
 - `docs/03_reference/codex-start/AI_TRPG_PRD-lite_V1.1_SYNC.md`
 - `docs/03_reference/codex-start/AI_TRPG_Agent_Spec_V1.1_FULL.md`
 
-## Reference (AI-TRPG Legacy)
+## Human-only (AI-TRPG Legacy Design)
 
-- `docs/03_reference/ai-trpg/README.md` - Domain reference overview.
-- `docs/03_reference/ai-trpg/specs/` - Legacy JSON/spec snapshots.
-- `docs/03_reference/ai-trpg/design/` - Design notes.
-- `docs/03_reference/ai-trpg/project/` - Project notes.
-- `docs/03_reference/ai-trpg/prompts/` - Prompt inputs.
+- `docs/99_human_only/ai-trpg-design/` - Legacy AI-TRPG design notes (human-only).
 
 ## Reference (Design/Workflows)
 
