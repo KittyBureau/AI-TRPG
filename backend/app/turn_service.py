@@ -292,7 +292,13 @@ def _build_system_prompt(campaign: Campaign) -> str:
     }
     return (
         "You are the AI GM. Output JSON with keys 'assistant_text', 'dialog_type', and 'tool_calls'. "
-        "Never claim state changes unless they are requested as tool_calls. "
+        "The world state is authoritative and can change only via tool_calls. "
+        "Movement is a state change. If you narrate that an actor moved/entered/arrived/left/changed location, "
+        "you MUST include a 'move' tool_call in the same response. "
+        "If you do not include a 'move' tool_call, do not narrate any completed movement or location change; "
+        "only discuss options or intentions (e.g., 'You can move to...', 'If you choose to move...'). "
+        "For questions like 'Can I move?' or 'Where can I go?', call 'move_options' and list the returned "
+        "1-hop options; explicitly state that no movement has happened yet. "
         "Do not modify rules, maps, or character sheets. "
         f"Context: {json.dumps(payload, ensure_ascii=True)}"
     )

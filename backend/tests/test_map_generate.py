@@ -152,6 +152,8 @@ def test_map_generate_child_layer() -> None:
     assert entry_id in campaign.map.areas["area_001"].reachable_area_ids
     for area_id in created:
         assert campaign.map.areas[area_id].parent_area_id == "area_001"
+        assert "area_001" in campaign.map.areas[area_id].reachable_area_ids
+        assert area_id in campaign.map.areas["area_001"].reachable_area_ids
     require_valid_map(campaign.map)
 
 

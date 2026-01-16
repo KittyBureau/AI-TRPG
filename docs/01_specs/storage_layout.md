@@ -22,7 +22,7 @@ storage/
     "active_actor_id": "pc_001"
   },
   "settings_revision": 0,
-  "allowlist": ["move", "hp_delta", "map_generate"],
+  "allowlist": ["move", "move_options", "hp_delta", "map_generate"],
   "map": {
     "areas": {
       "area_001": {
@@ -109,7 +109,7 @@ storage/
 | state | object | Hierarchical position state. |
 | state.positions_parent | object | Parent-layer positions by entity id. |
 | state.positions_child | object | Child-layer positions by entity id (null if not in sub-map). |
-| positions | object | Backward-compatible parent positions by id. |
+| positions | object | Backward-compatible parent positions by id. Movement changes are applied via tool execution; narration alone does not change positions. |
 | hp | object | Character HP by id. |
 | character_states | object | Character state by id. |
 | settings_snapshot | object | Current settings snapshot. |

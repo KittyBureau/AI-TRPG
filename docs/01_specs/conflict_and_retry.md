@@ -30,11 +30,14 @@ The model must return a JSON object:
 
 Conflicts are detected before logging and can trigger retries:
 
-- `state_mismatch`: narrative claims state changes without applied actions.
-- `tool_result_mismatch`: narrative implies success while tool calls failed.
-- `forbidden_change`: narrative attempts to change rules, maps, or world data.
+- `state_mismatch`: tool execution indicates no change, but authoritative state changes.
+- `tool_result_mismatch`: tool execution results do not match authoritative state.
+- `forbidden_change`: narrative attempts to change rules, maps, or world data (text checks only).
 
-When `dialog_type` is `rule_explanation`, only `forbidden_change` is evaluated.
+Text-based checks are disabled by default. Set `CONFLICT_TEXT_CHECKS=1` to
+enable narrative keyword checks for `state_mismatch`, `tool_result_mismatch`,
+and `forbidden_change`. When enabled, `dialog_type=rule_explanation` only
+evaluates `forbidden_change`.
 
 Example conflict report:
 
@@ -42,10 +45,10 @@ Example conflict report:
 {
   "conflicts": [
     {
-      "type": "state_mismatch",
-      "field": "hp.pc_001",
+      "type": "tool_result_mismatch",
+      "field": "hp_delta",
       "expected": 0,
-      "found_in_text": "still healthy"
+      "found_in_text": "10"
     }
   ]
 }

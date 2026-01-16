@@ -52,11 +52,13 @@ Use this as the default reference for every task.
 - Each tool call includes `id`, `tool`, `args`; `tool` must be in `campaign.allowlist`.
 - Invalid args return `tool_feedback.failed_calls` with `status`=`error` or `rejected` and a documented `reason`.
 - Tool params and allowlist follow `docs/01_specs/tools.md`.
+- `move_options` is read-only and must not change positions or other state.
+- Movement state changes require a `move` tool_call; narration alone does not change positions.
 **Checks**
-- Run `backend/tests/test_map_generate.py` when touching tool execution or validation.
+- Run `backend/tests/test_map_generate.py` and `backend/tests/test_move_options.py` when touching tool execution or validation.
 - Review `docs/01_specs/tools.md` for param and reason updates.
 **Scope**
-- `backend/app/tool_executor.py`, `backend/domain/models.py`, `docs/01_specs/tools.md`, `backend/tests/test_map_generate.py`.
+- `backend/app/tool_executor.py`, `backend/domain/models.py`, `docs/01_specs/tools.md`, `backend/tests/test_map_generate.py`, `backend/tests/test_move_options.py`.
 
 ## 6. Storage Layout & Persistence
 **Rules**
@@ -84,7 +86,8 @@ Use this as the default reference for every task.
 **Rules**
 - Detect conflicts before logging; do not persist campaign or turn log when conflicts exist.
 - Retry with debug append up to 2 times; on failure return `conflict_report` without logging.
-- Conflict types include `state_mismatch`, `tool_result_mismatch`, `forbidden_change` (rule_explanation only checks forbidden change).
+- Conflict types include `state_mismatch`, `tool_result_mismatch`, `forbidden_change`.
+- Text-based conflict checks are disabled by default; set `CONFLICT_TEXT_CHECKS=1` to enable narrative keyword checks (rule_explanation only checks forbidden change when enabled).
 **Checks**
 - Review `backend/app/conflict_detector.py` and retry loop in `backend/app/turn_service.py`.
 - Exercise retry scenarios via the API test guide.
@@ -105,7 +108,7 @@ Use this as the default reference for every task.
 ## 10. Tests & Gatekeeping
 **Rules**
 - API contract changes require updating `docs/02_guides/testing/api_test_guide.md`.
-- Tool/state/map changes require running `backend/tests/test_map_generate.py` and reviewing the manual map_generate guide.
+- Tool/state/map changes require running `backend/tests/test_map_generate.py`, `backend/tests/test_move_options.py`, and reviewing the manual map_generate guide when map logic changes.
 - Spec changes in `docs/01_specs/**` must be reflected in this AI_INDEX.
 **Checks**
 - Run targeted tests and document results in the task output.

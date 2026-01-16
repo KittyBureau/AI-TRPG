@@ -22,6 +22,7 @@ Structure:
 ## Allowed Tools (default allowlist)
 
 - `move`
+- `move_options`
 - `hp_delta`
 - `map_generate`
 
@@ -40,6 +41,23 @@ Required args:
 Notes:
 
 - `actor_id` must match the active actor for the turn.
+- Movement occurs only when a `move` tool_call is executed; narration alone does not move characters.
+
+### move_options
+
+Required args:
+
+- none
+
+Optional args:
+
+- `actor_id` (defaults to active actor id)
+
+Notes:
+
+- Read-only tool; does not change positions or other state.
+- Returns 1-hop reachable neighbors from the actor's current area.
+- Use for questions like "Can I move?" or "Where can I go?" without committing to movement.
 
 ### hp_delta
 
@@ -96,6 +114,24 @@ Map generation result payload:
     "created_connections": 3,
     "root_parent_area_id": "area_001",
     "warnings": []
+  },
+  "timestamp": "2026-01-14T16:05:31+00:00"
+}
+```
+
+Move options result payload:
+
+```json
+{
+  "tool": "move_options",
+  "args": {
+    "actor_id": "pc_001"
+  },
+  "result": {
+    "from_area_id": "area_001",
+    "options": [
+      { "to_area_id": "area_002", "name": "Side Room" }
+    ]
   },
   "timestamp": "2026-01-14T16:05:31+00:00"
 }

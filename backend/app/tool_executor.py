@@ -94,6 +94,8 @@ def _apply_tool_call(
         return _apply_move(campaign, actor_id, call, timestamp)
     if call.tool == "hp_delta":
         return _apply_hp_delta(campaign, call, timestamp)
+    if call.tool == "move_options":
+        return _apply_move_options(campaign, actor_id, call, timestamp)
     if call.tool == "map_generate":
         return _apply_map_generate(campaign, call, timestamp)
     return None
@@ -148,6 +150,35 @@ def _apply_hp_delta(
         tool="hp_delta",
         args=call.args,
         result={"new_hp": new_hp},
+        timestamp=timestamp,
+    )
+
+
+def _apply_move_options(
+    campaign: Campaign, active_actor_id: str, call: ToolCall, timestamp: str
+) -> Optional[AppliedAction]:
+    actor_id = call.args.get("actor_id")
+    if actor_id is None:
+        actor_id = active_actor_id
+    if not isinstance(actor_id, str):
+        return None
+    if actor_id not in campaign.positions:
+        return None
+    from_area_id = campaign.positions.get(actor_id)
+    if not isinstance(from_area_id, str):
+        return None
+    area = campaign.map.areas.get(from_area_id)
+    if area is None:
+        return None
+    options = []
+    for to_area_id in sorted(area.reachable_area_ids):
+        target_area = campaign.map.areas.get(to_area_id)
+        name = target_area.name if target_area else ""
+        options.append({"to_area_id": to_area_id, "name": name})
+    return AppliedAction(
+        tool="move_options",
+        args=call.args,
+        result={"from_area_id": from_area_id, "options": options},
         timestamp=timestamp,
     )
 
@@ -223,6 +254,23 @@ def _apply_map_generate(
         reachable = campaign.map.areas[from_id].reachable_area_ids
         if to_id not in reachable:
             reachable.append(to_id)
+
+    if parent_area_id is not None:
+        parent_area = campaign.map.areas.get(parent_area_id)
+        if parent_area is None:
+            campaign.map = snapshot
+            return None
+        for area_id in result.created_area_ids:
+            if area_id == parent_area_id:
+                continue
+            if area_id not in parent_area.reachable_area_ids:
+                parent_area.reachable_area_ids.append(area_id)
+            child_area = campaign.map.areas.get(area_id)
+            if child_area is None:
+                campaign.map = snapshot
+                return None
+            if parent_area_id not in child_area.reachable_area_ids:
+                child_area.reachable_area_ids.append(parent_area_id)
 
     try:
         require_valid_map(campaign.map)
