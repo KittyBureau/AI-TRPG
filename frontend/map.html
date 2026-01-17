@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI TRPG Map View</title>
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero">
+        <div>
+          <h1>Map View (V0)</h1>
+          <p class="muted">
+            Read-only map snapshot: current area + reachable areas.
+          </p>
+        </div>
+      </header>
+
+      <section class="panel">
+        <div class="form-row">
+          <label for="campaignId">Campaign ID</label>
+          <input
+            id="campaignId"
+            type="text"
+            value="camp_0002"
+            autocomplete="off"
+          />
+          <button id="reloadBtn" type="button">Reload</button>
+        </div>
+        <div id="statusLine" class="status muted">Ready.</div>
+      </section>
+
+      <section class="panel">
+        <h2>Current Area</h2>
+        <div id="currentArea" class="mono-block">-</div>
+      </section>
+
+      <section class="panel">
+        <h2>Reachable Areas</h2>
+        <ul id="reachableList" class="list"></ul>
+      </section>
+    </main>
+
+    <script src="map.js"></script>
+  </body>
+</html>

@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api.routes import campaign, chat, settings
+from backend.api.routes import campaign, chat, map, settings
 
 
 def create_app() -> FastAPI:
@@ -16,6 +16,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(campaign.router)
     app.include_router(chat.router)
+    app.include_router(map.router)
     app.include_router(settings.router)
     return app
 

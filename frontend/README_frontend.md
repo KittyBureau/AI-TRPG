@@ -15,6 +15,7 @@ python -m http.server 5173
 ```
 
 Then open `http://127.0.0.1:5173` and set **Base URL** to `http://127.0.0.1:8000`.
+The map view page reads the same base URL from local storage.
 
 Notes:
 - CORS is enabled for `http://localhost:*` and `http://127.0.0.1:*` in `backend/api/main.py`.
@@ -25,3 +26,7 @@ Notes:
 - Sends raw JSON exactly as typed (no validation).
 - Displays response fields + raw response.
 - Records each request/response in local history with export/copy tools.
+
+## Map view (V0)
+
+Open `http://127.0.0.1:5173/map.html` to see the read-only map snapshot.
