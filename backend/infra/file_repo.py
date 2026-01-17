@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from backend.domain.map_models import migrate_map_dict, normalize_map, require_valid_map
-from backend.domain.models import Campaign, CampaignSummary, TurnLogEntry
-from backend.domain.state_utils import ensure_positions_child, sync_state_positions
+from backend.domain.models import ActorState, Campaign, CampaignSummary, TurnLogEntry
+from backend.domain.state_utils import (
+    DEFAULT_CHARACTER_STATE,
+    DEFAULT_HP,
+    ensure_actor,
+    validate_actors_state,
+)
 
 
 def _model_to_dict(model: object) -> Dict[str, Any]:
@@ -23,6 +28,100 @@ def _model_from_dict(model_cls: object, data: Dict[str, Any]) -> object:
     if hasattr(model_cls, "parse_obj"):
         return model_cls.parse_obj(data)  # type: ignore[no-any-return]
     raise TypeError("Unsupported model type")
+
+
+def _read_dict(value: object) -> Dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _read_str_map(value: object) -> Dict[str, str]:
+    return {
+        key: val
+        for key, val in _read_dict(value).items()
+        if isinstance(key, str) and isinstance(val, str)
+    }
+
+
+def _collect_actor_ids(data: Dict[str, Any]) -> List[str]:
+    actor_ids = set()
+    selected = _read_dict(data.get("selected"))
+    party_ids = selected.get("party_character_ids")
+    if isinstance(party_ids, list):
+        actor_ids.update({item for item in party_ids if isinstance(item, str)})
+    active_actor_id = selected.get("active_actor_id")
+    if isinstance(active_actor_id, str):
+        actor_ids.add(active_actor_id)
+    for field in ("positions", "hp", "character_states"):
+        actor_ids.update(_read_dict(data.get(field)).keys())
+    state = _read_dict(data.get("state"))
+    actor_ids.update(_read_dict(state.get("positions_parent")).keys())
+    actor_ids.update(_read_dict(state.get("positions")).keys())
+    return sorted({actor_id for actor_id in actor_ids if isinstance(actor_id, str)})
+
+
+def _get_legacy_position(
+    actor_id: str,
+    positions: Dict[str, str],
+    positions_parent: Dict[str, str],
+    positions_state: Dict[str, str],
+) -> Optional[str]:
+    if actor_id in positions:
+        return positions[actor_id]
+    if actor_id in positions_parent:
+        return positions_parent[actor_id]
+    if actor_id in positions_state:
+        return positions_state[actor_id]
+    return None
+
+
+def _migrate_actors_if_needed(campaign: Campaign, data: Dict[str, Any]) -> bool:
+    actors_raw = data.get("actors")
+    actors_present = isinstance(actors_raw, dict) and bool(actors_raw)
+    legacy_positions = _read_str_map(data.get("positions"))
+    legacy_hp = _read_dict(data.get("hp"))
+    legacy_states = _read_dict(data.get("character_states"))
+    state = _read_dict(data.get("state"))
+    legacy_positions_parent = _read_str_map(state.get("positions_parent"))
+    legacy_positions_state = _read_str_map(state.get("positions"))
+    legacy_present = any(
+        [legacy_positions, legacy_hp, legacy_states, legacy_positions_parent, legacy_positions_state]
+    )
+
+    if actors_present:
+        if legacy_present:
+            campaign.positions = {}
+            campaign.hp = {}
+            campaign.character_states = {}
+            campaign.state.positions = {}
+            campaign.state.positions_parent = {}
+            campaign.state.positions_child = {}
+            return True
+        return False
+
+    actor_ids = _collect_actor_ids(data)
+    actors: Dict[str, ActorState] = {}
+    for actor_id in actor_ids:
+        position = _get_legacy_position(
+            actor_id, legacy_positions, legacy_positions_parent, legacy_positions_state
+        )
+        hp_value = legacy_hp.get(actor_id, DEFAULT_HP)
+        if not isinstance(hp_value, int):
+            hp_value = DEFAULT_HP
+        state_value = legacy_states.get(actor_id, DEFAULT_CHARACTER_STATE)
+        if not isinstance(state_value, str):
+            state_value = DEFAULT_CHARACTER_STATE
+        actors[actor_id] = ActorState(
+            position=position, hp=hp_value, character_state=state_value, meta={}
+        )
+
+    campaign.actors = actors
+    campaign.positions = {}
+    campaign.hp = {}
+    campaign.character_states = {}
+    campaign.state.positions = {}
+    campaign.state.positions_parent = {}
+    campaign.state.positions_child = {}
+    return True
 
 
 class FileRepo:
@@ -69,8 +168,13 @@ class FileRepo:
 
     def save_campaign(self, campaign: Campaign) -> None:
         path = self._campaign_path(campaign.id)
-        sync_state_positions(campaign)
-        ensure_positions_child(campaign, campaign.selected.party_character_ids)
+        validate_actors_state(campaign, campaign.map)
+        campaign.positions = {}
+        campaign.hp = {}
+        campaign.character_states = {}
+        campaign.state.positions = {}
+        campaign.state.positions_parent = {}
+        campaign.state.positions_child = {}
         require_valid_map(campaign.map)
         normalize_map(campaign.map)
         data = _model_to_dict(campaign)
@@ -85,9 +189,19 @@ class FileRepo:
         if isinstance(map_data, dict):
             migrate_map_dict(map_data)
         campaign = _model_from_dict(Campaign, data)
-        sync_state_positions(campaign)
-        ensure_positions_child(campaign, campaign.selected.party_character_ids)
+        updated = _migrate_actors_if_needed(campaign, data)
+        for actor_id in campaign.selected.party_character_ids:
+            if actor_id not in campaign.actors:
+                ensure_actor(campaign, actor_id)
+                updated = True
+        if campaign.selected.active_actor_id not in campaign.actors:
+            ensure_actor(campaign, campaign.selected.active_actor_id)
+            updated = True
+        if validate_actors_state(campaign, campaign.map):
+            updated = True
         normalize_map(campaign.map)
+        if updated:
+            self.save_campaign(campaign)
         return campaign
 
     def list_campaigns(self) -> List[CampaignSummary]:

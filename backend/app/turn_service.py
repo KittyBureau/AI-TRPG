@@ -15,6 +15,7 @@ from backend.domain.models import (
     CampaignSummary,
     ConflictReport,
     Goal,
+    ActorState,
     MapArea,
     MapData,
     Milestone,
@@ -25,9 +26,11 @@ from backend.domain.models import (
     TurnLogEntry,
 )
 from backend.domain.state_utils import (
-    ensure_positions_child,
-    set_parent_position,
-    sync_state_positions,
+    DEFAULT_CHARACTER_STATE,
+    DEFAULT_HP,
+    derive_state_maps,
+    ensure_actor,
+    update_actor_position,
 )
 from backend.infra.file_repo import FileRepo
 from backend.infra.llm_client import LLMClient
@@ -59,11 +62,22 @@ class TurnService:
             },
             connections=[],
         )
-        positions = {character_id: "area_001" for character_id in party_character_ids}
-        hp = {character_id: 10 for character_id in party_character_ids}
-        character_states = {
-            character_id: "alive" for character_id in party_character_ids
+        actors = {
+            character_id: ActorState(
+                position="area_001",
+                hp=DEFAULT_HP,
+                character_state=DEFAULT_CHARACTER_STATE,
+                meta={},
+            )
+            for character_id in party_character_ids
         }
+        if active_actor_id not in actors:
+            actors[active_actor_id] = ActorState(
+                position="area_001",
+                hp=DEFAULT_HP,
+                character_state=DEFAULT_CHARACTER_STATE,
+                meta={},
+            )
         selected = Selected(
             world_id=world_id,
             map_id=map_id,
@@ -77,12 +91,8 @@ class TurnService:
             goal=Goal(text="Define the main objective", status="active"),
             milestone=Milestone(current="intro", last_advanced_turn=0),
             map=starter_map,
-            positions=positions,
-            hp=hp,
-            character_states=character_states,
+            actors=actors,
         )
-        sync_state_positions(campaign)
-        ensure_positions_child(campaign, party_character_ids)
         normalize_map(campaign.map)
         self.repo.create_campaign(campaign)
         return campaign_id
@@ -170,15 +180,18 @@ class TurnService:
                 conflict_report=conflict_report,
                 state_summary=StateSummary(active_actor_id=active_actor_id),
             )
-            entry.state_summary.positions = dict(campaign.positions)
-            entry.state_summary.positions_parent = dict(
-                campaign.state.positions_parent
-            )
-            entry.state_summary.positions_child = dict(
-                campaign.state.positions_child
-            )
-            entry.state_summary.hp = dict(campaign.hp)
-            entry.state_summary.character_states = dict(campaign.character_states)
+            (
+                positions,
+                positions_parent,
+                positions_child,
+                hp,
+                character_states,
+            ) = derive_state_maps(campaign)
+            entry.state_summary.positions = positions
+            entry.state_summary.positions_parent = positions_parent
+            entry.state_summary.positions_child = positions_child
+            entry.state_summary.hp = hp
+            entry.state_summary.character_states = character_states
             self.repo.append_turn_log(campaign_id, entry)
             return _build_success_response(entry, tool_calls, applied_actions, tool_feedback)
 
@@ -201,17 +214,19 @@ def _ensure_minimum_state(campaign: Campaign) -> bool:
         )
         updated = True
     for character_id in campaign.selected.party_character_ids:
-        if character_id not in campaign.positions:
-            set_parent_position(campaign, character_id, "area_001")
+        actor = ensure_actor(campaign, character_id)
+        if actor.position is None:
+            update_actor_position(campaign, character_id, "area_001")
             updated = True
-        if character_id not in campaign.hp:
-            campaign.hp[character_id] = 10
+        if not isinstance(actor.hp, int):
+            actor.hp = DEFAULT_HP
             updated = True
-        if character_id not in campaign.character_states:
-            campaign.character_states[character_id] = "alive"
+        if not isinstance(actor.character_state, str):
+            actor.character_state = DEFAULT_CHARACTER_STATE
             updated = True
-    sync_state_positions(campaign)
-    ensure_positions_child(campaign, campaign.selected.party_character_ids)
+    if campaign.selected.active_actor_id not in campaign.actors:
+        ensure_actor(campaign, campaign.selected.active_actor_id)
+        updated = True
     normalize_map(campaign.map)
     return updated
 
@@ -245,34 +260,54 @@ def _snapshot_state(campaign: Campaign) -> Dict[str, object]:
         map_copy = campaign.map.copy(deep=True)
     else:
         map_copy = deepcopy(campaign.map)
+    (
+        positions,
+        positions_parent,
+        positions_child,
+        hp,
+        character_states,
+    ) = derive_state_maps(campaign)
     return {
-        "positions": deepcopy(campaign.positions),
+        "actors": deepcopy(campaign.actors),
         "state": deepcopy(campaign.state),
-        "hp": deepcopy(campaign.hp),
-        "character_states": deepcopy(campaign.character_states),
+        "positions": positions,
+        "positions_parent": positions_parent,
+        "positions_child": positions_child,
+        "hp": hp,
+        "character_states": character_states,
         "map": map_copy,
     }
 
 
 def _restore_state(campaign: Campaign, snapshot: Dict[str, object]) -> None:
-    campaign.positions = snapshot["positions"]
+    campaign.actors = snapshot["actors"]
     campaign.state = snapshot["state"]
-    campaign.hp = snapshot["hp"]
-    campaign.character_states = snapshot["character_states"]
     campaign.map = snapshot["map"]
 
 
 def _state_summary_dict(campaign: Campaign) -> Dict[str, object]:
+    (
+        positions,
+        positions_parent,
+        positions_child,
+        hp,
+        character_states,
+    ) = derive_state_maps(campaign)
     return {
-        "positions": dict(campaign.positions),
-        "positions_parent": dict(campaign.state.positions_parent),
-        "positions_child": dict(campaign.state.positions_child),
-        "hp": dict(campaign.hp),
-        "character_states": dict(campaign.character_states),
+        "positions": positions,
+        "positions_parent": positions_parent,
+        "positions_child": positions_child,
+        "hp": hp,
+        "character_states": character_states,
     }
 
 
 def _build_system_prompt(campaign: Campaign) -> str:
+    positions, _, _, hp, character_states = derive_state_maps(campaign)
+    actors_payload = {
+        actor_id: _model_to_dict(actor)
+        for actor_id, actor in campaign.actors.items()
+    }
     payload = {
         "dialog_types": DIALOG_TYPES,
         "default_dialog_type": DEFAULT_DIALOG_TYPE,
@@ -281,9 +316,10 @@ def _build_system_prompt(campaign: Campaign) -> str:
         "settings_snapshot": _model_to_dict(campaign.settings_snapshot),
         "map": _model_to_dict(campaign.map),
         "state": _model_to_dict(campaign.state),
-        "positions": campaign.positions,
-        "hp": campaign.hp,
-        "character_states": campaign.character_states,
+        "actors": actors_payload,
+        "positions": positions,
+        "hp": hp,
+        "character_states": character_states,
         "response_format": {
             "assistant_text": "string narrative",
             "dialog_type": "one of dialog_types",
@@ -295,6 +331,7 @@ def _build_system_prompt(campaign: Campaign) -> str:
         "The world state is authoritative and can change only via tool_calls. "
         "Movement is a state change. If you narrate that an actor moved/entered/arrived/left/changed location, "
         "you MUST include a 'move' tool_call in the same response. "
+        "For move tool_calls, args must include only actor_id and to_area_id; do NOT include from_area_id. "
         "If you do not include a 'move' tool_call, do not narrate any completed movement or location change; "
         "you may describe the current scene or discuss options/intentions. "
         "Priority and fallback for movement intent: If the user expresses intent to move (go/move/enter a place), "
@@ -309,11 +346,12 @@ def _build_system_prompt(campaign: Campaign) -> str:
         "1-hop options; explicitly state that no movement has happened yet. "
         "Examples (JSON outputs, schema-accurate). "
         "Example 1 (move intent is explicit and IDs are known; assistant_text empty; "
-        "actor_id/from_area_id/to_area_id must come from Context.selected.active_actor_id and "
-        "Context.positions[...] plus the user's specified target): "
+        "actor_id/to_area_id must come from Context.selected.active_actor_id and "
+        "the user's specified target; from_area_id is derived by the backend from "
+        "Context.actors[...].position and MUST NOT be included): "
         "{\"assistant_text\":\"\",\"dialog_type\":\"scene_description\","
         "\"tool_calls\":[{\"id\":\"call_move_1\",\"tool\":\"move\",\"args\":"
-        "{\"actor_id\":\"pc_001\",\"from_area_id\":\"area_001\",\"to_area_id\":\"area_002\"}}]} "
+        "{\"actor_id\":\"pc_001\",\"to_area_id\":\"area_002\"}}]} "
         "Example 2 (target unclear or user asks where they can go; use move_options; no movement yet; "
         "actor_id should come from Context.selected.active_actor_id): "
         "{\"assistant_text\":\"No movement yet. I will fetch 1-hop options.\","
@@ -386,11 +424,18 @@ def _build_failure_response(
     dialog_type: str,
 ) -> Dict[str, object]:
     state_summary = StateSummary(active_actor_id=active_actor_id)
-    state_summary.positions = dict(campaign.positions)
-    state_summary.positions_parent = dict(campaign.state.positions_parent)
-    state_summary.positions_child = dict(campaign.state.positions_child)
-    state_summary.hp = dict(campaign.hp)
-    state_summary.character_states = dict(campaign.character_states)
+    (
+        positions,
+        positions_parent,
+        positions_child,
+        hp,
+        character_states,
+    ) = derive_state_maps(campaign)
+    state_summary.positions = positions
+    state_summary.positions_parent = positions_parent
+    state_summary.positions_child = positions_child
+    state_summary.hp = hp
+    state_summary.character_states = character_states
     return {
         "narrative_text": "",
         "dialog_type": dialog_type,

@@ -70,6 +70,13 @@ class CampaignState(BaseModel):
     positions_child: Dict[str, Optional[str]] = Field(default_factory=dict)
 
 
+class ActorState(BaseModel):
+    position: Optional[str] = None
+    hp: int = 10
+    character_state: str = "alive"
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+
 class Campaign(BaseModel):
     id: str
     selected: Selected
@@ -80,6 +87,7 @@ class Campaign(BaseModel):
     )
     map: MapData = Field(default_factory=MapData)
     state: CampaignState = Field(default_factory=CampaignState)
+    actors: Dict[str, ActorState] = Field(default_factory=dict)
     positions: Dict[str, str] = Field(default_factory=dict)
     hp: Dict[str, int] = Field(default_factory=dict)
     character_states: Dict[str, str] = Field(default_factory=dict)

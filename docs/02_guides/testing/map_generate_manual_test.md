@@ -14,7 +14,7 @@
   - `reachable_area_ids` 为地图权威
   - `map.connections` 为派生索引（语义一致即可，不校验顺序）
 - 连通性：同一 parent 层级内**无孤立**
-- 状态：`positions_parent` / `positions_child` 存在，父层位置不被覆盖
+- 状态：位置权威为 `actors[*].position`；`positions_parent` / `positions_child` 为遗留字段，不作为权威
 
 ## 测试入口
 - 唯一入口：`POST /api/chat/turn`

@@ -13,7 +13,7 @@ from backend.domain.models import (
 )
 from backend.domain.map_models import normalize_map, require_valid_map
 from backend.domain.state_machine import resolve_tool_permission
-from backend.domain.state_utils import set_parent_position
+from backend.domain.state_utils import update_actor_position
 from backend.infra.map_generators.deterministic_generator import (
     DeterministicMapGenerator,
 )
@@ -72,7 +72,8 @@ def execute_tool_calls(
 def _check_state_permission(
     campaign: Campaign, actor_id: str, call: ToolCall
 ) -> Tuple[bool, str]:
-    actor_state = campaign.character_states.get(actor_id, "alive")
+    actor = campaign.actors.get(actor_id)
+    actor_state = actor.character_state if actor else "alive"
     target_is_actor = False
     hp_delta: Optional[int] = None
     if call.tool == "hp_delta":
@@ -105,23 +106,26 @@ def _apply_move(
     campaign: Campaign, active_actor_id: str, call: ToolCall, timestamp: str
 ) -> Optional[AppliedAction]:
     actor_id = call.args.get("actor_id")
-    from_area_id = call.args.get("from_area_id")
     to_area_id = call.args.get("to_area_id")
-    if not all(isinstance(value, str) for value in [actor_id, from_area_id, to_area_id]):
+    if "from_area_id" in call.args:
+        return None
+    if not all(isinstance(value, str) for value in [actor_id, to_area_id]):
         return None
     if actor_id != active_actor_id:
         return None
-    if actor_id not in campaign.positions:
+    actor = campaign.actors.get(actor_id)
+    if actor is None:
         return None
-    if campaign.positions.get(actor_id) != from_area_id:
+    from_area_id = actor.position
+    if not isinstance(from_area_id, str):
         return None
     if not _is_connected(campaign, from_area_id, to_area_id):
         return None
-    set_parent_position(campaign, actor_id, to_area_id)
+    update_actor_position(campaign, actor_id, to_area_id)
     return AppliedAction(
         tool="move",
         args=call.args,
-        result={"to_area_id": to_area_id},
+        result={"from_area_id": from_area_id, "to_area_id": to_area_id},
         timestamp=timestamp,
     )
 
@@ -136,16 +140,19 @@ def _apply_hp_delta(
         return None
     if not isinstance(cause, str):
         return None
-    if target_id not in campaign.hp:
+    actor = campaign.actors.get(target_id)
+    if actor is None:
         return None
 
-    new_hp = campaign.hp[target_id] + delta
-    campaign.hp[target_id] = new_hp
+    new_hp = actor.hp + delta
+    if new_hp < 0:
+        new_hp = 0
+    actor.hp = new_hp
     if campaign.settings_snapshot.rules.hp_zero_ends_game:
         if new_hp <= 0:
-            campaign.character_states[target_id] = "dying"
-        elif campaign.character_states.get(target_id) == "dying":
-            campaign.character_states[target_id] = "alive"
+            actor.character_state = "dying"
+        elif actor.character_state == "dying":
+            actor.character_state = "alive"
     return AppliedAction(
         tool="hp_delta",
         args=call.args,
@@ -162,12 +169,13 @@ def _apply_move_options(
         actor_id = active_actor_id
     if not isinstance(actor_id, str):
         return None
-    if actor_id not in campaign.positions:
+    actor = campaign.actors.get(actor_id)
+    if actor is None:
         return None
-    from_area_id = campaign.positions.get(actor_id)
-    if not isinstance(from_area_id, str):
+    current_area_id = actor.position
+    if not isinstance(current_area_id, str):
         return None
-    area = campaign.map.areas.get(from_area_id)
+    area = campaign.map.areas.get(current_area_id)
     if area is None:
         return None
     options = []
@@ -178,7 +186,7 @@ def _apply_move_options(
     return AppliedAction(
         tool="move_options",
         args=call.args,
-        result={"from_area_id": from_area_id, "options": options},
+        result={"options": options},
         timestamp=timestamp,
     )
 

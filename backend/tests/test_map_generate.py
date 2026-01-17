@@ -8,6 +8,7 @@ import pytest
 from backend.app.tool_executor import execute_tool_calls
 from backend.domain.map_models import require_valid_map
 from backend.domain.models import (
+    ActorState,
     Campaign,
     Goal,
     MapArea,
@@ -17,7 +18,6 @@ from backend.domain.models import (
     SettingsSnapshot,
     ToolCall,
 )
-from backend.domain.state_utils import ensure_positions_child, sync_state_positions
 from backend.infra.file_repo import FileRepo
 
 
@@ -35,12 +35,15 @@ def _make_campaign(map_data: MapData) -> Campaign:
         goal=Goal(text="Goal", status="active"),
         milestone=Milestone(current="intro", last_advanced_turn=0),
         map=map_data,
-        positions={"pc_001": "area_001"},
-        hp={"pc_001": 10},
-        character_states={"pc_001": "alive"},
+        actors={
+            "pc_001": ActorState(
+                position="area_001",
+                hp=10,
+                character_state="alive",
+                meta={},
+            )
+        },
     )
-    sync_state_positions(campaign)
-    ensure_positions_child(campaign, selected.party_character_ids)
     return campaign
 
 
@@ -85,12 +88,14 @@ def test_migration_adds_reachable_and_rebuilds_connections(tmp_path: Path) -> No
     campaign = repo.get_campaign(campaign_id)
     assert campaign.map.areas["area_001"].reachable_area_ids == ["area_002"]
     assert campaign.map.areas["area_002"].reachable_area_ids == []
+    assert "pc_001" in campaign.actors
 
     repo.save_campaign(campaign)
     saved = json.loads(campaign_path.read_text(encoding="utf-8"))
     assert saved["map"]["connections"] == [
         {"from_area_id": "area_001", "to_area_id": "area_002"}
     ]
+    assert "actors" in saved
 
 
 def test_map_generate_root_layer() -> None:
@@ -187,7 +192,7 @@ def test_map_generate_failure_cases(
     )
     campaign = _make_campaign(map_data)
     campaign.allowlist = list(allowlist)
-    campaign.character_states["pc_001"] = state
+    campaign.actors["pc_001"].character_state = state
     call = ToolCall(id="call_fail", tool="map_generate", args=call_args)
     applied_actions, tool_feedback = execute_tool_calls(
         campaign, "pc_001", [call]

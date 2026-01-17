@@ -120,7 +120,8 @@ Agent 必须从以下类型中选择其一（字符串值）：
 
 #### move
 - 语义：角色从一个区域移动到另一个区域
-- 必备参数：actor_id, from_area_id, to_area_id
+- 必备参数：actor_id, to_area_id（from_area_id 由后端根据当前 position 计算）
+- 破坏性变更：move tool_call args 中包含 from_area_id 将返回 invalid_args
 
 #### hp_delta
 - 语义：修改指定角色血量

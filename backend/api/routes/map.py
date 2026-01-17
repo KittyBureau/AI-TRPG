@@ -25,6 +25,7 @@ class MapViewResponse(BaseModel):
     campaign_id: str
     active_actor_id: str
     current_area: MapAreaView
+    current_area_actor_ids: List[str]
     reachable_areas: List[MapAreaView]
 
 
@@ -40,9 +41,8 @@ def view_map(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     active_actor_id = actor_id or campaign.selected.active_actor_id
-    area_id = campaign.positions.get(active_actor_id)
-    if not area_id:
-        area_id = campaign.state.positions_parent.get(active_actor_id)
+    actor = campaign.actors.get(active_actor_id)
+    area_id = actor.position if actor else None
     if not area_id:
         raise HTTPException(
             status_code=400,
@@ -65,6 +65,12 @@ def view_map(
             MapAreaView(id=target_area.id, name=target_area.name)
         )
 
+    current_area_actor_ids = sorted(
+        actor_id
+        for actor_id, actor_state in campaign.actors.items()
+        if actor_state.position == area_id
+    )
+
     return MapViewResponse(
         campaign_id=campaign.id,
         active_actor_id=active_actor_id,
@@ -72,5 +78,6 @@ def view_map(
             id=current_area.id,
             name=current_area.name,
         ),
+        current_area_actor_ids=current_area_actor_ids,
         reachable_areas=reachable_areas,
     )

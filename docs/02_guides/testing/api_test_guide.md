@@ -25,6 +25,12 @@ uvicorn backend.api.main:app --reload
 
 > 说明：Stage 4 依赖真实 LLM；若未配置 llm_config.json 或未输入 key，将无法执行 Stage 4 的步骤。
 
+### 1.3 运行自动化测试
+推荐从仓库根目录执行（不要依赖 PYTHONPATH 环境变量）：
+```bash
+python -m pytest -q
+```
+
 ---
 
 ## 二、核心测试流程（推荐顺序）
@@ -86,21 +92,23 @@ uvicorn backend.api.main:app --reload
 - 返回 narrative_text
 - turn_log.jsonl 新增 1 行
 - 无 tool_calls / applied_actions
-- state_summary 与 campaign.json 一致
+- state_summary 与 campaign.json 中 actors 状态一致（positions/hp/character_states 为派生值）
 
 ---
 
 ### Step 5：工具调用（移动）
+> 破坏性变更：move 只允许 args={actor_id,to_area_id}，包含 from_area_id 会返回 invalid_args。
+
 ```json
 {
   "campaign_id": "camp_0001",
-  "user_input": "tool: {\"id\":\"call_001\",\"tool\":\"move\",\"args\":{\"actor_id\":\"pc_001\",\"from_area_id\":\"area_001\",\"to_area_id\":\"area_002\"},\"reason\":\"move\"}"
+  "user_input": "tool: {\"id\":\"call_001\",\"tool\":\"move\",\"args\":{\"actor_id\":\"pc_001\",\"to_area_id\":\"area_002\"},\"reason\":\"move\"}"
 }
 ```
 
 验证点：
 - applied_actions 含 move
-- campaign.json 中 positions 更新
+- campaign.json 中 actors.pc_001.position 更新
 - turn_log.jsonl 记录 applied_actions 与 state_summary
 
 ---
@@ -115,7 +123,7 @@ uvicorn backend.api.main:app --reload
 
 验证点：
 - hp 变化
-- character_states 进入 dying（当前实现无 dead 自动切换）
+- actors.pc_001.character_state 进入 dying（当前实现无 dead 自动切换）
 - rules.hp_zero_ends_game 生效
 
 ---

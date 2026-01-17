@@ -12,12 +12,14 @@ Structure:
   "tool": "move",
   "args": {
     "actor_id": "pc_001",
-    "from_area_id": "area_001",
     "to_area_id": "area_002"
   },
   "reason": "Move to the next room"
 }
 ```
+
+Breaking change: `move` tool_call args no longer accept `from_area_id`. Any `from_area_id`
+included in tool_calls now results in `invalid_args`.
 
 ## Tool-call movement: prompt contract (anti-silent response)
 
@@ -31,11 +33,11 @@ Contract:
 
 Examples (schema-accurate):
 
-Example 1 (move intent is explicit and IDs are known; assistant_text empty; actor_id/from_area_id/to_area_id
-must come from Context.selected.active_actor_id and Context.positions[...] plus the user's target):
+Example 1 (move intent is explicit and IDs are known; assistant_text empty; actor_id/to_area_id
+must come from Context.selected.active_actor_id and the user's target; from_area_id is derived by the backend):
 
 ```json
-{"assistant_text":"","dialog_type":"scene_description","tool_calls":[{"id":"call_move_1","tool":"move","args":{"actor_id":"pc_001","from_area_id":"area_001","to_area_id":"area_002"}}]}
+{"assistant_text":"","dialog_type":"scene_description","tool_calls":[{"id":"call_move_1","tool":"move","args":{"actor_id":"pc_001","to_area_id":"area_002"}}]}
 ```
 
 Example 2 (target unclear or user asks where they can go; use move_options; no movement yet; actor_id should
@@ -67,12 +69,12 @@ Allowlist is stored in `campaign.json` as `allowlist`.
 Required args:
 
 - `actor_id`
-- `from_area_id`
 - `to_area_id`
 
 Notes:
 
 - `actor_id` must match the active actor for the turn.
+- `from_area_id` is derived by the backend from the actor's current position and MUST NOT be provided.
 - Movement occurs only when a `move` tool_call is executed; narration alone does not move characters.
 
 ### move_options
@@ -87,7 +89,7 @@ Optional args:
 
 Notes:
 
-- Read-only tool; does not change positions or other state.
+- Read-only tool; does not change actor positions or other state.
 - Returns 1-hop reachable neighbors from the actor's current area.
 - Use for questions like "Can I move?" or "Where can I go?" without committing to movement.
 
@@ -123,10 +125,9 @@ Notes:
   "tool": "move",
   "args": {
     "actor_id": "pc_001",
-    "from_area_id": "area_001",
     "to_area_id": "area_002"
   },
-  "result": { "to_area_id": "area_002" },
+  "result": { "from_area_id": "area_001", "to_area_id": "area_002" },
   "timestamp": "2026-01-14T16:05:31+00:00"
 }
 ```
@@ -160,7 +161,6 @@ Move options result payload:
     "actor_id": "pc_001"
   },
   "result": {
-    "from_area_id": "area_001",
     "options": [
       { "to_area_id": "area_002", "name": "Side Room" }
     ]

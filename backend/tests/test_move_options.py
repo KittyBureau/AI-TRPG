@@ -4,6 +4,7 @@ import pytest
 
 from backend.app.tool_executor import execute_tool_calls
 from backend.domain.models import (
+    ActorState,
     Campaign,
     Goal,
     MapArea,
@@ -13,7 +14,6 @@ from backend.domain.models import (
     SettingsSnapshot,
     ToolCall,
 )
-from backend.domain.state_utils import ensure_positions_child, sync_state_positions
 
 
 def _make_campaign(map_data: MapData) -> Campaign:
@@ -30,12 +30,15 @@ def _make_campaign(map_data: MapData) -> Campaign:
         goal=Goal(text="Goal", status="active"),
         milestone=Milestone(current="intro", last_advanced_turn=0),
         map=map_data,
-        positions={"pc_001": "area_001"},
-        hp={"pc_001": 10},
-        character_states={"pc_001": "alive"},
+        actors={
+            "pc_001": ActorState(
+                position="area_001",
+                hp=10,
+                character_state="alive",
+                meta={},
+            )
+        },
     )
-    sync_state_positions(campaign)
-    ensure_positions_child(campaign, selected.party_character_ids)
     return campaign
 
 
@@ -68,7 +71,6 @@ def test_move_options_1hop_returns_neighbors() -> None:
     assert tool_feedback is None
     assert len(applied_actions) == 1
     result = applied_actions[0].result
-    assert result["from_area_id"] == "area_001"
     assert result["options"] == [
         {"to_area_id": "area_002", "name": "Side Room"},
         {"to_area_id": "area_003", "name": "Hall"},
@@ -92,16 +94,19 @@ def test_move_options_does_not_change_positions() -> None:
         connections=[],
     )
     campaign = _make_campaign(map_data)
-    before_positions = dict(campaign.positions)
-    before_parent_positions = dict(campaign.state.positions_parent)
+    before_positions = {
+        actor_id: actor.position for actor_id, actor in campaign.actors.items()
+    }
     call = ToolCall(id="call_002", tool="move_options", args={})
     applied_actions, tool_feedback = execute_tool_calls(
         campaign, "pc_001", [call]
     )
     assert tool_feedback is None
     assert len(applied_actions) == 1
-    assert campaign.positions == before_positions
-    assert campaign.state.positions_parent == before_parent_positions
+    after_positions = {
+        actor_id: actor.position for actor_id, actor in campaign.actors.items()
+    }
+    assert after_positions == before_positions
 
 
 @pytest.mark.parametrize(
@@ -130,7 +135,7 @@ def test_move_options_respects_allowlist_or_state(
     )
     campaign = _make_campaign(map_data)
     campaign.allowlist = list(allowlist)
-    campaign.character_states["pc_001"] = state
+    campaign.actors["pc_001"].character_state = state
     call = ToolCall(id="call_fail", tool="move_options", args=call_args)
     applied_actions, tool_feedback = execute_tool_calls(
         campaign, "pc_001", [call]

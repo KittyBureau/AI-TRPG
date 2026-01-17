@@ -43,7 +43,7 @@ uvicorn backend.api.main:app --reload
 ```
 
 验证点：
-- storage/ 下生成 campaign.json
+- storage/campaigns/<campaign_id>/campaign.json 生成
 - settings_snapshot 与 settings_revision=0 存在
 
 ---
@@ -86,21 +86,23 @@ uvicorn backend.api.main:app --reload
 - 返回 narrative_text
 - turn_log.jsonl 新增 1 行
 - 无 tool_calls / applied_actions
-- state_summary 与 campaign.json 一致
+- state_summary 与 campaign.json 中 actors 状态一致（positions/hp/character_states 为派生值）
 
 ---
 
 ### Step 5：工具调用（移动）
+> 破坏性变更：move 只允许 args={actor_id,to_area_id}，包含 from_area_id 会返回 invalid_args。
+
 ```json
 {
   "campaign_id": "camp_0001",
-  "user_input": "tool: {\"id\":\"call_001\",\"tool\":\"move\",\"args\":{\"actor_id\":\"pc_001\",\"from_area_id\":\"area_001\",\"to_area_id\":\"area_002\"},\"reason\":\"move\"}"
+  "user_input": "tool: {\"id\":\"call_001\",\"tool\":\"move\",\"args\":{\"actor_id\":\"pc_001\",\"to_area_id\":\"area_002\"},\"reason\":\"move\"}"
 }
 ```
 
 验证点：
 - applied_actions 含 move
-- campaign.json 中 positions 更新
+- campaign.json 中 actors.pc_001.position 更新
 - turn_log.jsonl 记录 applied_actions 与 state_summary
 
 ---
@@ -115,7 +117,7 @@ uvicorn backend.api.main:app --reload
 
 验证点：
 - hp 变化
-- character_states 正确进入 dying/dead
+- actors.pc_001.character_state 正确进入 dying/dead
 - rules.hp_zero_ends_game 生效
 
 ---
@@ -157,8 +159,8 @@ uvicorn backend.api.main:app --reload
 ## 四、文件级验证清单
 
 ### 必须存在
-- storage/{campaign_id}/campaign.json
-- storage/{campaign_id}/turn_log.jsonl
+- storage/campaigns/<campaign_id>/campaign.json
+- storage/campaigns/<campaign_id>/turn_log.jsonl
 
 ### turn_log.jsonl 每行必须包含
 - turn_id / timestamp

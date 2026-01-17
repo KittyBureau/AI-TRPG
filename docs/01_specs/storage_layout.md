@@ -43,31 +43,27 @@ storage/
     ]
   },
   "state": {
-    "positions": {
-      "pc_001": "area_001",
-      "pc_002": "area_001"
+    "positions": {},
+    "positions_parent": {},
+    "positions_child": {}
+  },
+  "actors": {
+    "pc_001": {
+      "position": "area_001",
+      "hp": 10,
+      "character_state": "alive",
+      "meta": {}
     },
-    "positions_parent": {
-      "pc_001": "area_001",
-      "pc_002": "area_001"
-    },
-    "positions_child": {
-      "pc_001": null,
-      "pc_002": null
+    "pc_002": {
+      "position": "area_001",
+      "hp": 10,
+      "character_state": "alive",
+      "meta": {}
     }
   },
-  "positions": {
-    "pc_001": "area_001",
-    "pc_002": "area_001"
-  },
-  "hp": {
-    "pc_001": 10,
-    "pc_002": 10
-  },
-  "character_states": {
-    "pc_001": "alive",
-    "pc_002": "alive"
-  },
+  "positions": {},
+  "hp": {},
+  "character_states": {},
   "settings_snapshot": {
     "context": {
       "full_context_enabled": true,
@@ -106,12 +102,14 @@ storage/
 | map | object | Areas and derived connections. |
 | map.areas.*.reachable_area_ids | array | Authoritative outbound reachability list. |
 | map.connections | array | Derived from `reachable_area_ids` on write. |
-| state | object | Hierarchical position state. |
-| state.positions_parent | object | Parent-layer positions by entity id. |
-| state.positions_child | object | Child-layer positions by entity id (null if not in sub-map). |
-| positions | object | Backward-compatible parent positions by id. Movement changes are applied via tool execution; narration alone does not change positions. |
-| hp | object | Character HP by id. |
-| character_states | object | Character state by id. |
+| state | object | Reserved for future map-related flags; not authoritative for actor positions. |
+| state.positions | object | Legacy position mirrors (empty after migration). |
+| state.positions_parent | object | Legacy position mirrors (empty after migration). |
+| state.positions_child | object | Legacy position mirrors (empty after migration). |
+| actors | object | Actor state keyed by actor id (`position` is authoritative). |
+| positions | object | Legacy positions (empty after migration; derived from actors when needed). |
+| hp | object | Legacy HP map (empty after migration; derived from actors when needed). |
+| character_states | object | Legacy character state map (empty after migration; derived from actors when needed). |
 | settings_snapshot | object | Current settings snapshot. |
 | settings_snapshot.context | object | Context settings. |
 | settings_snapshot.rules | object | Rules settings. |
@@ -153,8 +151,8 @@ Each line is a JSON object:
   "applied_actions": [
     {
       "tool": "move",
-      "args": { "actor_id": "pc_001", "from_area_id": "area_001", "to_area_id": "area_002" },
-      "result": { "to_area_id": "area_002" },
+      "args": { "actor_id": "pc_001", "to_area_id": "area_002" },
+      "result": { "from_area_id": "area_001", "to_area_id": "area_002" },
       "timestamp": "2026-01-14T16:05:31+00:00"
     }
   ],
@@ -205,6 +203,10 @@ Each line is a JSON object:
 }
 ```
 
+Breaking change: move tool_calls no longer accept `from_area_id` in args. Any tool_call
+that includes `from_area_id` now fails with `invalid_args`. The backend still records
+`from_area_id` in applied_actions for audit.
+
 ## turn_log.jsonl fields
 
 | Field | Type | Notes |
@@ -220,4 +222,4 @@ Each line is a JSON object:
 | applied_actions | array | Applied tool results. |
 | tool_feedback | object | Failed tool calls with reasons. |
 | conflict_report | object | Conflict info when retries occur. |
-| state_summary | object | Includes `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`. |
+| state_summary | object | Includes `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states` (derived from `actors`). |

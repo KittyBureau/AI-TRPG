@@ -1,34 +1,100 @@
 from __future__ import annotations
 
-from typing import Iterable
+import warnings
+from typing import Dict, Optional, Tuple
 
-from backend.domain.models import Campaign
+from backend.domain.models import ActorState, Campaign, MapData
 
-
-def sync_state_positions(campaign: Campaign) -> None:
-    if campaign.positions:
-        campaign.state.positions_parent = dict(campaign.positions)
-    elif campaign.state.positions_parent:
-        campaign.positions = dict(campaign.state.positions_parent)
-    elif campaign.state.positions:
-        campaign.positions = dict(campaign.state.positions)
-        campaign.state.positions_parent = dict(campaign.state.positions)
-
-    if campaign.state.positions_parent:
-        campaign.state.positions = dict(campaign.state.positions_parent)
+DEFAULT_HP = 10
+DEFAULT_CHARACTER_STATE = "alive"
 
 
-def ensure_positions_child(
-    campaign: Campaign, character_ids: Iterable[str]
+def ensure_actor(campaign: Campaign, actor_id: str) -> ActorState:
+    if not isinstance(campaign.actors, dict):
+        campaign.actors = {}
+    actor = campaign.actors.get(actor_id)
+    if isinstance(actor, ActorState):
+        return actor
+    if isinstance(actor, dict):
+        try:
+            actor = ActorState(**actor)
+        except Exception:
+            actor = ActorState()
+    else:
+        actor = ActorState()
+    campaign.actors[actor_id] = actor
+    return actor
+
+
+def update_actor_position(
+    campaign: Campaign, actor_id: str, area_id: Optional[str]
 ) -> None:
-    for character_id in character_ids:
-        if character_id not in campaign.state.positions_child:
-            campaign.state.positions_child[character_id] = None
+    actor = ensure_actor(campaign, actor_id)
+    actor.position = area_id
 
 
-def set_parent_position(
-    campaign: Campaign, character_id: str, area_id: str
-) -> None:
-    campaign.positions[character_id] = area_id
-    campaign.state.positions_parent[character_id] = area_id
-    campaign.state.positions[character_id] = area_id
+def validate_actors_state(
+    campaign: Campaign, map_data: Optional[MapData] = None
+) -> bool:
+    updated = False
+    if not isinstance(campaign.actors, dict):
+        campaign.actors = {}
+        updated = True
+
+    for actor_id in list(campaign.actors.keys()):
+        actor = campaign.actors[actor_id]
+        if not isinstance(actor, ActorState):
+            if isinstance(actor, dict):
+                try:
+                    actor = ActorState(**actor)
+                except Exception:
+                    actor = ActorState()
+            else:
+                actor = ActorState()
+            campaign.actors[actor_id] = actor
+            updated = True
+
+        if actor.position is not None and not isinstance(actor.position, str):
+            actor.position = None
+            updated = True
+        if not isinstance(actor.hp, int):
+            actor.hp = DEFAULT_HP
+            updated = True
+        if actor.hp < 0:
+            actor.hp = 0
+            updated = True
+        if not isinstance(actor.character_state, str):
+            actor.character_state = DEFAULT_CHARACTER_STATE
+            updated = True
+        if not isinstance(actor.meta, dict):
+            actor.meta = {}
+            updated = True
+
+        if map_data and actor.position is not None:
+            if actor.position not in map_data.areas:
+                warnings.warn(
+                    f"Unknown area_id for actor {actor_id}: {actor.position}",
+                    RuntimeWarning,
+                )
+                actor.position = None
+                updated = True
+
+    return updated
+
+
+def derive_state_maps(
+    campaign: Campaign,
+) -> Tuple[Dict[str, str], Dict[str, str], Dict[str, Optional[str]], Dict[str, int], Dict[str, str]]:
+    positions: Dict[str, str] = {}
+    hp: Dict[str, int] = {}
+    character_states: Dict[str, str] = {}
+    positions_child: Dict[str, Optional[str]] = {}
+    for actor_id, actor in campaign.actors.items():
+        if not isinstance(actor, ActorState):
+            actor = ensure_actor(campaign, actor_id)
+        if actor.position is not None:
+            positions[actor_id] = actor.position
+        hp[actor_id] = actor.hp
+        character_states[actor_id] = actor.character_state
+        positions_child[actor_id] = None
+    return positions, dict(positions), positions_child, hp, character_states
