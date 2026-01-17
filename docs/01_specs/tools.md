@@ -19,6 +19,38 @@ Structure:
 }
 ```
 
+## Tool-call movement: prompt contract (anti-silent response)
+
+Contract:
+
+- Output schema: `assistant_text`, `dialog_type`, `tool_calls`.
+- Movement intent -> tool_calls must include `move`; assistant_text may be empty or a very short plan_note.
+- Target unclear or user asks where they can go -> use `move_options`; explicitly state no movement yet.
+- If tool_calls is empty -> assistant_text MUST be a non-empty GM response; must not claim completed movement.
+- Context JSON uses `ensure_ascii=False` so Chinese remains readable in the prompt.
+
+Examples (schema-accurate):
+
+Example 1 (move intent is explicit and IDs are known; assistant_text empty; actor_id/from_area_id/to_area_id
+must come from Context.selected.active_actor_id and Context.positions[...] plus the user's target):
+
+```json
+{"assistant_text":"","dialog_type":"scene_description","tool_calls":[{"id":"call_move_1","tool":"move","args":{"actor_id":"pc_001","from_area_id":"area_001","to_area_id":"area_002"}}]}
+```
+
+Example 2 (target unclear or user asks where they can go; use move_options; no movement yet; actor_id should
+come from Context.selected.active_actor_id):
+
+```json
+{"assistant_text":"No movement yet. I will fetch 1-hop options.","dialog_type":"scene_description","tool_calls":[{"id":"call_move_options_1","tool":"move_options","args":{"actor_id":"pc_001"}}]}
+```
+
+Example 3 (no tool call required; MUST respond with non-empty assistant_text):
+
+```json
+{"assistant_text":"You are currently in area_002. The corridor is quiet. What do you do next?","dialog_type":"scene_description","tool_calls":[]}
+```
+
 ## Allowed Tools (default allowlist)
 
 - `move`
