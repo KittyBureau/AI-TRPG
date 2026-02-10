@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-trpg.local/schemas/character_fact.v1.schema.json",
+  "title": "CharacterFact v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "character_id",
+    "name",
+    "role",
+    "tags",
+    "attributes",
+    "background",
+    "appearance",
+    "personality_tags"
+  ],
+  "properties": {
+    "character_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 64,
+      "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$",
+      "description": "Unique character ID."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "description": "Display name."
+    },
+    "role": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40,
+      "description": "Narrative role/archetype."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Static semantic tags for this character.",
+      "default": [],
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 24
+      }
+    },
+    "attributes": {
+      "type": "object",
+      "description": "Open key-value bag for static attributes (not runtime state).",
+      "default": {},
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean"
+        ]
+      }
+    },
+    "background": {
+      "type": "string",
+      "description": "Backstory summary.",
+      "default": "",
+      "maxLength": 400
+    },
+    "appearance": {
+      "type": "string",
+      "description": "Appearance summary.",
+      "default": "",
+      "maxLength": 240
+    },
+    "personality_tags": {
+      "type": "array",
+      "description": "Personality keywords.",
+      "default": [],
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 24
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Predefined extension area only.",
+      "properties": {
+        "hooks": {
+          "type": "array",
+          "description": "Optional typed narrative hooks.",
+          "default": [],
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        },
+        "language": {
+          "type": "string",
+          "default": "zh-CN",
+          "description": "Content language code."
+        },
+        "source": {
+          "type": "string",
+          "default": "llm",
+          "description": "Source marker (llm/manual/import)."
+        }
+      },
+      "default": {}
+    }
+  }
+}

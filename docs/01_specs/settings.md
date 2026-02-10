@@ -37,11 +37,11 @@ Each valid patch increments `settings_revision`.
 
 ## API
 
-### GET /api/settings/schema?campaign_id=...
+### GET /api/v1/settings/schema?campaign_id=...
 
 Returns `definitions` and the current `snapshot`.
 
-### POST /api/settings/apply
+### POST /api/v1/settings/apply
 
 Request:
 

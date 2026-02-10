@@ -131,6 +131,54 @@ storage/
   - `storage/campaigns/{campaign_id}/characters/{id}.fact.json`
   - `storage/campaigns/{campaign_id}/characters/{id}.state.json`
 
+## CharacterFact generated artifacts (temporary, non-authoritative)
+
+Generated CharacterFact outputs are stored for review/reuse and do not replace
+runtime actor authority:
+
+- `storage/campaigns/{campaign_id}/characters/generated/batch_{utc_ts}_{request_id}.json`
+- `storage/campaigns/{campaign_id}/characters/generated/{character_id}.fact.draft.json`
+
+Batch payload shape:
+
+```json
+{
+  "schema_version": "character_fact.v1",
+  "request_id": "req_001",
+  "campaign_id": "camp_0001",
+  "generated_at": "2026-02-10T12:00:00+00:00",
+  "config_snapshot": {},
+  "request_snapshot": {},
+  "items": []
+}
+```
+
+Individual draft payload shape:
+
+```json
+{
+  "character_id": "__AUTO_ID__",
+  "name": "Name",
+  "role": "scout",
+  "tags": [],
+  "attributes": {},
+  "background": "",
+  "appearance": "",
+  "personality_tags": [],
+  "meta": {
+    "hooks": [],
+    "language": "zh-CN",
+    "source": "llm"
+  }
+}
+```
+
+Rules:
+
+- Runtime fields (`position`, `hp`, `character_state`) are forbidden in facts.
+- `meta` is predefined-only (`hooks`, `language`, `source`).
+- Turn/tool request-response contracts remain unchanged.
+
 ## Map normalization and validation
 
 - `map.areas.*.reachable_area_ids` is the authoritative adjacency list.

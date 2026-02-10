@@ -18,10 +18,13 @@ incremental delivery.
   go through `CharacterFacade` rather than ad-hoc map access.
 - This keeps turn/tool logic independent from future character storage adapter
   changes.
+- Generated CharacterFact persistence uses app/infra split:
+  - orchestration: `backend/app/character_fact_generation.py`
+  - file IO: `backend/infra/file_repo.py` and `backend/infra/character_fact_store.py`
 
 ## Stage 1 Data Flow
 
-1. `/api/chat/turn` receives `campaign_id` and `user_input` (`actor_id` optional).
+1. `/api/v1/chat/turn` receives `campaign_id` and `user_input` (`actor_id` optional).
 2. `TurnService` loads the campaign from file storage.
 3. If `actor_id` is not provided, `active_actor_id` is used for this turn.
 4. The LLM output provides `dialog_type`; missing/invalid values fall back to
@@ -32,7 +35,7 @@ incremental delivery.
 
 ## Turn Request Shape
 
-`POST /api/chat/turn` requires `campaign_id` and `user_input`. `actor_id` is
+`POST /api/v1/chat/turn` requires `campaign_id` and `user_input`. `actor_id` is
 optional and defaults to the campaign's `active_actor_id`.
 
 ```json

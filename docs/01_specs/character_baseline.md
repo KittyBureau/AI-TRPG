@@ -18,7 +18,7 @@
 
 ### 2.1 创建战役并注入角色集合
 
-- `POST /api/campaign/create`
+- `POST /api/v1/campaign/create`
 - 请求可包含：
   - `party_character_ids: string[]`
   - `active_actor_id: string`
@@ -31,7 +31,7 @@
 
 ### 2.2 切换当前行动角色
 
-- `POST /api/campaign/select_actor`
+- `POST /api/v1/campaign/select_actor`
 - 入参：
   - `campaign_id`
   - `active_actor_id`
@@ -40,7 +40,7 @@
 
 ### 2.3 回合接口按角色执行
 
-- `POST /api/chat/turn`
+- `POST /api/v1/chat/turn`
 - 入参：
   - `campaign_id`
   - `user_input`
@@ -51,7 +51,7 @@
 
 ### 2.4 地图视图按角色查看
 
-- `GET /api/map/view?campaign_id=...&actor_id=...`
+- `GET /api/v1/map/view?campaign_id=...&actor_id=...`
 - `actor_id` 可选；不传时使用 `selected.active_actor_id`
 - 返回包含：
   - `active_actor_id`
@@ -146,3 +146,14 @@
 ## 8. 一句话结论
 
 当前项目已有“战役内角色状态管理”与“按角色执行回合”的骨架，但“角色生成器”仍是未落地模块，可在既有 `Campaign + ActorState` 结构上增量扩展。
+
+## 9. Update (2026-02-10, internal-only)
+
+- Added non-API internal CharacterFact generation persistence flow:
+  - `backend/app/character_fact_generation.py`
+  - `backend/scripts/generate_character_facts.py`
+  - `storage/campaigns/{campaign_id}/characters/generated/*`
+- Added runtime CharacterFact read path via facade factory:
+  - `backend/app/character_facade_factory.py`
+  - `backend/infra/character_fact_store.py`
+- This update does not add `/api/characters/*` routes yet.

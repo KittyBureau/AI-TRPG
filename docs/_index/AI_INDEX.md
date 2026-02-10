@@ -18,7 +18,7 @@ Use this as the default reference for every task.
 ## 2. API & Data Contracts
 **Rules**
 - Request/response shapes follow `backend/api/routes/*.py` and `backend/domain/models.py`.
-- `/api/chat/turn` responses include `narrative_text`, `dialog_type`, `tool_calls`, `applied_actions`, `tool_feedback`, `conflict_report`, and `state_summary`.
+- `/api/v1/chat/turn` responses include `narrative_text`, `dialog_type`, `tool_calls`, `applied_actions`, `tool_feedback`, `conflict_report`, and `state_summary`.
 - Changes to `Campaign`, `TurnLogEntry`, or API payloads must update `docs/01_specs/storage_layout.md` and `docs/02_guides/testing/api_test_guide.md`.
 **Checks**
 - Run the API test guide for any changed endpoints.
@@ -32,7 +32,7 @@ Use this as the default reference for every task.
 - LLM output JSON keys are `assistant_text`, `dialog_type`, `tool_calls`; non-JSON output becomes `assistant_text` only.
 **Checks**
 - Validate `DIALOG_TYPES` in `backend/domain/dialog_rules.py` when adding or removing types.
-- Exercise `/api/chat/turn` to confirm fallback behavior.
+- Exercise `/api/v1/chat/turn` to confirm fallback behavior.
 **Scope**
 - `backend/domain/dialog_rules.py`, `backend/app/turn_service.py`, `docs/01_specs/dialog_types.md`.
 
@@ -42,7 +42,7 @@ Use this as the default reference for every task.
 - `apply_settings_patch` enforces type/range rules and mutual exclusion; changed patches increment `settings_revision`.
 - Settings are stored in `campaign.json.settings_snapshot`.
 **Checks**
-- Use `/api/settings/schema` and `/api/settings/apply` to verify definitions and patches.
+- Use `/api/v1/settings/schema` and `/api/v1/settings/apply` to verify definitions and patches.
 - Update `docs/01_specs/settings.md` for any key changes.
 **Scope**
 - `backend/domain/settings.py`, `backend/app/settings_service.py`, `backend/api/routes/settings.py`, `docs/01_specs/settings.md`, `docs/01_specs/storage_layout.md`.
@@ -141,3 +141,17 @@ Use this as the default reference for every task.
 - For alignment tasks, confirm report output path is under `docs/99_human_only/alignment_reports/`.
 **Scope**
 - `backend/**`, `frontend/**`, `docs/00_overview/**`, `docs/01_specs/**`, `docs/02_guides/**`, `docs/99_human_only/alignment_reports/**`, `docs/01_specs/TODO_DOCS_ALIGNMENT.md`.
+
+## 13. CharacterFact Generation & Persistence
+**Rules**
+- Character generation outputs `CharacterFact` only; runtime authority remains `campaign.actors`.
+- CharacterFact schema authority is `docs/01_specs/schemas/character_fact.v1.schema.json`.
+- Prompt protocol authority is `docs/01_specs/prompts/character_fact_generate_v1.md`.
+- Generated artifacts are temporary and must not change turn/tool contracts.
+- Persist generated outputs under `storage/campaigns/<campaign_id>/characters/generated/` using batch + individual draft files.
+**Checks**
+- Verify generated payload excludes runtime fields (`position`, `hp`, `character_state`).
+- Verify `meta` only uses predefined keys (`hooks`, `language`, `source`).
+- Run generation and fact-read tests when touching generation/reading logic.
+**Scope**
+- `backend/app/character_fact_generation.py`, `backend/infra/character_fact_store.py`, `backend/infra/file_repo.py`, `backend/scripts/generate_character_facts.py`, `backend/domain/character_access.py`, `backend/tests/test_character_fact_generation.py`, `docs/01_specs/character_fact_v1.md`, `docs/01_specs/schemas/character_fact.v1.schema.json`, `docs/01_specs/prompts/character_fact_generate_v1.md`.

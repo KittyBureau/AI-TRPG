@@ -18,7 +18,7 @@ uvicorn backend.api.main:app --reload
 1. 复制模板：
    - `storage/config/llm_config.example copy.json` → `storage/config/llm_config.json`
 2. 编辑 `storage/config/llm_config.json` 的 `current_profile` 与 profile 字段
-3. 首次调用 `/api/chat/turn` 时：
+3. 首次调用 `/api/v1/chat/turn` 时：
    - 控制台会提示输入 API key（不回显）
    - 然后提示设置/输入本地口令（不回显）
    - key 会加密保存至 `storage/secrets/keyring.json`
@@ -36,7 +36,7 @@ python -m pytest -q
 ## 二、核心测试流程（推荐顺序）
 
 ### Step 1：创建战役
-**POST /api/campaign/create**
+**POST /api/v1/campaign/create**
 
 请求体（最小）：
 ```json
@@ -55,7 +55,7 @@ python -m pytest -q
 ---
 
 ### Step 2：查看战役列表
-**GET /api/campaign/list**
+**GET /api/v1/campaign/list**
 
 验证点：
 - 新建战役可被列出
@@ -64,7 +64,7 @@ python -m pytest -q
 ---
 
 ### Step 3：切换当前行动角色（可选）
-**POST /api/campaign/select_actor**
+**POST /api/v1/campaign/select_actor**
 
 ```json
 {
@@ -79,7 +79,7 @@ python -m pytest -q
 ---
 
 ### Step 4：普通对话（无工具）
-**POST /api/chat/turn**
+**POST /api/v1/chat/turn**
 
 ```json
 {

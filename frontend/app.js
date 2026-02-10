@@ -420,7 +420,7 @@ function applyActorToRaw() {
 async function refreshCampaigns() {
   const result = await sendRequest({
     method: "GET",
-    path: "/api/campaign/list",
+    path: "/api/v1/campaign/list",
   });
   const data = safeJsonParse(result.responseText);
   if (!data) {
@@ -452,7 +452,7 @@ async function createCampaign() {
   const raw = elements.createCampaignRaw.value;
   const result = await sendRequest({
     method: "POST",
-    path: "/api/campaign/create",
+    path: "/api/v1/campaign/create",
     bodyText: raw,
   });
   const data = safeJsonParse(result.responseText);
@@ -466,7 +466,7 @@ async function selectActor() {
   const raw = elements.selectActorRaw.value;
   await sendRequest({
     method: "POST",
-    path: "/api/campaign/select_actor",
+    path: "/api/v1/campaign/select_actor",
     bodyText: raw,
   });
 }
@@ -475,7 +475,7 @@ async function sendTurn() {
   const raw = elements.turnRaw.value;
   const result = await sendRequest({
     method: "POST",
-    path: "/api/chat/turn",
+    path: "/api/v1/chat/turn",
     bodyText: raw,
   });
   renderTurnResponse(result.responseText);
@@ -487,7 +487,7 @@ async function loadSchema() {
   });
   const result = await sendRequest({
     method: "GET",
-    path: `/api/settings/schema?${query.toString()}`,
+    path: `/api/v1/settings/schema?${query.toString()}`,
   });
   const data = safeJsonParse(result.responseText);
   if (!data) {
@@ -504,7 +504,7 @@ async function applySettings() {
   const bodyText = buildSettingsApplyBody(state.currentCampaignId, patchRaw);
   const result = await sendRequest({
     method: "POST",
-    path: "/api/settings/apply",
+    path: "/api/v1/settings/apply",
     bodyText,
   });
   const data = safeJsonParse(result.responseText);

@@ -17,7 +17,7 @@
 - 状态：位置权威为 `actors[*].position`；`positions_parent` / `positions_child` 为遗留字段，不作为权威
 
 ## 测试入口
-- 唯一入口：`POST /api/chat/turn`
+- 唯一入口：`POST /api/v1/chat/turn`
 - 前置：FastAPI 运行于 http://127.0.0.1:8000，LLM 配置有效
 
 ## 结果判定语义
@@ -47,9 +47,9 @@
 
 ## 测试流程
 ### 流程 A：/docs 手工执行
-1. 打开 http://127.0.0.1:8000/docs
-2. 调用 `POST /api/campaign/create` 创建新 campaign
-3. 在 `POST /api/chat/turn` 中依次执行 Case A~E
+1. 打开 http://127.0.0.1:8000/api/v1/docs
+2. 调用 `POST /api/v1/campaign/create` 创建新 campaign
+3. 在 `POST /api/v1/chat/turn` 中依次执行 Case A~E
 4. 每次执行后检查 `storage/campaigns/<campaign_id>/campaign.json`
 
 ### 流程 B：脚本批量执行

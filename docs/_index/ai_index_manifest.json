@@ -125,6 +125,21 @@
         "docs/99_human_only/alignment_reports/**",
         "docs/01_specs/TODO_DOCS_ALIGNMENT.md"
       ]
+    },
+    {
+      "id": "13",
+      "title": "CharacterFact Generation & Persistence",
+      "paths": [
+        "backend/app/character_fact_generation.py",
+        "backend/infra/character_fact_store.py",
+        "backend/infra/file_repo.py",
+        "backend/scripts/generate_character_facts.py",
+        "backend/domain/character_access.py",
+        "backend/tests/test_character_fact_generation.py",
+        "docs/01_specs/character_fact_v1.md",
+        "docs/01_specs/schemas/character_fact.v1.schema.json",
+        "docs/01_specs/prompts/character_fact_generate_v1.md"
+      ]
     }
   ],
   "triggers": [
@@ -167,6 +182,9 @@
     "docs/01_specs/dialog_types.md",
     "docs/01_specs/tools.md",
     "docs/01_specs/state_machine.md",
-    "docs/01_specs/conflict_and_retry.md"
+    "docs/01_specs/conflict_and_retry.md",
+    "docs/01_specs/character_fact_v1.md",
+    "docs/01_specs/schemas/character_fact.v1.schema.json",
+    "docs/01_specs/prompts/character_fact_generate_v1.md"
   ]
 }

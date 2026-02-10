@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -138,6 +140,89 @@ class FileRepo:
 
     def _turn_log_path(self, campaign_id: str) -> Path:
         return self._campaign_dir(campaign_id) / "turn_log.jsonl"
+
+    def _generated_characters_dir(self, campaign_id: str) -> Path:
+        return self._campaign_dir(campaign_id) / "characters" / "generated"
+
+    def _sanitize_request_id(self, request_id: str) -> str:
+        cleaned = re.sub(r"[^a-zA-Z0-9_-]+", "_", request_id.strip())
+        return cleaned or "req"
+
+    def _sanitize_character_file_id(self, character_id: str) -> str:
+        cleaned = re.sub(r"[^a-zA-Z0-9_-]+", "_", character_id.strip())
+        return cleaned or "character"
+
+    def save_character_fact_batch(
+        self,
+        campaign_id: str,
+        request_id: str,
+        payload: Dict[str, Any],
+    ) -> Path:
+        generated_dir = self._generated_characters_dir(campaign_id)
+        generated_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        safe_request_id = self._sanitize_request_id(request_id)
+        path = generated_dir / f"batch_{timestamp}_{safe_request_id}.json"
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return path
+
+    def save_character_fact_draft(
+        self,
+        campaign_id: str,
+        character_file_id: str,
+        payload: Dict[str, Any],
+    ) -> Path:
+        generated_dir = self._generated_characters_dir(campaign_id)
+        generated_dir.mkdir(parents=True, exist_ok=True)
+        safe_character_id = self._sanitize_character_file_id(character_file_id)
+        path = generated_dir / f"{safe_character_id}.fact.draft.json"
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return path
+
+    def load_character_fact_draft(
+        self,
+        campaign_id: str,
+        character_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        safe_character_id = self._sanitize_character_file_id(character_id)
+        path = self._generated_characters_dir(campaign_id) / (
+            f"{safe_character_id}.fact.draft.json"
+        )
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+            return None
+        except Exception:
+            return None
+
+    def load_character_fact_from_batches(
+        self,
+        campaign_id: str,
+        character_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        generated_dir = self._generated_characters_dir(campaign_id)
+        if not generated_dir.exists():
+            return None
+        batch_paths = sorted(generated_dir.glob("batch_*.json"), reverse=True)
+        for path in batch_paths:
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            items = payload.get("items")
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                if item.get("character_id") == character_id:
+                    return item
+        return None
 
     def next_campaign_id(self) -> str:
         max_id = 0

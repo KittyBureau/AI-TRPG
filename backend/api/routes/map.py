@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from backend.infra.file_repo import FileRepo
 
-router = APIRouter(prefix="/api/map", tags=["map"])
+router = APIRouter(prefix="/map", tags=["map"])
 
 
 def _repo() -> FileRepo:

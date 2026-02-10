@@ -28,6 +28,7 @@ class CharacterFact:
     background: str = ""
     appearance: str = ""
     personality_tags: List[str] = field(default_factory=list)
+    meta: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -40,6 +41,7 @@ class CharacterView:
     background: str
     appearance: str
     personality_tags: List[str]
+    meta: Dict[str, Any]
     position: Optional[str]
     hp: int
     character_state: str
@@ -185,12 +187,28 @@ class StubCharacterFactStore:
             background=background if isinstance(background, str) else "",
             appearance=appearance if isinstance(appearance, str) else "",
             personality_tags=self._read_string_list(meta.get("personality_tags")),
+            meta=self._read_meta(meta.get("meta")),
         )
 
     def _read_string_list(self, value: object) -> List[str]:
         if not isinstance(value, list):
             return []
         return [item for item in value if isinstance(item, str)]
+
+    def _read_meta(self, value: object) -> Dict[str, Any]:
+        if not isinstance(value, dict):
+            return {}
+        hooks = self._read_string_list(value.get("hooks"))
+        source = value.get("source")
+        language = value.get("language")
+        normalized: Dict[str, Any] = {}
+        if hooks:
+            normalized["hooks"] = hooks
+        if isinstance(language, str):
+            normalized["language"] = language
+        if isinstance(source, str):
+            normalized["source"] = source
+        return normalized
 
 
 class CharacterFacade:
@@ -222,6 +240,7 @@ class CharacterFacade:
             background=fact.background,
             appearance=fact.appearance,
             personality_tags=list(fact.personality_tags),
+            meta=dict(fact.meta),
             position=state.position,
             hp=state.hp,
             character_state=state.character_state,

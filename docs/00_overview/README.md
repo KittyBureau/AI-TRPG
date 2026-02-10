@@ -9,6 +9,9 @@
 
 - `docs/01_specs/architecture.md` - Layering and stage 1 flow.
 - `docs/01_specs/character_baseline.md` - Current character-related capabilities baseline.
+- `docs/01_specs/character_fact_v1.md` - CharacterFact v1 spec freeze and persistence protocol.
+- `docs/01_specs/schemas/character_fact.v1.schema.json` - CharacterFact v1 JSON schema.
+- `docs/01_specs/prompts/character_fact_generate_v1.md` - CharacterFact generation prompt protocol.
 - `docs/01_specs/storage_layout.md` - Storage paths and JSON schemas.
 - `docs/01_specs/settings.md` - Settings definitions, patching, and validation.
 - `docs/01_specs/dialog_types.md` - Dialog types, rules, and source field.
@@ -20,6 +23,7 @@
 
 - `docs/02_guides/testing/api_test_guide.md` - API test guide (Stage 1-4).
 - `docs/02_guides/testing/map_generate_manual_test.md` - Manual map_generate regression/smoke.
+- `docs/02_guides/api_v1_route_migration.md` - API route prefix migration note (`/api/v1`).
 
 ## Reference Inputs (codex-start)
 

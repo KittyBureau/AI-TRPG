@@ -17,6 +17,9 @@ Current implementation is in:
   - `CampaignCharacterStateStore`
   - `StubCharacterFactStore`
   - `CharacterFacade`
+- Runtime file-backed CharacterFact read implementation:
+  - `backend/infra/character_fact_store.py` (`GeneratedCharacterFactStore`)
+  - `backend/app/character_facade_factory.py` (`create_runtime_character_facade`)
 
 ## Current Source Of Truth
 
@@ -36,6 +39,8 @@ Current implementation is in:
   - `get_view(campaign, character_id)`
   - `list_party_views(campaign)`
   - `build_state_maps(campaign, character_ids=None)`
+- Runtime creation should prefer `create_runtime_character_facade` so fact reads
+  can include generated draft files with soft-fail fallback.
 
 ## Planned Storage Migration (Not Implemented Yet)
 

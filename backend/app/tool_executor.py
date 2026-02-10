@@ -4,10 +4,10 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
+from backend.app.character_facade_factory import create_runtime_character_facade
 from backend.domain.character_access import (
     CharacterFacade,
     CharacterState,
-    create_character_facade,
 )
 from backend.domain.models import (
     AppliedAction,
@@ -30,7 +30,7 @@ def execute_tool_calls(
 ) -> Tuple[List[AppliedAction], Optional[ToolFeedback]]:
     applied_actions: List[AppliedAction] = []
     failed_calls: List[FailedCall] = []
-    character_facade = create_character_facade()
+    character_facade = create_runtime_character_facade()
 
     for call in tool_calls:
         if call.tool not in campaign.allowlist:

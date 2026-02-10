@@ -70,7 +70,7 @@ async function loadMap() {
     return;
   }
   const query = new URLSearchParams({ campaign_id: campaignId });
-  const url = buildUrl(`/api/map/view?${query.toString()}`);
+  const url = buildUrl(`/api/v1/map/view?${query.toString()}`);
 
   setStatus("Loading...");
   try {

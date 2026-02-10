@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from backend.app.turn_service import TurnService
 from backend.infra.file_repo import FileRepo
 
-router = APIRouter(prefix="/api/campaign", tags=["campaign"])
+router = APIRouter(prefix="/campaign", tags=["campaign"])
 
 
 def _service() -> TurnService:

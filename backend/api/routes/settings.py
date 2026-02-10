@@ -10,7 +10,7 @@ from backend.app.settings_service import SettingsService
 from backend.domain.models import SettingsSnapshot
 from backend.infra.file_repo import FileRepo
 
-router = APIRouter(prefix="/api/settings", tags=["settings"])
+router = APIRouter(prefix="/settings", tags=["settings"])
 
 
 def _service() -> SettingsService:

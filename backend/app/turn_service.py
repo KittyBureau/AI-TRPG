@@ -5,11 +5,11 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
+from backend.app.character_facade_factory import create_runtime_character_facade
 from backend.app.conflict_detector import detect_conflicts
 from backend.app.tool_executor import execute_tool_calls
 from backend.domain.character_access import (
     CharacterState,
-    create_character_facade,
 )
 from backend.domain.dialog_rules import DEFAULT_DIALOG_TYPE, DIALOG_TYPES
 from backend.domain.map_models import normalize_map
@@ -36,7 +36,7 @@ from backend.domain.state_utils import (
 from backend.infra.file_repo import FileRepo
 from backend.infra.llm_client import LLMClient
 
-_CHARACTER_FACADE = create_character_facade()
+_CHARACTER_FACADE = create_runtime_character_facade()
 
 
 class TurnService:
