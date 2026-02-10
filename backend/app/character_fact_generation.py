@@ -3,10 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Sequence
+from uuid import uuid4
 
+from backend.domain.character_fact_schema import (
+    CharacterFactSchemaError,
+    is_valid_character_id,
+    validate_character_fact,
+)
 from backend.infra.file_repo import FileRepo
 
 FORBIDDEN_RUNTIME_FIELDS = {"position", "hp", "character_state"}
+CHARACTER_FACT_SCHEMA_ID = "character_fact.v1"
+CHARACTER_FACT_SCHEMA_VERSION = "1"
 
 
 @dataclass(frozen=True)
@@ -56,6 +64,18 @@ class CharacterFactGenerationConfig:
         }
 
 
+class CharacterFactRequestError(ValueError):
+    pass
+
+
+class CharacterFactConflictError(RuntimeError):
+    pass
+
+
+class CharacterFactValidationError(ValueError):
+    pass
+
+
 @dataclass
 class CharacterFactGenerationRequest:
     campaign_id: str
@@ -69,28 +89,39 @@ class CharacterFactGenerationRequest:
     count: int = 3
     max_count: int = 20
     id_policy: str = "system"
+    extra_params: Dict[str, Any] = field(default_factory=dict)
 
     def to_snapshot(self) -> Dict[str, Any]:
-        return {
-            "campaign_id": self.campaign_id,
-            "request_id": self.request_id,
-            "language": self.language,
-            "tone_style": list(self.tone_style),
-            "tone_vocab_only": self.tone_vocab_only,
-            "allowed_tones": list(self.allowed_tones),
-            "party_context": list(self.party_context),
-            "constraints": dict(self.constraints),
-            "count": self.count,
-            "max_count": self.max_count,
-            "id_policy": self.id_policy,
-        }
+        snapshot = dict(self.extra_params)
+        snapshot.update(
+            {
+                "campaign_id": self.campaign_id,
+                "request_id": self.request_id,
+                "language": self.language,
+                "tone_style": list(self.tone_style),
+                "tone_vocab_only": self.tone_vocab_only,
+                "allowed_tones": list(self.allowed_tones),
+                "party_context": list(self.party_context),
+                "constraints": dict(self.constraints),
+                "count": self.count,
+                "max_count": self.max_count,
+                "id_policy": self.id_policy,
+            }
+        )
+        return snapshot
 
 
 @dataclass
 class CharacterFactBatchWriteResult:
+    campaign_id: str
+    request_id: str
+    utc_ts: str
     batch_path: str
     individual_paths: List[str]
     items: List[Dict[str, Any]]
+    count_requested: int
+    count_generated: int
+    warnings: List[str] = field(default_factory=list)
 
 
 class CharacterFactGenerationService:
@@ -106,51 +137,178 @@ class CharacterFactGenerationService:
         self,
         request: CharacterFactGenerationRequest,
         drafts: Sequence[Mapping[str, Any]],
+        *,
+        count_override: int | None = None,
+        warnings: Sequence[str] | None = None,
     ) -> CharacterFactBatchWriteResult:
-        normalized_items = self._normalize_batch(request, drafts)
-        batch_payload = {
-            "schema_version": "character_fact.v1",
-            "request_id": request.request_id,
-            "campaign_id": request.campaign_id,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "config_snapshot": self.config.to_dict(),
-            "request_snapshot": request.to_snapshot(),
-            "items": normalized_items,
-        }
-        batch_path = self.repo.save_character_fact_batch(
+        self._validate_request(request)
+        existing = self.repo.find_character_fact_batch_path(
             request.campaign_id,
             request.request_id,
-            batch_payload,
         )
+        if existing is not None:
+            raise CharacterFactConflictError(
+                f"request_id already exists: {request.request_id}"
+            )
+
+        target_count, count_warnings = self._resolve_count(request)
+        if count_override is not None:
+            target_count = max(0, count_override)
+            count_warnings = []
+        all_warnings = list(count_warnings)
+        if warnings:
+            all_warnings.extend([message for message in warnings if isinstance(message, str)])
+
+        normalized_items = self._run_normalize_phase(
+            request,
+            drafts,
+            target_count,
+        )
+        normalized_items = self._allocate_character_ids(
+            request.campaign_id,
+            normalized_items,
+        )
+        validated_items = self._validate_items(normalized_items)
+        utc_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        batch_payload = {
+            "schema_id": CHARACTER_FACT_SCHEMA_ID,
+            "schema_version": CHARACTER_FACT_SCHEMA_VERSION,
+            "campaign_id": request.campaign_id,
+            "request_id": request.request_id,
+            "utc_ts": utc_ts,
+            "params": request.to_snapshot(),
+            "items": validated_items,
+        }
+        try:
+            batch_path = self.repo.save_character_fact_batch(
+                request.campaign_id,
+                request.request_id,
+                batch_payload,
+                utc_ts=utc_ts,
+            )
+        except FileExistsError as exc:
+            raise CharacterFactConflictError(
+                f"request_id already exists: {request.request_id}"
+            ) from exc
 
         individual_paths: List[str] = []
-        for index, item in enumerate(normalized_items, start=1):
+        for item in validated_items:
             character_id = item["character_id"]
-            if character_id == "__AUTO_ID__":
-                file_id = f"__AUTO_ID___{index:03d}"
-            else:
-                file_id = character_id
             path = self.repo.save_character_fact_draft(
                 request.campaign_id,
-                file_id,
+                character_id,
                 item,
             )
-            individual_paths.append(str(path))
+            individual_paths.append(self.repo.to_storage_relative_path(path))
 
         return CharacterFactBatchWriteResult(
-            batch_path=str(batch_path),
+            campaign_id=request.campaign_id,
+            request_id=request.request_id,
+            utc_ts=utc_ts,
+            batch_path=self.repo.to_storage_relative_path(batch_path),
             individual_paths=individual_paths,
-            items=normalized_items,
+            items=validated_items,
+            count_requested=request.count,
+            count_generated=len(validated_items),
+            warnings=all_warnings,
         )
+
+    def generate_and_persist(
+        self,
+        request: CharacterFactGenerationRequest,
+    ) -> CharacterFactBatchWriteResult:
+        self._validate_request(request)
+        count, warnings = self._resolve_count(request)
+        drafts = self._run_draft_phase(request, count)
+        return self.persist_generated_batch(
+            request,
+            drafts,
+            count_override=count,
+            warnings=warnings,
+        )
+
+    def make_request_id(self) -> str:
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        return f"req_{timestamp}_{uuid4().hex[:6]}"
+
+    def _validate_request(self, request: CharacterFactGenerationRequest) -> None:
+        if not isinstance(request.request_id, str) or not request.request_id.strip():
+            raise CharacterFactRequestError("request_id must be a non-empty string.")
+        if request.count <= 0:
+            raise CharacterFactRequestError("count must be > 0.")
+        if request.max_count <= 0:
+            raise CharacterFactRequestError("max_count must be > 0.")
+        if request.id_policy not in {"system", "model"}:
+            raise CharacterFactRequestError("id_policy must be 'system' or 'model'.")
+
+        allowed_roles = self._read_str_list(request.constraints.get("allowed_roles"))
+        if not allowed_roles:
+            raise CharacterFactRequestError("constraints.allowed_roles must not be empty.")
+        if request.tone_vocab_only and not self._read_str_list(request.allowed_tones):
+            raise CharacterFactRequestError(
+                "allowed_tones is required when tone_vocab_only=true."
+            )
+
+    def _resolve_count(self, request: CharacterFactGenerationRequest) -> tuple[int, List[str]]:
+        effective_max = min(request.max_count, self.config.count_max)
+        target_count = min(request.count, effective_max)
+        warnings: List[str] = []
+        if request.count > target_count:
+            warnings.append(
+                f"count capped from {request.count} to {target_count} by max_count policy."
+            )
+        return target_count, warnings
+
+    def _run_draft_phase(
+        self,
+        request: CharacterFactGenerationRequest,
+        count: int,
+    ) -> List[Dict[str, Any]]:
+        allowed_roles = self._read_str_list(request.constraints.get("allowed_roles"))
+        tone_tags = self._normalize_string_list(request.tone_style, 3, 24)
+        drafts: List[Dict[str, Any]] = []
+        for index in range(1, count + 1):
+            role = allowed_roles[(index - 1) % len(allowed_roles)]
+            character_id = "__AUTO_ID__"
+            if request.id_policy == "model":
+                character_id = f"model_{index:03d}"
+            tags = self._normalize_string_list([role] + tone_tags, 8, 24)
+            personality_tags = self._normalize_string_list(tone_tags, 8, 24) or ["steady"]
+            drafts.append(
+                {
+                    "character_id": character_id,
+                    "name": f"{role.title()} Candidate {index}",
+                    "role": role,
+                    "tags": tags,
+                    "attributes": {"origin": "generated", "rank": index},
+                    "background": "",
+                    "appearance": "",
+                    "personality_tags": personality_tags,
+                    "meta": {
+                        "language": request.language or self.config.default_language,
+                        "source": "llm",
+                        "hooks": [],
+                    },
+                }
+            )
+        return drafts
+
+    def _run_normalize_phase(
+        self,
+        request: CharacterFactGenerationRequest,
+        drafts: Sequence[Mapping[str, Any]],
+        target_count: int,
+    ) -> List[Dict[str, Any]]:
+        return self._normalize_batch(request, drafts, target_count)
 
     def _normalize_batch(
         self,
         request: CharacterFactGenerationRequest,
         drafts: Sequence[Mapping[str, Any]],
+        target_count: int,
     ) -> List[Dict[str, Any]]:
-        limit = max(0, min(request.count, request.max_count, self.config.count_max))
-        selected: List[Mapping[str, Any]] = list(drafts[:limit])
-        while len(selected) < limit:
+        selected: List[Mapping[str, Any]] = list(drafts[:target_count])
+        while len(selected) < target_count:
             selected.append({})
 
         normalized: List[Dict[str, Any]] = []
@@ -162,6 +320,53 @@ class CharacterFactGenerationService:
                 item["character_id"] = self._dedupe_id(character_id, used_ids)
             normalized.append(item)
         return normalized
+
+    def _allocate_character_ids(
+        self,
+        campaign_id: str,
+        items: Sequence[Mapping[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        used_ids: set[str] = set()
+        allocated: List[Dict[str, Any]] = []
+        for item in items:
+            mutable = dict(item)
+            character_id = mutable.get("character_id")
+            if isinstance(character_id, str):
+                character_id = character_id.strip()
+            else:
+                character_id = ""
+            if (
+                character_id == "__AUTO_ID__"
+                or not is_valid_character_id(character_id)
+                or character_id in used_ids
+                or self.repo.character_fact_id_exists(campaign_id, character_id)
+            ):
+                character_id = self._next_unique_character_id(campaign_id, used_ids)
+            used_ids.add(character_id)
+            mutable["character_id"] = character_id
+            allocated.append(mutable)
+        return allocated
+
+    def _next_unique_character_id(self, campaign_id: str, used_ids: set[str]) -> str:
+        for _ in range(256):
+            candidate = f"ch_{uuid4().hex[:8]}"
+            if candidate in used_ids:
+                continue
+            if self.repo.character_fact_id_exists(campaign_id, candidate):
+                continue
+            return candidate
+        raise CharacterFactValidationError("Failed to allocate unique character_id.")
+
+    def _validate_items(self, items: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+        validated: List[Dict[str, Any]] = []
+        for index, item in enumerate(items, start=1):
+            try:
+                validated.append(validate_character_fact(item))
+            except CharacterFactSchemaError as exc:
+                raise CharacterFactValidationError(
+                    f"CharacterFact item[{index}] invalid: {exc}"
+                ) from exc
+        return validated
 
     def _normalize_item(
         self,

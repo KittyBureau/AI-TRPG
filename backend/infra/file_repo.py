@@ -15,6 +15,8 @@ from backend.domain.state_utils import (
     validate_actors_state,
 )
 
+BATCH_FILE_PATTERN = re.compile(r"^batch_(\d{8}T\d{6}Z)_(.+)\.json$")
+
 
 def _model_to_dict(model: object) -> Dict[str, Any]:
     if hasattr(model, "model_dump"):
@@ -152,18 +154,70 @@ class FileRepo:
         cleaned = re.sub(r"[^a-zA-Z0-9_-]+", "_", character_id.strip())
         return cleaned or "character"
 
+    def to_storage_relative_path(self, path: Path) -> str:
+        try:
+            relative = path.relative_to(self.storage_root)
+            if self.storage_root.name == "storage":
+                return str(Path("storage") / relative).replace("\\", "/")
+            return str(relative).replace("\\", "/")
+        except ValueError:
+            return str(path).replace("\\", "/")
+
+    def _read_json_file(self, path: Path) -> Optional[Any]:
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+
+    def _extract_batch_parts(self, path: Path) -> tuple[Optional[str], Optional[str]]:
+        match = BATCH_FILE_PATTERN.match(path.name)
+        if not match:
+            return None, None
+        return match.group(1), match.group(2)
+
+    def find_character_fact_batch_path(
+        self,
+        campaign_id: str,
+        request_id: str,
+    ) -> Optional[Path]:
+        generated_dir = self._generated_characters_dir(campaign_id)
+        if not generated_dir.exists():
+            return None
+
+        safe_request_id = self._sanitize_request_id(request_id)
+        unreadable_candidate: Optional[Path] = None
+
+        for path in sorted(generated_dir.glob("batch_*.json"), reverse=True):
+            payload = self._read_json_file(path)
+            if isinstance(payload, dict):
+                stored_request_id = payload.get("request_id")
+                if isinstance(stored_request_id, str) and stored_request_id == request_id:
+                    return path
+            _, suffix = self._extract_batch_parts(path)
+            if suffix == safe_request_id and not isinstance(payload, dict):
+                unreadable_candidate = path
+
+        return unreadable_candidate
+
     def save_character_fact_batch(
         self,
         campaign_id: str,
         request_id: str,
         payload: Dict[str, Any],
+        utc_ts: Optional[str] = None,
     ) -> Path:
         generated_dir = self._generated_characters_dir(campaign_id)
         generated_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        existing = self.find_character_fact_batch_path(campaign_id, request_id)
+        if existing is not None:
+            raise FileExistsError(
+                f"Character batch already exists for request_id={request_id}"
+            )
+        timestamp = utc_ts or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         safe_request_id = self._sanitize_request_id(request_id)
         path = generated_dir / f"batch_{timestamp}_{safe_request_id}.json"
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        with path.open("x", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2)
         return path
 
     def save_character_fact_draft(
@@ -190,13 +244,23 @@ class FileRepo:
         )
         if not path.exists():
             return None
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                return data
+        data = self._read_json_file(path)
+        if isinstance(data, dict):
+            return data
+        return None
+
+    def load_character_fact_batch(
+        self,
+        campaign_id: str,
+        request_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        path = self.find_character_fact_batch_path(campaign_id, request_id)
+        if path is None:
             return None
-        except Exception:
-            return None
+        payload = self._read_json_file(path)
+        if isinstance(payload, dict):
+            return payload
+        return None
 
     def load_character_fact_from_batches(
         self,
@@ -208,10 +272,7 @@ class FileRepo:
             return None
         batch_paths = sorted(generated_dir.glob("batch_*.json"), reverse=True)
         for path in batch_paths:
-            try:
-                payload = json.loads(path.read_text(encoding="utf-8"))
-            except Exception:
-                continue
+            payload = self._read_json_file(path)
             if not isinstance(payload, dict):
                 continue
             items = payload.get("items")
@@ -223,6 +284,48 @@ class FileRepo:
                 if item.get("character_id") == character_id:
                     return item
         return None
+
+    def character_fact_id_exists(self, campaign_id: str, character_id: str) -> bool:
+        if self.load_character_fact_draft(campaign_id, character_id) is not None:
+            return True
+        return self.load_character_fact_from_batches(campaign_id, character_id) is not None
+
+    def list_character_fact_batches(
+        self,
+        campaign_id: str,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        generated_dir = self._generated_characters_dir(campaign_id)
+        if not generated_dir.exists():
+            return []
+        capped_limit = max(1, min(limit, 200))
+        summaries: List[Dict[str, Any]] = []
+        for path in sorted(generated_dir.glob("batch_*.json"), reverse=True):
+            payload = self._read_json_file(path)
+            utc_ts, request_suffix = self._extract_batch_parts(path)
+            request_id = request_suffix or ""
+            count = 0
+            if isinstance(payload, dict):
+                raw_request_id = payload.get("request_id")
+                if isinstance(raw_request_id, str) and raw_request_id.strip():
+                    request_id = raw_request_id
+                raw_utc_ts = payload.get("utc_ts")
+                if isinstance(raw_utc_ts, str) and raw_utc_ts.strip():
+                    utc_ts = raw_utc_ts
+                items = payload.get("items")
+                if isinstance(items, list):
+                    count = len(items)
+            summaries.append(
+                {
+                    "request_id": request_id,
+                    "utc_ts": utc_ts or "",
+                    "path": self.to_storage_relative_path(path),
+                    "count": count,
+                }
+            )
+            if len(summaries) >= capped_limit:
+                break
+        return summaries
 
     def next_campaign_id(self) -> str:
         max_id = 0

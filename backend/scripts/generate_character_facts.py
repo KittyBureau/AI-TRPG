@@ -23,6 +23,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-count", type=int, default=20)
     parser.add_argument("--language", default="zh-CN")
     parser.add_argument("--id-policy", default="system")
+    parser.add_argument(
+        "--allowed-roles",
+        nargs="+",
+        default=["adventurer"],
+        help="Allowed role allowlist for generated character facts.",
+    )
     return parser
 
 
@@ -41,9 +47,11 @@ def main() -> int:
         campaign_id=args.campaign_id,
         request_id=args.request_id,
         language=args.language,
+        tone_vocab_only=False,
         count=args.count,
         max_count=args.max_count,
         id_policy=args.id_policy,
+        constraints={"allowed_roles": args.allowed_roles},
     )
     result = service.persist_generated_batch(request, raw)
 

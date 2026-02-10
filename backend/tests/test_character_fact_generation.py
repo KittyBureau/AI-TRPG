@@ -55,6 +55,7 @@ def test_persist_generated_batch_writes_batch_and_individual_files(
         campaign_id="camp_0010",
         request_id="req 001",
         language="zh-CN",
+        tone_vocab_only=False,
         count=2,
         max_count=20,
         id_policy="system",
@@ -85,18 +86,21 @@ def test_persist_generated_batch_writes_batch_and_individual_files(
 
     result = service.persist_generated_batch(request, drafts)
 
-    assert Path(result.batch_path).exists()
+    assert (tmp_path / result.batch_path).exists()
     assert len(result.individual_paths) == 2
     for path in result.individual_paths:
-        assert Path(path).exists()
+        assert (tmp_path / path).exists()
 
-    payload = json.loads(Path(result.batch_path).read_text(encoding="utf-8"))
-    assert payload["schema_version"] == "character_fact.v1"
+    payload = json.loads((tmp_path / result.batch_path).read_text(encoding="utf-8"))
+    assert payload["schema_id"] == "character_fact.v1"
+    assert payload["schema_version"] == "1"
     assert payload["request_id"] == "req 001"
+    assert "params" in payload
+    assert payload["params"]["request_id"] == "req 001"
     assert len(payload["items"]) == 2
 
     first = payload["items"][0]
-    assert first["character_id"] == "__AUTO_ID__"
+    assert first["character_id"].startswith("ch_")
     assert first["role"] == "scout"
     assert first["name"] == "A" * 80
     assert first["background"] == "B" * 400

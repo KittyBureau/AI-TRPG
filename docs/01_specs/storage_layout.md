@@ -143,12 +143,12 @@ Batch payload shape:
 
 ```json
 {
-  "schema_version": "character_fact.v1",
-  "request_id": "req_001",
+  "schema_id": "character_fact.v1",
+  "schema_version": "1",
   "campaign_id": "camp_0001",
-  "generated_at": "2026-02-10T12:00:00+00:00",
-  "config_snapshot": {},
-  "request_snapshot": {},
+  "request_id": "req_001",
+  "utc_ts": "20260210T153000Z",
+  "params": {},
   "items": []
 }
 ```
@@ -157,7 +157,7 @@ Individual draft payload shape:
 
 ```json
 {
-  "character_id": "__AUTO_ID__",
+  "character_id": "ch_a1b2c3d4",
   "name": "Name",
   "role": "scout",
   "tags": [],
@@ -177,6 +177,8 @@ Rules:
 
 - Runtime fields (`position`, `hp`, `character_state`) are forbidden in facts.
 - `meta` is predefined-only (`hooks`, `language`, `source`).
+- `request_id` must be unique within one campaign (`409 Conflict` on duplicate submit).
+- `__AUTO_ID__` is never written to disk; IDs are allocated before batch/individual writes.
 - Turn/tool request-response contracts remain unchanged.
 
 ## Map normalization and validation

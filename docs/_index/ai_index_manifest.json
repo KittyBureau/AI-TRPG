@@ -130,13 +130,18 @@
       "id": "13",
       "title": "CharacterFact Generation & Persistence",
       "paths": [
+        "backend/api/routes/characters.py",
+        "backend/app/character_fact_api_service.py",
         "backend/app/character_fact_generation.py",
+        "backend/domain/character_fact_schema.py",
         "backend/infra/character_fact_store.py",
         "backend/infra/file_repo.py",
         "backend/scripts/generate_character_facts.py",
         "backend/domain/character_access.py",
+        "backend/tests/test_character_fact_api.py",
         "backend/tests/test_character_fact_generation.py",
         "docs/01_specs/character_fact_v1.md",
+        "docs/01_specs/storage_layout.md",
         "docs/01_specs/schemas/character_fact.v1.schema.json",
         "docs/01_specs/prompts/character_fact_generate_v1.md"
       ]

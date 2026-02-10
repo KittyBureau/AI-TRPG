@@ -149,9 +149,12 @@ Use this as the default reference for every task.
 - Prompt protocol authority is `docs/01_specs/prompts/character_fact_generate_v1.md`.
 - Generated artifacts are temporary and must not change turn/tool contracts.
 - Persist generated outputs under `storage/campaigns/<campaign_id>/characters/generated/` using batch + individual draft files.
+- CharacterFact API endpoints are versioned under `/api/v1/campaigns/{campaign_id}/characters/...`.
+- `request_id` must be unique per campaign (`409 Conflict` on duplicate submit).
+- `__AUTO_ID__` must never be written to disk; allocate final IDs before writing batch/individual files.
 **Checks**
 - Verify generated payload excludes runtime fields (`position`, `hp`, `character_state`).
 - Verify `meta` only uses predefined keys (`hooks`, `language`, `source`).
-- Run generation and fact-read tests when touching generation/reading logic.
+- Run generation/fact API tests when touching generation/reading logic.
 **Scope**
-- `backend/app/character_fact_generation.py`, `backend/infra/character_fact_store.py`, `backend/infra/file_repo.py`, `backend/scripts/generate_character_facts.py`, `backend/domain/character_access.py`, `backend/tests/test_character_fact_generation.py`, `docs/01_specs/character_fact_v1.md`, `docs/01_specs/schemas/character_fact.v1.schema.json`, `docs/01_specs/prompts/character_fact_generate_v1.md`.
+- `backend/api/routes/characters.py`, `backend/app/character_fact_api_service.py`, `backend/app/character_fact_generation.py`, `backend/domain/character_fact_schema.py`, `backend/infra/character_fact_store.py`, `backend/infra/file_repo.py`, `backend/scripts/generate_character_facts.py`, `backend/domain/character_access.py`, `backend/tests/test_character_fact_api.py`, `backend/tests/test_character_fact_generation.py`, `docs/01_specs/character_fact_v1.md`, `docs/01_specs/storage_layout.md`, `docs/01_specs/schemas/character_fact.v1.schema.json`, `docs/01_specs/prompts/character_fact_generate_v1.md`.

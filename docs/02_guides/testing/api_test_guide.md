@@ -201,3 +201,38 @@ python -m pytest -q
 - 状态可审计、可回放
 
 此时可安全进入前端或玩法层开发。
+
+---
+
+## CharacterFact API regression (`/api/v1/campaigns/.../characters`)
+
+Minimal checks after backend changes:
+
+1. `POST /api/v1/campaigns/{campaign_id}/characters/generate`
+   - returns refs only (`request_id`, `batch_path`, `individual_paths`, counts, warnings)
+   - does not return full `items`
+   - writes:
+     - `storage/campaigns/{campaign_id}/characters/generated/batch_{utc_ts}_{request_id}.json`
+     - `storage/campaigns/{campaign_id}/characters/generated/{character_id}.fact.draft.json`
+   - persisted `character_id` must not be `__AUTO_ID__`
+
+2. conflict handling
+   - submit same `request_id` under same `campaign_id` twice
+   - second call returns `409 Conflict`
+   - no new batch file is created
+
+3. parameter validation
+   - `tone_vocab_only=true` with empty `allowed_tones` -> `400`
+   - `count<=0` or empty `constraints.allowed_roles` -> `400`
+
+4. schema validation guard
+   - if normalize output is schema-invalid -> `422`
+
+5. query APIs
+   - `GET /api/v1/campaigns/{campaign_id}/characters/generated/batches`
+   - `GET /api/v1/campaigns/{campaign_id}/characters/generated/batches/{request_id}`
+   - `GET /api/v1/campaigns/{campaign_id}/characters/facts/{character_id}`
+
+6. docs/openapi routing regression
+   - `/api/v1/openapi.json` is reachable
+   - `/api/v1/docs` is reachable

@@ -60,18 +60,18 @@ Generated files are non-authoritative temporary artifacts:
   - `storage/campaigns/{campaign_id}/characters/generated/batch_{utc_ts}_{request_id}.json`
 - Individual draft file:
   - `storage/campaigns/{campaign_id}/characters/generated/{character_id}.fact.draft.json`
-  - If `character_id="__AUTO_ID__"`, a temporary filename-safe id is used.
+  - `character_id` is always an allocated real ID (`__AUTO_ID__` is never persisted).
 
 ### Batch file structure (frozen)
 
 ```json
 {
-  "schema_version": "character_fact.v1",
-  "request_id": "req_001",
+  "schema_id": "character_fact.v1",
+  "schema_version": "1",
   "campaign_id": "camp_0001",
-  "generated_at": "2026-02-10T12:00:00Z",
-  "config_snapshot": {},
-  "request_snapshot": {},
+  "request_id": "req_001",
+  "utc_ts": "20260210T153000Z",
+  "params": {},
   "items": []
 }
 ```
@@ -85,6 +85,23 @@ Generated files are non-authoritative temporary artifacts:
 - `request_id`:
   - default convention: `req_<slug>`
   - characters allowed in filename context: letters, digits, `_`, `-`
+  - uniqueness scope: per `campaign_id`; duplicate submit returns `409 Conflict`
 - `utc_ts` format:
   - `YYYYMMDDTHHMMSSZ`
   - example: `20260210T153000Z`
+
+## 7. CharacterFact API endpoints (`/api/v1`)
+
+- `POST /api/v1/campaigns/{campaign_id}/characters/generate`
+  - generates draft+normalize output, validates schema, allocates IDs, persists batch+individual files
+  - response returns references only:
+    - `campaign_id`
+    - `request_id`
+    - `batch_path`
+    - `individual_paths`
+    - `count_requested`
+    - `count_generated`
+    - `warnings`
+- `GET /api/v1/campaigns/{campaign_id}/characters/generated/batches`
+- `GET /api/v1/campaigns/{campaign_id}/characters/generated/batches/{request_id}`
+- `GET /api/v1/campaigns/{campaign_id}/characters/facts/{character_id}`

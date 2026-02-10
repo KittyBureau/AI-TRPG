@@ -166,3 +166,4 @@ Rules:
 - `max_count`: hard cap; backend clamps count to this limit.
 - `language`: single language output mode in v1.
 - `id_policy`: v1 defaults to `system` and uses `__AUTO_ID__` placeholders.
+  Backend allocates final `character_id` values before writing files.

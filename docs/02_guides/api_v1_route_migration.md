@@ -24,6 +24,10 @@ OpenAPI/docs are aligned to the same base path:
 - `/api/map/view` -> `/api/v1/map/view`
 - `/api/settings/schema` -> `/api/v1/settings/schema`
 - `/api/settings/apply` -> `/api/v1/settings/apply`
+- `/api/campaigns/{campaign_id}/characters/generate` -> `/api/v1/campaigns/{campaign_id}/characters/generate`
+- `/api/campaigns/{campaign_id}/characters/generated/batches` -> `/api/v1/campaigns/{campaign_id}/characters/generated/batches`
+- `/api/campaigns/{campaign_id}/characters/generated/batches/{request_id}` -> `/api/v1/campaigns/{campaign_id}/characters/generated/batches/{request_id}`
+- `/api/campaigns/{campaign_id}/characters/facts/{character_id}` -> `/api/v1/campaigns/{campaign_id}/characters/facts/{character_id}`
 
 ## Notes
 

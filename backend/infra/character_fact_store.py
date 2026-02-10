@@ -8,6 +8,10 @@ from backend.domain.character_access import (
     CharacterFactStore,
     StubCharacterFactStore,
 )
+from backend.domain.character_fact_schema import (
+    CharacterFactSchemaError,
+    validate_character_fact,
+)
 from backend.domain.models import Campaign
 from backend.infra.file_repo import FileRepo
 
@@ -43,6 +47,11 @@ class GeneratedCharacterFactStore(CharacterFactStore):
     ) -> Optional[CharacterFact]:
         if not isinstance(payload, dict):
             return None
+        try:
+            payload = validate_character_fact(payload)
+        except CharacterFactSchemaError:
+            return None
+
         resolved_id = payload.get("character_id")
         if not isinstance(resolved_id, str) or not resolved_id.strip():
             resolved_id = character_id

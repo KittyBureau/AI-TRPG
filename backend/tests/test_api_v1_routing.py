@@ -31,16 +31,17 @@ def test_old_api_paths_are_not_routed(tmp_path, monkeypatch) -> None:
     assert client.post("/api/chat/turn", json={}).status_code == 404
     assert client.get("/api/map/view").status_code == 404
     assert client.get("/api/settings/schema").status_code == 404
+    assert (
+        client.post("/api/campaigns/camp_0001/characters/generate", json={}).status_code
+        == 404
+    )
 
 
 def test_new_api_v1_paths_work_for_all_routers(tmp_path, monkeypatch) -> None:
     client = _client(tmp_path, monkeypatch)
 
-    create_resp = client.post("/api/v1/campaign/create", json={})
-    assert create_resp.status_code == 200
-
-    list_resp = client.get("/api/v1/campaign/list")
-    assert list_resp.status_code == 200
+    campaign_resp = client.post("/api/v1/campaign/select_actor", json={})
+    assert campaign_resp.status_code == 422
 
     # Route exists; payload invalid on purpose to avoid invoking turn runtime flow.
     chat_resp = client.post("/api/v1/chat/turn", json={})
@@ -52,3 +53,9 @@ def test_new_api_v1_paths_work_for_all_routers(tmp_path, monkeypatch) -> None:
 
     settings_resp = client.get("/api/v1/settings/schema")
     assert settings_resp.status_code == 422
+
+    characters_resp = client.post(
+        "/api/v1/campaigns/camp_0001/characters/generate",
+        json={},
+    )
+    assert characters_resp.status_code == 404
