@@ -218,6 +218,8 @@ Each line is a JSON object:
 Breaking change: move tool_calls no longer accept `from_area_id` in args. Any tool_call
 that includes `from_area_id` now fails with `invalid_args`. The backend still records
 `from_area_id` in applied_actions for audit.
+`actor_id` may be omitted in move args and then defaults to `selected.active_actor_id`.
+`to_area_id` must exist and be reachable from the actor's current area; same-area move is rejected.
 
 ## turn_log.jsonl fields
 

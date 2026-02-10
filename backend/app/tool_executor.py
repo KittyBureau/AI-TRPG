@@ -128,17 +128,23 @@ def _apply_move(
 ) -> Optional[AppliedAction]:
     actor_id = call.args.get("actor_id")
     to_area_id = call.args.get("to_area_id")
+    if actor_id is None:
+        actor_id = active_actor_id
     if "from_area_id" in call.args:
         return None
-    if not all(isinstance(value, str) for value in [actor_id, to_area_id]):
+    if not isinstance(actor_id, str) or not isinstance(to_area_id, str):
         return None
     if actor_id != active_actor_id:
         return None
     if actor_id not in campaign.actors:
         return None
+    if to_area_id not in campaign.map.areas:
+        return None
     actor_state = character_facade.get_state(campaign, actor_id)
     from_area_id = actor_state.position
     if not isinstance(from_area_id, str):
+        return None
+    if to_area_id == from_area_id:
         return None
     if not _is_connected(campaign, from_area_id, to_area_id):
         return None

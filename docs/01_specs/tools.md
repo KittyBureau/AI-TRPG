@@ -68,13 +68,18 @@ Allowlist is stored in `campaign.json` as `allowlist`.
 
 Required args:
 
-- `actor_id`
 - `to_area_id`
+
+Optional args:
+
+- `actor_id` (defaults to active actor id)
 
 Notes:
 
-- `actor_id` must match the active actor for the turn.
+- If provided, `actor_id` must match the active actor for the turn.
 - `from_area_id` is derived by the backend from the actor's current position and MUST NOT be provided.
+- `to_area_id` must exist in `map.areas` and be 1-hop reachable from the actor's current area.
+- If `to_area_id` equals the current area, the call is rejected as `invalid_args`.
 - Movement occurs only when a `move` tool_call is executed; narration alone does not move characters.
 
 ### move_options
