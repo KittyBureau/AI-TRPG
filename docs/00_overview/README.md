@@ -8,6 +8,7 @@
 ## Specs (Authoritative)
 
 - `docs/01_specs/architecture.md` - Layering and stage 1 flow.
+- `docs/01_specs/character_baseline.md` - Current character-related capabilities baseline.
 - `docs/01_specs/storage_layout.md` - Storage paths and JSON schemas.
 - `docs/01_specs/settings.md` - Settings definitions, patching, and validation.
 - `docs/01_specs/dialog_types.md` - Dialog types, rules, and source field.
