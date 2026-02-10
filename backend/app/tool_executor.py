@@ -4,6 +4,11 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
+from backend.domain.character_access import (
+    CharacterFacade,
+    CharacterState,
+    create_character_facade,
+)
 from backend.domain.models import (
     AppliedAction,
     Campaign,
@@ -13,7 +18,6 @@ from backend.domain.models import (
 )
 from backend.domain.map_models import normalize_map, require_valid_map
 from backend.domain.state_machine import resolve_tool_permission
-from backend.domain.state_utils import update_actor_position
 from backend.infra.map_generators.deterministic_generator import (
     DeterministicMapGenerator,
 )
@@ -26,6 +30,7 @@ def execute_tool_calls(
 ) -> Tuple[List[AppliedAction], Optional[ToolFeedback]]:
     applied_actions: List[AppliedAction] = []
     failed_calls: List[FailedCall] = []
+    character_facade = create_character_facade()
 
     for call in tool_calls:
         if call.tool not in campaign.allowlist:
@@ -39,7 +44,9 @@ def execute_tool_calls(
             )
             continue
 
-        allowed, reason = _check_state_permission(campaign, actor_id, call)
+        allowed, reason = _check_state_permission(
+            campaign, actor_id, call, character_facade
+        )
         if not allowed:
             failed_calls.append(
                 FailedCall(
@@ -51,7 +58,7 @@ def execute_tool_calls(
             )
             continue
 
-        action = _apply_tool_call(campaign, actor_id, call)
+        action = _apply_tool_call(campaign, actor_id, call, character_facade)
         if action is None:
             failed_calls.append(
                 FailedCall(
@@ -70,10 +77,15 @@ def execute_tool_calls(
 
 
 def _check_state_permission(
-    campaign: Campaign, actor_id: str, call: ToolCall
+    campaign: Campaign,
+    actor_id: str,
+    call: ToolCall,
+    character_facade: CharacterFacade,
 ) -> Tuple[bool, str]:
-    actor = campaign.actors.get(actor_id)
-    actor_state = actor.character_state if actor else "alive"
+    if actor_id in campaign.actors:
+        actor_state = character_facade.get_state(campaign, actor_id).character_state
+    else:
+        actor_state = "alive"
     target_is_actor = False
     hp_delta: Optional[int] = None
     if call.tool == "hp_delta":
@@ -88,22 +100,31 @@ def _check_state_permission(
 
 
 def _apply_tool_call(
-    campaign: Campaign, actor_id: str, call: ToolCall
+    campaign: Campaign,
+    actor_id: str,
+    call: ToolCall,
+    character_facade: CharacterFacade,
 ) -> Optional[AppliedAction]:
     timestamp = datetime.now(timezone.utc).isoformat()
     if call.tool == "move":
-        return _apply_move(campaign, actor_id, call, timestamp)
+        return _apply_move(campaign, actor_id, call, timestamp, character_facade)
     if call.tool == "hp_delta":
-        return _apply_hp_delta(campaign, call, timestamp)
+        return _apply_hp_delta(campaign, call, timestamp, character_facade)
     if call.tool == "move_options":
-        return _apply_move_options(campaign, actor_id, call, timestamp)
+        return _apply_move_options(
+            campaign, actor_id, call, timestamp, character_facade
+        )
     if call.tool == "map_generate":
         return _apply_map_generate(campaign, call, timestamp)
     return None
 
 
 def _apply_move(
-    campaign: Campaign, active_actor_id: str, call: ToolCall, timestamp: str
+    campaign: Campaign,
+    active_actor_id: str,
+    call: ToolCall,
+    timestamp: str,
+    character_facade: CharacterFacade,
 ) -> Optional[AppliedAction]:
     actor_id = call.args.get("actor_id")
     to_area_id = call.args.get("to_area_id")
@@ -113,15 +134,23 @@ def _apply_move(
         return None
     if actor_id != active_actor_id:
         return None
-    actor = campaign.actors.get(actor_id)
-    if actor is None:
+    if actor_id not in campaign.actors:
         return None
-    from_area_id = actor.position
+    actor_state = character_facade.get_state(campaign, actor_id)
+    from_area_id = actor_state.position
     if not isinstance(from_area_id, str):
         return None
     if not _is_connected(campaign, from_area_id, to_area_id):
         return None
-    update_actor_position(campaign, actor_id, to_area_id)
+    character_facade.set_state(
+        campaign,
+        actor_id,
+        CharacterState(
+            position=to_area_id,
+            hp=actor_state.hp,
+            character_state=actor_state.character_state,
+        ),
+    )
     return AppliedAction(
         tool="move",
         args=call.args,
@@ -131,7 +160,10 @@ def _apply_move(
 
 
 def _apply_hp_delta(
-    campaign: Campaign, call: ToolCall, timestamp: str
+    campaign: Campaign,
+    call: ToolCall,
+    timestamp: str,
+    character_facade: CharacterFacade,
 ) -> Optional[AppliedAction]:
     target_id = call.args.get("target_character_id")
     delta = call.args.get("delta")
@@ -140,19 +172,28 @@ def _apply_hp_delta(
         return None
     if not isinstance(cause, str):
         return None
-    actor = campaign.actors.get(target_id)
-    if actor is None:
+    if target_id not in campaign.actors:
         return None
+    state = character_facade.get_state(campaign, target_id)
 
-    new_hp = actor.hp + delta
+    new_hp = state.hp + delta
     if new_hp < 0:
         new_hp = 0
-    actor.hp = new_hp
+    next_character_state = state.character_state
     if campaign.settings_snapshot.rules.hp_zero_ends_game:
         if new_hp <= 0:
-            actor.character_state = "dying"
-        elif actor.character_state == "dying":
-            actor.character_state = "alive"
+            next_character_state = "dying"
+        elif next_character_state == "dying":
+            next_character_state = "alive"
+    character_facade.set_state(
+        campaign,
+        target_id,
+        CharacterState(
+            position=state.position,
+            hp=new_hp,
+            character_state=next_character_state,
+        ),
+    )
     return AppliedAction(
         tool="hp_delta",
         args=call.args,
@@ -162,17 +203,20 @@ def _apply_hp_delta(
 
 
 def _apply_move_options(
-    campaign: Campaign, active_actor_id: str, call: ToolCall, timestamp: str
+    campaign: Campaign,
+    active_actor_id: str,
+    call: ToolCall,
+    timestamp: str,
+    character_facade: CharacterFacade,
 ) -> Optional[AppliedAction]:
     actor_id = call.args.get("actor_id")
     if actor_id is None:
         actor_id = active_actor_id
     if not isinstance(actor_id, str):
         return None
-    actor = campaign.actors.get(actor_id)
-    if actor is None:
+    if actor_id not in campaign.actors:
         return None
-    current_area_id = actor.position
+    current_area_id = character_facade.get_state(campaign, actor_id).position
     if not isinstance(current_area_id, str):
         return None
     area = campaign.map.areas.get(current_area_id)

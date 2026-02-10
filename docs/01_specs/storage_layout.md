@@ -119,6 +119,18 @@ storage/
 | milestone | object | Milestone placeholder. |
 | created_at | string | ISO timestamp. |
 
+## Character access boundary (current)
+
+- `backend/domain/character_access.py` provides the supported access path for
+  character runtime fields.
+- Runtime authority remains `actors.*` values in `campaign.json`.
+- `positions`, `hp`, and `character_states` remain compatibility mirrors and
+  should not be accessed directly in turn/tool critical paths.
+- Future fact/state file split is planned behind the same facade:
+  - `storage/characters_library/{id}.json`
+  - `storage/campaigns/{campaign_id}/characters/{id}.fact.json`
+  - `storage/campaigns/{campaign_id}/characters/{id}.state.json`
+
 ## Map normalization and validation
 
 - `map.areas.*.reachable_area_ids` is the authoritative adjacency list.

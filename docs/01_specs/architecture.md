@@ -11,6 +11,14 @@ incremental delivery.
 - `backend/infra/`: File storage and FakeLLM implementation.
 - `storage/`: Local persistence rooted at the workspace.
 
+## Character Access Boundary
+
+- Character access is centralized in `backend/domain/character_access.py`.
+- Critical-path reads/writes for `position`, `hp`, and `character_state` should
+  go through `CharacterFacade` rather than ad-hoc map access.
+- This keeps turn/tool logic independent from future character storage adapter
+  changes.
+
 ## Stage 1 Data Flow
 
 1. `/api/chat/turn` receives `campaign_id` and `user_input` (`actor_id` optional).

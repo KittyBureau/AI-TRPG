@@ -7,6 +7,10 @@ from typing import Dict, List, Optional
 
 from backend.app.conflict_detector import detect_conflicts
 from backend.app.tool_executor import execute_tool_calls
+from backend.domain.character_access import (
+    CharacterState,
+    create_character_facade,
+)
 from backend.domain.dialog_rules import DEFAULT_DIALOG_TYPE, DIALOG_TYPES
 from backend.domain.map_models import normalize_map
 from backend.domain.models import (
@@ -28,12 +32,11 @@ from backend.domain.models import (
 from backend.domain.state_utils import (
     DEFAULT_CHARACTER_STATE,
     DEFAULT_HP,
-    derive_state_maps,
-    ensure_actor,
-    update_actor_position,
 )
 from backend.infra.file_repo import FileRepo
 from backend.infra.llm_client import LLMClient
+
+_CHARACTER_FACADE = create_character_facade()
 
 
 class TurnService:
@@ -186,7 +189,7 @@ class TurnService:
                 positions_child,
                 hp,
                 character_states,
-            ) = derive_state_maps(campaign)
+            ) = _derive_character_state_maps(campaign)
             entry.state_summary.positions = positions
             entry.state_summary.positions_parent = positions_parent
             entry.state_summary.positions_child = positions_child
@@ -214,18 +217,30 @@ def _ensure_minimum_state(campaign: Campaign) -> bool:
         )
         updated = True
     for character_id in campaign.selected.party_character_ids:
-        actor = ensure_actor(campaign, character_id)
-        if actor.position is None:
-            update_actor_position(campaign, character_id, "area_001")
-            updated = True
-        if not isinstance(actor.hp, int):
-            actor.hp = DEFAULT_HP
-            updated = True
-        if not isinstance(actor.character_state, str):
-            actor.character_state = DEFAULT_CHARACTER_STATE
+        state = _CHARACTER_FACADE.get_state(campaign, character_id)
+        if state.position is None:
+            _CHARACTER_FACADE.set_state(
+                campaign,
+                character_id,
+                CharacterState(
+                    position="area_001",
+                    hp=state.hp,
+                    character_state=state.character_state,
+                ),
+            )
             updated = True
     if campaign.selected.active_actor_id not in campaign.actors:
-        ensure_actor(campaign, campaign.selected.active_actor_id)
+        active_actor_id = campaign.selected.active_actor_id
+        _CHARACTER_FACADE.get_state(campaign, active_actor_id)
+        _CHARACTER_FACADE.set_state(
+            campaign,
+            active_actor_id,
+            CharacterState(
+                position=None,
+                hp=DEFAULT_HP,
+                character_state=DEFAULT_CHARACTER_STATE,
+            ),
+        )
         updated = True
     normalize_map(campaign.map)
     return updated
@@ -266,10 +281,13 @@ def _snapshot_state(campaign: Campaign) -> Dict[str, object]:
         positions_child,
         hp,
         character_states,
-    ) = derive_state_maps(campaign)
+    ) = _derive_character_state_maps(campaign)
     return {
         "actors": deepcopy(campaign.actors),
         "state": deepcopy(campaign.state),
+        "campaign_positions": deepcopy(campaign.positions),
+        "campaign_hp": deepcopy(campaign.hp),
+        "campaign_character_states": deepcopy(campaign.character_states),
         "positions": positions,
         "positions_parent": positions_parent,
         "positions_child": positions_child,
@@ -282,6 +300,9 @@ def _snapshot_state(campaign: Campaign) -> Dict[str, object]:
 def _restore_state(campaign: Campaign, snapshot: Dict[str, object]) -> None:
     campaign.actors = snapshot["actors"]
     campaign.state = snapshot["state"]
+    campaign.positions = snapshot["campaign_positions"]
+    campaign.hp = snapshot["campaign_hp"]
+    campaign.character_states = snapshot["campaign_character_states"]
     campaign.map = snapshot["map"]
 
 
@@ -292,7 +313,7 @@ def _state_summary_dict(campaign: Campaign) -> Dict[str, object]:
         positions_child,
         hp,
         character_states,
-    ) = derive_state_maps(campaign)
+    ) = _derive_character_state_maps(campaign)
     return {
         "positions": positions,
         "positions_parent": positions_parent,
@@ -302,8 +323,18 @@ def _state_summary_dict(campaign: Campaign) -> Dict[str, object]:
     }
 
 
+def _derive_character_state_maps(campaign: Campaign) -> tuple[
+    Dict[str, str],
+    Dict[str, str],
+    Dict[str, Optional[str]],
+    Dict[str, int],
+    Dict[str, str],
+]:
+    return _CHARACTER_FACADE.build_state_maps(campaign)
+
+
 def _build_system_prompt(campaign: Campaign) -> str:
-    positions, _, _, hp, character_states = derive_state_maps(campaign)
+    positions, _, _, hp, character_states = _derive_character_state_maps(campaign)
     actors_payload = {
         actor_id: _model_to_dict(actor)
         for actor_id, actor in campaign.actors.items()
@@ -430,7 +461,7 @@ def _build_failure_response(
         positions_child,
         hp,
         character_states,
-    ) = derive_state_maps(campaign)
+    ) = _derive_character_state_maps(campaign)
     state_summary.positions = positions
     state_summary.positions_parent = positions_parent
     state_summary.positions_child = positions_child
