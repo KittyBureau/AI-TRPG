@@ -131,11 +131,13 @@ Use this as the default reference for every task.
 **Rules**
 - Authoritative docs: `docs/00_overview/**`, `docs/01_specs/**`, `docs/02_guides/**`.
 - Human-only docs: `docs/99_human_only/**`. Do not cite or rely on these unless the task explicitly allows it.
+- When a task explicitly requests an alignment report, write the report under `docs/99_human_only/alignment_reports/` using a dated filename (for example: `YYYY-MM-DD_<topic>_alignment_report.md`).
 - Reference/legacy docs are non-authoritative; do not treat them as implementation truth.
 - When modifying backend/frontend API routes, request/response fields, status codes, storage paths, JSON keys, enums, or settings keys/defaults/validation, you must update the matching docs.
 - Every code commit touching those areas must include at least one docs update, or add a tracked entry to `docs/01_specs/TODO_DOCS_ALIGNMENT.md` explaining why the docs change is deferred.
 **Checks**
 - Confirm updated docs cover API routes, storage layout, enums, and settings changes.
 - If docs are deferred, ensure `docs/01_specs/TODO_DOCS_ALIGNMENT.md` contains a dated entry with evidence.
+- For alignment tasks, confirm report output path is under `docs/99_human_only/alignment_reports/`.
 **Scope**
-- `backend/**`, `frontend/**`, `docs/00_overview/**`, `docs/01_specs/**`, `docs/02_guides/**`, `docs/01_specs/TODO_DOCS_ALIGNMENT.md`.
+- `backend/**`, `frontend/**`, `docs/00_overview/**`, `docs/01_specs/**`, `docs/02_guides/**`, `docs/99_human_only/alignment_reports/**`, `docs/01_specs/TODO_DOCS_ALIGNMENT.md`.

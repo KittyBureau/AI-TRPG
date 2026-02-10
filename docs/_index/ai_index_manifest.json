@@ -112,6 +112,19 @@
         "frontend/**",
         "storage/**"
       ]
+    },
+    {
+      "id": "12",
+      "title": "Documentation Authority & Sync Obligations",
+      "paths": [
+        "backend/**",
+        "frontend/**",
+        "docs/00_overview/**",
+        "docs/01_specs/**",
+        "docs/02_guides/**",
+        "docs/99_human_only/alignment_reports/**",
+        "docs/01_specs/TODO_DOCS_ALIGNMENT.md"
+      ]
     }
   ],
   "triggers": [

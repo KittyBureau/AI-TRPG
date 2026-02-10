@@ -29,6 +29,7 @@
 ## Human-only (AI-TRPG Legacy Design)
 
 - `docs/99_human_only/ai-trpg-design/` - Legacy AI-TRPG design notes (human-only).
+- `docs/99_human_only/alignment_reports/` - Task-specific alignment reports (human-only output directory).
 
 ## Reference (Design/Workflows)
 
