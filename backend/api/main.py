@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api.routes import campaign, characters, chat, map, settings
+from backend.api.routes import campaign, characters, chat, map, settings, world
 
 
 def create_app() -> FastAPI:
@@ -21,6 +21,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(campaign.router, prefix="/api/v1")
     app.include_router(characters.router, prefix="/api/v1")
+    app.include_router(world.router, prefix="/api/v1")
     app.include_router(chat.router, prefix="/api/v1")
     app.include_router(map.router, prefix="/api/v1")
     app.include_router(settings.router, prefix="/api/v1")

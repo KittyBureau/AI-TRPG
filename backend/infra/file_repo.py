@@ -14,6 +14,12 @@ from backend.domain.state_utils import (
     ensure_actor,
     validate_actors_state,
 )
+from backend.domain.world_models import (
+    World,
+    build_world_stub,
+    normalize_world,
+    require_valid_world,
+)
 
 BATCH_FILE_PATTERN = re.compile(r"^batch_(\d{8}T\d{6}Z)_(.+)\.json$")
 
@@ -132,7 +138,9 @@ class FileRepo:
     def __init__(self, storage_root: Path) -> None:
         self.storage_root = storage_root
         self.campaigns_root = storage_root / "campaigns"
+        self.worlds_root = storage_root / "worlds"
         self.campaigns_root.mkdir(parents=True, exist_ok=True)
+        self.worlds_root.mkdir(parents=True, exist_ok=True)
 
     def _campaign_dir(self, campaign_id: str) -> Path:
         return self.campaigns_root / campaign_id
@@ -145,6 +153,12 @@ class FileRepo:
 
     def _generated_characters_dir(self, campaign_id: str) -> Path:
         return self._campaign_dir(campaign_id) / "characters" / "generated"
+
+    def _world_dir(self, world_id: str) -> Path:
+        return self.worlds_root / world_id
+
+    def world_path(self, world_id: str) -> Path:
+        return self._world_dir(world_id) / "world.json"
 
     def _sanitize_request_id(self, request_id: str) -> str:
         cleaned = re.sub(r"[^a-zA-Z0-9_-]+", "_", request_id.strip())
@@ -174,6 +188,66 @@ class FileRepo:
         if not match:
             return None, None
         return match.group(1), match.group(2)
+
+    def get_world(self, world_id: str) -> Optional[World]:
+        normalized_world_id = world_id.strip()
+        if not normalized_world_id:
+            return None
+        path = self.world_path(normalized_world_id)
+        if not path.exists():
+            return None
+        payload = self._read_json_file(path)
+        if not isinstance(payload, dict):
+            raise ValueError(f"Invalid world JSON: {path}")
+        world = _model_from_dict(World, payload)
+        require_valid_world(world)
+        normalize_world(world)
+        return world
+
+    def save_world(self, world: World) -> None:
+        require_valid_world(world)
+        normalize_world(world)
+        world_dir = self._world_dir(world.world_id)
+        world_dir.mkdir(parents=True, exist_ok=True)
+        path = self.world_path(world.world_id)
+        payload = _model_to_dict(world)
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    def get_or_create_world_stub(
+        self,
+        world_id: str,
+        *,
+        seed_source: str = "world_id_hash",
+        generator_default: str = "stub",
+    ) -> World:
+        normalized_world_id = world_id.strip()
+        if not normalized_world_id:
+            raise ValueError("world_id is required")
+
+        existing = self.get_world(normalized_world_id)
+        if existing is not None:
+            return existing
+
+        world = build_world_stub(
+            normalized_world_id,
+            seed_source=seed_source,
+            generator_default=generator_default,
+        )
+        world_dir = self._world_dir(normalized_world_id)
+        world_dir.mkdir(parents=True, exist_ok=True)
+        path = self.world_path(normalized_world_id)
+        payload = _model_to_dict(world)
+
+        try:
+            with path.open("x", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2)
+            return world
+        except FileExistsError:
+            # Concurrent request won the race; read the winner.
+            existing_after_race = self.get_world(normalized_world_id)
+            if existing_after_race is None:
+                raise
+            return existing_after_race
 
     def find_character_fact_batch_path(
         self,

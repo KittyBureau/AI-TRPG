@@ -19,6 +19,7 @@ Use this as the default reference for every task.
 **Rules**
 - Request/response shapes follow `backend/api/routes/*.py` and `backend/domain/models.py`.
 - `/api/v1/chat/turn` responses include `narrative_text`, `dialog_type`, `tool_calls`, `applied_actions`, `tool_feedback`, `conflict_report`, and `state_summary`; optional top-level `debug` may appear when debug settings are enabled.
+- `/api/v1/campaigns/{campaign_id}/world` resolves `campaign.selected.world_id` and returns world data; returns `409` when world_id is empty.
 - Changes to `Campaign`, `TurnLogEntry`, or API payloads must update `docs/01_specs/storage_layout.md` and `docs/02_guides/testing/api_test_guide.md`.
 **Checks**
 - Run the API test guide for any changed endpoints.
@@ -63,6 +64,7 @@ Use this as the default reference for every task.
 ## 6. Storage Layout & Persistence
 **Rules**
 - Campaigns persist at `storage/campaigns/<campaign_id>/campaign.json`; turns append to `turn_log.jsonl` via `FileRepo`.
+- Worlds persist at `storage/worlds/<world_id>/world.json`; v1 API may lazily create a deterministic stub world on first read.
 - LLM config lives at `storage/config/llm_config.json`; keyring at `storage/secrets/keyring.json` with no env fallback.
 - Storage fields match `docs/01_specs/storage_layout.md`.
 **Checks**

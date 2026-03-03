@@ -4,11 +4,45 @@ All persistent data is stored under the workspace root:
 
 ```
 storage/
+  worlds/
+    world_001/
+      world.json
   campaigns/
     camp_0001/
       campaign.json
       turn_log.jsonl
 ```
+
+## world.json (MVP v1)
+
+World data is stored independently from campaigns. Campaigns keep only
+`selected.world_id` as a reference.
+
+```json
+{
+  "world_id": "world_001",
+  "name": "world_001",
+  "seed": 123456789,
+  "generator": {
+    "id": "stub",
+    "version": "1",
+    "params": {
+      "seed_source": "world_id_hash"
+    }
+  },
+  "schema_version": "1",
+  "created_at": "2026-03-03T00:00:00+00:00",
+  "updated_at": "2026-03-03T00:00:00+00:00"
+}
+```
+
+World lazy-create migration (v1):
+
+- `GET /api/v1/campaigns/{campaign_id}/world` reads `campaign.selected.world_id`.
+- If `world_id` is empty/missing, API returns `409 Conflict`.
+- If `world.json` is missing, backend lazily creates a deterministic stub
+  world under `storage/worlds/{world_id}/world.json` and returns `200`.
+- If `campaign_id` is missing, API returns `404 Not Found`.
 
 ## campaign.json (minimal)
 
