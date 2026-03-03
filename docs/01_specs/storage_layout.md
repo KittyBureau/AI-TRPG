@@ -181,6 +181,12 @@ Rules:
 - `__AUTO_ID__` is never written to disk; IDs are allocated before batch/individual writes.
 - Turn/tool request-response contracts remain unchanged.
 
+Behavior source-of-truth note:
+
+- File format/path guarantees are defined here.
+- API behavior guarantees (including GET fact fallback and generate error precedence)
+  are test-backed in `docs/01_specs/character_fact_v1.md` section 8.
+
 ## Map normalization and validation
 
 - `map.areas.*.reachable_area_ids` is the authoritative adjacency list.

@@ -170,6 +170,22 @@ def test_generate_missing_allowed_tones_returns_400(
     assert response.status_code == 400
 
 
+def test_generate_missing_campaign_keeps_404_precedence_over_400(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    payload = _payload("req_case_404_precedence")
+    payload["allowed_tones"] = []
+    payload["tone_vocab_only"] = True
+
+    response = client.post(
+        "/api/v1/campaigns/camp_missing/characters/generate",
+        json=payload,
+    )
+    assert response.status_code == 404
+
+
 def test_generate_schema_invalid_output_returns_422(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -261,6 +277,60 @@ def test_get_fact_supports_individual_and_batch_fallback(
     )
     assert fallback_read.status_code == 200
     assert fallback_read.json()["character_id"] == character_id
+
+
+def test_get_fact_unreadable_draft_falls_back_to_batch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    campaign_id = _create_campaign(tmp_path)
+    request_id = "req_case_fact_unreadable_001"
+
+    generated = client.post(
+        f"/api/v1/campaigns/{campaign_id}/characters/generate",
+        json=_payload(request_id),
+    )
+    assert generated.status_code == 200
+    refs = generated.json()
+    first_path = _absolute(tmp_path, refs["individual_paths"][0])
+    first_fact = json.loads(first_path.read_text(encoding="utf-8"))
+    character_id = first_fact["character_id"]
+
+    first_path.write_text("{invalid", encoding="utf-8")
+    fallback_read = client.get(
+        f"/api/v1/campaigns/{campaign_id}/characters/facts/{character_id}"
+    )
+    assert fallback_read.status_code == 200
+    assert fallback_read.json()["character_id"] == character_id
+
+
+def test_get_fact_schema_invalid_draft_returns_422_without_batch_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    campaign_id = _create_campaign(tmp_path)
+    request_id = "req_case_fact_invalid_001"
+
+    generated = client.post(
+        f"/api/v1/campaigns/{campaign_id}/characters/generate",
+        json=_payload(request_id),
+    )
+    assert generated.status_code == 200
+    refs = generated.json()
+    first_path = _absolute(tmp_path, refs["individual_paths"][0])
+    first_fact = json.loads(first_path.read_text(encoding="utf-8"))
+    character_id = first_fact["character_id"]
+
+    # Keep valid JSON shape but violate strict schema validation to lock baseline 422 behavior.
+    first_fact["meta"] = {"unknown": "forbidden"}
+    first_path.write_text(json.dumps(first_fact), encoding="utf-8")
+
+    invalid_read = client.get(
+        f"/api/v1/campaigns/{campaign_id}/characters/facts/{character_id}"
+    )
+    assert invalid_read.status_code == 422
 
 
 def test_openapi_docs_and_old_characters_path_regression(

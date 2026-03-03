@@ -236,3 +236,29 @@ Minimal checks after backend changes:
 6. docs/openapi routing regression
    - `/api/v1/openapi.json` is reachable
    - `/api/v1/docs` is reachable
+
+## CharacterFact behavior matrix (test-authoritative)
+
+Use this section as the source of truth for current API behavior. Do not infer beyond these rows.
+
+### GET `/api/v1/campaigns/{campaign_id}/characters/facts/{character_id}`
+
+| Status | Case | Expected behavior | Test evidence |
+| --- | --- | --- | --- |
+| Guaranteed | draft exists and is valid | return `200` with draft payload | `backend/tests/test_character_fact_api.py:250` |
+| Guaranteed | draft missing, batch has the character | return `200` via batch fallback | `backend/tests/test_character_fact_api.py:250` |
+| Guaranteed | draft JSON unreadable, batch has the character | return `200` via batch fallback | `backend/tests/test_character_fact_api.py:282` |
+| Guaranteed | draft readable but schema-invalid (`meta.unknown`) | return `422` | `backend/tests/test_character_fact_api.py:308` |
+| Unspecified | draft missing and batch missing | status/shape not frozen | not asserted |
+| Unspecified | campaign missing on GET fact | status/shape not frozen | not asserted |
+
+### POST `/api/v1/campaigns/{campaign_id}/characters/generate` error precedence
+
+| Status | Case | Expected behavior | Test evidence |
+| --- | --- | --- | --- |
+| Guaranteed | valid request | return `200` refs-only response (`batch_path`, `individual_paths`, `count_requested`, `count_generated`, `warnings`) | `backend/tests/test_character_fact_api.py:85` |
+| Guaranteed | same `campaign_id` + same `request_id` twice | second call returns `409`; no new batch file | `backend/tests/test_character_fact_api.py:128` |
+| Guaranteed | `tone_vocab_only=true` and empty `allowed_tones` (campaign exists) | return `400` | `backend/tests/test_character_fact_api.py:156` |
+| Guaranteed | normalize output schema-invalid | return `422` | `backend/tests/test_character_fact_api.py:189` |
+| Guaranteed | campaign missing + payload also violates `allowed_tones` rule | return `404` (precedence over this `400`) | `backend/tests/test_character_fact_api.py:173` |
+| Unspecified | other multi-error combinations | precedence not frozen | not asserted |

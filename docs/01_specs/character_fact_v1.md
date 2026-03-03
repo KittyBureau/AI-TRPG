@@ -41,7 +41,9 @@ This document freezes schema versioning, prompt protocol, and persistence protoc
   - `hooks`
   - `language`
   - `source`
-- Any other `meta` keys are rejected in normalize/persistence.
+- Test-backed baseline behavior is split:
+  - normalize path drops unknown `meta` keys.
+  - strict read validation may reject unknown `meta` keys.
 
 ## 4. Prompt protocol freeze
 
@@ -105,3 +107,31 @@ Generated files are non-authoritative temporary artifacts:
 - `GET /api/v1/campaigns/{campaign_id}/characters/generated/batches`
 - `GET /api/v1/campaigns/{campaign_id}/characters/generated/batches/{request_id}`
 - `GET /api/v1/campaigns/{campaign_id}/characters/facts/{character_id}`
+
+## 8. Test-backed behavior freeze (Guaranteed vs Unspecified)
+
+The entries below are derived from tests only. Anything not listed as Guaranteed is Unspecified.
+
+### 8.1 GET `/facts/{character_id}`
+
+| Status | Case | Expected behavior | Test evidence |
+| --- | --- | --- | --- |
+| Guaranteed | draft exists and is valid | return `200` with draft payload | `backend/tests/test_character_fact_api.py:250` |
+| Guaranteed | draft missing, batch has the character | return `200` via batch fallback | `backend/tests/test_character_fact_api.py:250` |
+| Guaranteed | draft file unreadable JSON, batch has the character | return `200` via batch fallback | `backend/tests/test_character_fact_api.py:282` |
+| Guaranteed | draft is readable JSON but schema-invalid (`meta.unknown`) | return `422` (no fallback in this case) | `backend/tests/test_character_fact_api.py:308` |
+| Unspecified | draft missing and batch also missing | status/shape are not frozen by tests | not asserted |
+| Unspecified | campaign missing for GET fact | status/shape are not frozen by tests | not asserted |
+| Unspecified | conflict between draft and batch payload contents | precedence details are not frozen by tests | not asserted |
+
+### 8.2 POST `/characters/generate` error precedence
+
+| Status | Case | Expected behavior | Test evidence |
+| --- | --- | --- | --- |
+| Guaranteed | valid request | return `200` refs-only payload (`batch_path`, `individual_paths`, `count_requested`, `count_generated`, `warnings`) | `backend/tests/test_character_fact_api.py:85` |
+| Guaranteed | same `campaign_id` + same `request_id` resubmitted | return `409`; no new batch file | `backend/tests/test_character_fact_api.py:128` |
+| Guaranteed | `tone_vocab_only=true` and `allowed_tones=[]` with existing campaign | return `400` | `backend/tests/test_character_fact_api.py:156` |
+| Guaranteed | normalize output becomes schema-invalid | return `422` | `backend/tests/test_character_fact_api.py:189` |
+| Guaranteed | campaign missing + payload also has `allowed_tones=[]` | return `404` (campaign check precedence over this `400`) | `backend/tests/test_character_fact_api.py:173` |
+| Unspecified | conflict + schema-invalid generated output in one request | precedence is not frozen by tests | not asserted |
+| Unspecified | campaign missing + any other parameter error combination | precedence beyond the case above is not frozen by tests | not asserted |
