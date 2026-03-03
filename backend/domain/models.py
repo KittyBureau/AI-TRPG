@@ -107,7 +107,13 @@ class Campaign(BaseModel):
     settings_snapshot: SettingsSnapshot = Field(default_factory=SettingsSnapshot)
     settings_revision: int = 0
     allowlist: List[str] = Field(
-        default_factory=lambda: ["move", "hp_delta", "map_generate", "move_options"]
+        default_factory=lambda: [
+            "move",
+            "hp_delta",
+            "map_generate",
+            "move_options",
+            "world_generate",
+        ]
     )
     map: MapData = Field(default_factory=MapData)
     state: CampaignState = Field(default_factory=CampaignState)

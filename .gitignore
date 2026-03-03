@@ -30,5 +30,8 @@ storage/secrets/keyring.json
 # Campaigns
 storage/campaigns/
 
+# Local temporary workspaces
+.tmp/
+
 # Human-only one-off prompts
 docs/99_human_only/one_off_prompts/

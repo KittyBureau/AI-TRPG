@@ -55,11 +55,12 @@ Use this as the default reference for every task.
 - Tool params and allowlist follow `docs/01_specs/tools.md`.
 - `move_options` is read-only and must not change positions or other state.
 - Movement state changes require a `move` tool_call; narration alone does not change positions.
+- `world_generate` is metadata-only in v1 (no map generation chain); missing resolved world id returns tool reason `world_id_missing`.
 **Checks**
-- Run `backend/tests/test_map_generate.py` and `backend/tests/test_move_options.py` when touching tool execution or validation.
+- Run `backend/tests/test_map_generate.py`, `backend/tests/test_move_options.py`, and `backend/tests/test_world_generate_tool.py` when touching tool execution or validation.
 - Review `docs/01_specs/tools.md` for param and reason updates.
 **Scope**
-- `backend/app/tool_executor.py`, `backend/domain/models.py`, `docs/01_specs/tools.md`, `backend/tests/test_map_generate.py`, `backend/tests/test_move_options.py`.
+- `backend/app/tool_executor.py`, `backend/app/world_service.py`, `backend/domain/models.py`, `docs/01_specs/tools.md`, `backend/tests/test_map_generate.py`, `backend/tests/test_move_options.py`, `backend/tests/test_world_generate_tool.py`.
 
 ## 6. Storage Layout & Persistence
 **Rules**
@@ -101,6 +102,7 @@ Use this as the default reference for every task.
 - Allowed states: `alive`, `dying`, `unconscious`, `restrained_permanent`, `dead`.
 - `dying` only allows `hp_delta` with positive delta on the actor; other non-alive states reject all tools.
 - `rules.hp_zero_ends_game` drives state transitions on HP changes.
+- `world_generate` follows standard tool permission gates (`alive` allowed when in allowlist; non-alive restricted).
 **Checks**
 - Review `backend/domain/state_machine.py` and tool executor behavior.
 - Add or update tests when changing state permission logic.
@@ -111,6 +113,7 @@ Use this as the default reference for every task.
 **Rules**
 - API contract changes require updating `docs/02_guides/testing/api_test_guide.md`.
 - Tool/state/map changes require running `backend/tests/test_map_generate.py`, `backend/tests/test_move_options.py`, and reviewing the manual map_generate guide when map logic changes.
+- `world_generate` changes require running `backend/tests/test_world_generate_tool.py` and the local smoke script `scripts/smoke_world_generate.ps1` (guide: `docs/02_guides/testing/world_generate_smoke_test.md`).
 - Spec changes in `docs/01_specs/**` must be reflected in this AI_INDEX.
 **Checks**
 - Run targeted tests and document results in the task output.

@@ -59,6 +59,7 @@ Example 3 (no tool call required; MUST respond with non-empty assistant_text):
 - `move_options`
 - `hp_delta`
 - `map_generate`
+- `world_generate`
 
 Allowlist is stored in `campaign.json` as `allowlist`.
 
@@ -123,6 +124,27 @@ Notes:
 - `parent_area_id` may be null to generate a root layer.
 - `map.connections` are rebuilt from `areas[*].reachable_area_ids` on write.
 
+### world_generate
+
+Required args:
+
+- none
+
+Optional args:
+
+- `world_id` (string; resolution order: args.world_id -> Context.selected.world_id)
+- `bind_to_campaign` (bool, default `false`)
+- `seed` (int|string; only used when creating world or when seed is missing)
+- `generator_id` (string; only used as a fallback when generator id is missing)
+- `also_generate_map` (bool, default `false`; v1 echoes only, no map generation)
+
+Notes:
+
+- v1 does not call `map_generate`.
+- If resolved world id is missing, the tool fails with `reason=world_id_missing`.
+- If world exists, only missing/empty fields are normalized; existing values are not overwritten.
+- `bind_to_campaign=true` updates `campaign.selected.world_id`; default `false` keeps selection unchanged.
+
 ## Applied Actions (System -> Log)
 
 ```json
@@ -152,6 +174,29 @@ Map generation result payload:
     "created_connections": 3,
     "root_parent_area_id": "area_001",
     "warnings": []
+  },
+  "timestamp": "2026-01-14T16:05:31+00:00"
+}
+```
+
+World generation result payload (v1):
+
+```json
+{
+  "tool": "world_generate",
+  "args": {
+    "world_id": "world_001",
+    "bind_to_campaign": true,
+    "also_generate_map": false
+  },
+  "result": {
+    "world_id": "world_001",
+    "created": false,
+    "normalized": true,
+    "bound_to_campaign": true,
+    "seed": 123456789,
+    "generator_id": "stub",
+    "also_generate_map": false
   },
   "timestamp": "2026-01-14T16:05:31+00:00"
 }
@@ -200,3 +245,4 @@ Move options result payload:
 - `invalid_args`
 - `actor_state_restricted`
 - `invalid_actor_state`
+- `world_id_missing`

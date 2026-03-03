@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
 from backend.app.character_facade_factory import create_runtime_character_facade
+from backend.app.world_service import generate_world
 from backend.domain.character_access import (
     CharacterFacade,
     CharacterState,
@@ -21,12 +22,15 @@ from backend.domain.state_machine import resolve_tool_permission
 from backend.infra.map_generators.deterministic_generator import (
     DeterministicMapGenerator,
 )
+from backend.infra.file_repo import FileRepo
 
 
 def execute_tool_calls(
     campaign: Campaign,
     actor_id: str,
     tool_calls: List[ToolCall],
+    *,
+    repo: Optional[FileRepo] = None,
 ) -> Tuple[List[AppliedAction], Optional[ToolFeedback]]:
     applied_actions: List[AppliedAction] = []
     failed_calls: List[FailedCall] = []
@@ -58,14 +62,16 @@ def execute_tool_calls(
             )
             continue
 
-        action = _apply_tool_call(campaign, actor_id, call, character_facade)
+        action, error_reason = _apply_tool_call(
+            campaign, actor_id, call, character_facade, repo=repo
+        )
         if action is None:
             failed_calls.append(
                 FailedCall(
                     id=call.id,
                     tool=call.tool,
                     status="error",
-                    reason="invalid_args",
+                    reason=error_reason or "invalid_args",
                 )
             )
             continue
@@ -104,19 +110,27 @@ def _apply_tool_call(
     actor_id: str,
     call: ToolCall,
     character_facade: CharacterFacade,
-) -> Optional[AppliedAction]:
+    *,
+    repo: Optional[FileRepo],
+) -> Tuple[Optional[AppliedAction], Optional[str]]:
     timestamp = datetime.now(timezone.utc).isoformat()
     if call.tool == "move":
-        return _apply_move(campaign, actor_id, call, timestamp, character_facade)
+        action = _apply_move(campaign, actor_id, call, timestamp, character_facade)
+        return action, "invalid_args" if action is None else None
     if call.tool == "hp_delta":
-        return _apply_hp_delta(campaign, call, timestamp, character_facade)
+        action = _apply_hp_delta(campaign, call, timestamp, character_facade)
+        return action, "invalid_args" if action is None else None
     if call.tool == "move_options":
-        return _apply_move_options(
+        action = _apply_move_options(
             campaign, actor_id, call, timestamp, character_facade
         )
+        return action, "invalid_args" if action is None else None
     if call.tool == "map_generate":
-        return _apply_map_generate(campaign, call, timestamp)
-    return None
+        action = _apply_map_generate(campaign, call, timestamp)
+        return action, "invalid_args" if action is None else None
+    if call.tool == "world_generate":
+        return _apply_world_generate(campaign, call, timestamp, repo=repo)
+    return None, "invalid_args"
 
 
 def _apply_move(
@@ -350,6 +364,29 @@ def _apply_map_generate(
             "warnings": result.warnings,
         },
         timestamp=timestamp,
+    )
+
+
+def _apply_world_generate(
+    campaign: Campaign,
+    call: ToolCall,
+    timestamp: str,
+    *,
+    repo: Optional[FileRepo],
+) -> Tuple[Optional[AppliedAction], Optional[str]]:
+    if repo is None:
+        return None, "invalid_args"
+    result, error = generate_world(call.args, campaign, repo)
+    if result is None:
+        return None, error or "invalid_args"
+    return (
+        AppliedAction(
+            tool="world_generate",
+            args=call.args,
+            result=result,
+            timestamp=timestamp,
+        ),
+        None,
     )
 
 
