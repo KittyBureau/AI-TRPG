@@ -102,6 +102,17 @@
           </div>
         </div>
 
+        <div class="grid grid--two">
+          <div class="field">
+            <span>Turn Guard Insight</span>
+            <pre id="turnGuardInsight"></pre>
+          </div>
+          <div class="field">
+            <span>Latest API Error</span>
+            <pre id="errorInspector"></pre>
+          </div>
+        </div>
+
         <div class="stack">
           <details open>
             <summary>narrative_text</summary>
@@ -136,6 +147,106 @@
             <pre id="turnRawResponse"></pre>
           </details>
         </div>
+      </section>
+
+      <section class="panel" id="campaignOpsPanel">
+        <div class="panel__header">
+          <h2>Campaign Status & V1.1 Ops</h2>
+          <p class="panel__hint">Lifecycle, milestone, adoption, and guard-related operations.</p>
+        </div>
+
+        <div class="inline">
+          <button id="fetchCampaignStatus">Fetch Campaign Status</button>
+          <button class="ghost" id="refreshAfterTurn">Auto Refresh After Turn: OFF</button>
+        </div>
+
+        <div class="grid grid--two">
+          <div class="field">
+            <span>Lifecycle</span>
+            <pre id="campaignLifecycle"></pre>
+          </div>
+          <div class="field">
+            <span>Milestone</span>
+            <pre id="campaignMilestone"></pre>
+          </div>
+        </div>
+
+        <div class="grid grid--two">
+          <div class="field">
+            <span>Active Actor State (from latest turn)</span>
+            <pre id="activeActorState"></pre>
+          </div>
+          <div class="field">
+            <span>Settings Snapshot (focus keys)</span>
+            <pre id="settingsFocusView"></pre>
+          </div>
+        </div>
+
+        <div class="grid grid--two">
+          <div class="field">
+            <span>Manual Milestone Advance</span>
+            <div class="inline">
+              <input
+                type="text"
+                id="milestoneSummaryInput"
+                placeholder="summary"
+                autocomplete="off"
+              />
+              <button id="advanceMilestoneBtn">Advance Milestone</button>
+            </div>
+            <pre id="advanceMilestoneResult"></pre>
+          </div>
+          <div class="field">
+            <span>CharacterFact Adoption</span>
+            <div class="inline">
+              <input
+                type="text"
+                id="adoptCharacterId"
+                placeholder="character_id"
+                autocomplete="off"
+              />
+              <input
+                type="text"
+                id="acceptedByInput"
+                placeholder="accepted_by (default: system)"
+                autocomplete="off"
+              />
+              <button id="adoptFactBtn">Adopt Fact</button>
+            </div>
+            <pre id="adoptFactResult"></pre>
+          </div>
+        </div>
+
+        <div class="grid grid--three">
+          <label class="field field--compact">
+            <span>strict_semantic_guard</span>
+            <select id="toggleStrictGuard">
+              <option value="unchanged">unchanged</option>
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </label>
+          <label class="field field--compact">
+            <span>conflict_text_checks_enabled</span>
+            <select id="toggleConflictTextChecks">
+              <option value="unchanged">unchanged</option>
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </label>
+          <label class="field field--compact">
+            <span>context.compress_enabled</span>
+            <select id="toggleCompressEnabled">
+              <option value="unchanged">unchanged</option>
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </label>
+        </div>
+        <div class="inline inline--end">
+          <button id="applyFocusToggles">Apply Focus Toggles</button>
+        </div>
+        <pre id="toggleApplyResult"></pre>
       </section>
 
       <section class="panel" id="settingsPanel">

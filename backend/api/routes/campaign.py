@@ -52,7 +52,9 @@ class SelectActorResponse(BaseModel):
 class CampaignStatusMilestoneResponse(BaseModel):
     current: str
     last_advanced_turn: int
+    turn_trigger_interval: int
     pressure: int
+    pressure_threshold: int
     summary: str
 
 
@@ -140,7 +142,9 @@ def campaign_status(campaign_id: str) -> CampaignStatusResponse:
         milestone=CampaignStatusMilestoneResponse(
             current=campaign.milestone.current,
             last_advanced_turn=campaign.milestone.last_advanced_turn,
+            turn_trigger_interval=campaign.milestone.turn_trigger_interval,
             pressure=campaign.milestone.pressure,
+            pressure_threshold=campaign.milestone.pressure_threshold,
             summary=campaign.milestone.summary,
         ),
     )
@@ -170,7 +174,9 @@ def advance_milestone(request: AdvanceMilestoneRequest) -> AdvanceMilestoneRespo
         milestone=CampaignStatusMilestoneResponse(
             current=campaign.milestone.current,
             last_advanced_turn=campaign.milestone.last_advanced_turn,
+            turn_trigger_interval=campaign.milestone.turn_trigger_interval,
             pressure=campaign.milestone.pressure,
+            pressure_threshold=campaign.milestone.pressure_threshold,
             summary=campaign.milestone.summary,
         ),
     )

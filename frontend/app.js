@@ -18,6 +18,7 @@ const elements = {
   turnUserInput: document.getElementById("turnUserInput"),
   applyUserInput: document.getElementById("applyUserInput"),
   sendTurn: document.getElementById("sendTurn"),
+  turnGuardInsight: document.getElementById("turnGuardInsight"),
   turnNarrative: document.getElementById("turnNarrative"),
   turnDialogType: document.getElementById("turnDialogType"),
   turnToolCalls: document.getElementById("turnToolCalls"),
@@ -26,6 +27,25 @@ const elements = {
   turnConflictReport: document.getElementById("turnConflictReport"),
   turnStateSummary: document.getElementById("turnStateSummary"),
   turnRawResponse: document.getElementById("turnRawResponse"),
+  errorInspector: document.getElementById("errorInspector"),
+  fetchCampaignStatus: document.getElementById("fetchCampaignStatus"),
+  refreshAfterTurn: document.getElementById("refreshAfterTurn"),
+  campaignLifecycle: document.getElementById("campaignLifecycle"),
+  campaignMilestone: document.getElementById("campaignMilestone"),
+  activeActorState: document.getElementById("activeActorState"),
+  settingsFocusView: document.getElementById("settingsFocusView"),
+  milestoneSummaryInput: document.getElementById("milestoneSummaryInput"),
+  advanceMilestoneBtn: document.getElementById("advanceMilestoneBtn"),
+  advanceMilestoneResult: document.getElementById("advanceMilestoneResult"),
+  adoptCharacterId: document.getElementById("adoptCharacterId"),
+  acceptedByInput: document.getElementById("acceptedByInput"),
+  adoptFactBtn: document.getElementById("adoptFactBtn"),
+  adoptFactResult: document.getElementById("adoptFactResult"),
+  toggleStrictGuard: document.getElementById("toggleStrictGuard"),
+  toggleConflictTextChecks: document.getElementById("toggleConflictTextChecks"),
+  toggleCompressEnabled: document.getElementById("toggleCompressEnabled"),
+  applyFocusToggles: document.getElementById("applyFocusToggles"),
+  toggleApplyResult: document.getElementById("toggleApplyResult"),
   loadSchema: document.getElementById("loadSchema"),
   settingsDefinitions: document.getElementById("settingsDefinitions"),
   settingsSnapshot: document.getElementById("settingsSnapshot"),
@@ -43,6 +63,9 @@ const state = {
   currentCampaignId: "",
   lastCampaignId: "",
   history: [],
+  autoRefreshStatusAfterTurn: false,
+  latestTurnStateSummary: null,
+  latestSettingsSnapshot: null,
 };
 
 function setStatus(message) {
@@ -68,6 +91,101 @@ function formatField(value) {
     return value;
   }
   return JSON.stringify(value, null, 2);
+}
+
+function buildErrorSuggestion(status, detail) {
+  const text = String(detail || "").toLowerCase();
+  if (status === 422 && text.includes("invalid dialog_type")) {
+    return "Suggestion: strict_semantic_guard is ON; disable it in settings or ensure model emits allowed dialog_type.";
+  }
+  if (status === 400 && text.includes("campaign has ended")) {
+    return "Suggestion: campaign ended is read-only for turns; use Campaign Status to inspect lifecycle and create/switch to another campaign.";
+  }
+  if (status === 400 && text.includes("unconscious")) {
+    return "Suggestion: switch actor via /api/v1/campaign/select_actor, then retry turn.";
+  }
+  if (text.includes("repeat_illegal_request")) {
+    return "Suggestion: change tool args or wait beyond repeated failure window before retrying.";
+  }
+  if (status === 404 && text.includes("characterfact")) {
+    return "Suggestion: ensure campaign_id and character_id exist and fact draft/batch is available.";
+  }
+  if (status === 409) {
+    return "Suggestion: duplicate request detected; use a new request_id or refresh current state.";
+  }
+  if (status >= 400) {
+    return "Suggestion: check payload and current campaign state, then retry.";
+  }
+  return "";
+}
+
+function renderErrorInspector(status, responseText) {
+  const parsed = safeJsonParse(responseText);
+  const detail =
+    parsed && typeof parsed === "object" && "detail" in parsed
+      ? parsed.detail
+      : responseText || "";
+  const suggestion = buildErrorSuggestion(Number(status), detail);
+  const payload = {
+    status,
+    detail,
+    suggestion,
+  };
+  setPreValue(elements.errorInspector, formatField(payload));
+}
+
+function applySettingsFocusSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== "object") {
+    setPreValue(elements.settingsFocusView, "");
+    return;
+  }
+  state.latestSettingsSnapshot = snapshot;
+  const focus = {
+    "dialog.strict_semantic_guard":
+      snapshot.dialog && snapshot.dialog.strict_semantic_guard,
+    "dialog.conflict_text_checks_enabled":
+      snapshot.dialog && snapshot.dialog.conflict_text_checks_enabled,
+    "context.compress_enabled":
+      snapshot.context && snapshot.context.compress_enabled,
+    context_mode_inference:
+      snapshot.context && snapshot.context.compress_enabled ? "compressed" : "full",
+  };
+  setPreValue(elements.settingsFocusView, formatField(focus));
+}
+
+function renderCampaignStatusPanel(statusPayload) {
+  if (!statusPayload || typeof statusPayload !== "object") {
+    setPreValue(elements.campaignLifecycle, "");
+    setPreValue(elements.campaignMilestone, "");
+    return;
+  }
+  setPreValue(
+    elements.campaignLifecycle,
+    formatField({
+      ended: statusPayload.ended,
+      reason: statusPayload.reason || null,
+      ended_at: statusPayload.ended_at || null,
+    })
+  );
+  setPreValue(elements.campaignMilestone, formatField(statusPayload.milestone || {}));
+}
+
+function renderActiveActorStateFromSummary(summary) {
+  if (!summary || typeof summary !== "object") {
+    setPreValue(elements.activeActorState, "");
+    return;
+  }
+  const actorId = summary.active_actor_id || "";
+  const payload = {
+    active_actor_id: actorId,
+    position: summary.positions ? summary.positions[actorId] : undefined,
+    hp: summary.hp ? summary.hp[actorId] : undefined,
+    character_state: summary.character_states
+      ? summary.character_states[actorId]
+      : undefined,
+  };
+  state.latestTurnStateSummary = summary;
+  setPreValue(elements.activeActorState, formatField(payload));
 }
 
 function loadHistory() {
@@ -309,6 +427,7 @@ function renderTurnResponse(rawText) {
     setPreValue(elements.turnToolFeedback, "");
     setPreValue(elements.turnConflictReport, "");
     setPreValue(elements.turnStateSummary, "");
+    setPreValue(elements.turnGuardInsight, "");
     return;
   }
   setPreValue(elements.turnNarrative, formatField(data.narrative_text));
@@ -318,6 +437,25 @@ function renderTurnResponse(rawText) {
   setPreValue(elements.turnToolFeedback, formatField(data.tool_feedback));
   setPreValue(elements.turnConflictReport, formatField(data.conflict_report));
   setPreValue(elements.turnStateSummary, formatField(data.state_summary));
+  renderActiveActorStateFromSummary(data.state_summary);
+
+  const failedCalls =
+    data.tool_feedback &&
+    data.tool_feedback.failed_calls &&
+    Array.isArray(data.tool_feedback.failed_calls)
+      ? data.tool_feedback.failed_calls
+      : [];
+  const reasons = failedCalls.map((item) => item.reason).filter(Boolean);
+  const insight = {
+    has_conflict_report: Boolean(data.conflict_report),
+    failed_call_reasons: reasons,
+    repeat_illegal_request_detected: reasons.includes("repeat_illegal_request"),
+    note:
+      reasons.includes("repeat_illegal_request")
+        ? "Backend suppressed repeated illegal request based on recent failed signatures."
+        : "",
+  };
+  setPreValue(elements.turnGuardInsight, formatField(insight));
 }
 
 function buildSettingsApplyBody(campaignId, patchRaw) {
@@ -389,8 +527,9 @@ async function sendRequest({ method, path, bodyText }) {
   };
   addHistory(entry);
   setStatus(`${method} ${path} -> ${status} in ${Math.round(latency)}ms`);
+  renderErrorInspector(status, responseText);
 
-  return { ok, status, responseText };
+  return { ok, status, responseText, data: safeJsonParse(responseText) };
 }
 
 function applyUserInputToRaw() {
@@ -479,6 +618,9 @@ async function sendTurn() {
     bodyText: raw,
   });
   renderTurnResponse(result.responseText);
+  if (state.autoRefreshStatusAfterTurn) {
+    await fetchCampaignStatus();
+  }
 }
 
 async function loadSchema() {
@@ -497,6 +639,7 @@ async function loadSchema() {
   }
   setPreValue(elements.settingsDefinitions, formatField(data.definitions));
   setPreValue(elements.settingsSnapshot, formatField(data.snapshot));
+  applySettingsFocusSnapshot(data.snapshot);
 }
 
 async function applySettings() {
@@ -519,6 +662,102 @@ async function applySettings() {
     elements.settingsApplySummary,
     formatField(data.change_summary)
   );
+  applySettingsFocusSnapshot(data.snapshot);
+}
+
+async function fetchCampaignStatus() {
+  const query = new URLSearchParams({
+    campaign_id: state.currentCampaignId || "",
+  });
+  const result = await sendRequest({
+    method: "GET",
+    path: `/api/v1/campaign/status?${query.toString()}`,
+  });
+  if (result.data) {
+    renderCampaignStatusPanel(result.data);
+  }
+}
+
+async function advanceMilestone() {
+  const body = {
+    campaign_id: state.currentCampaignId || "",
+    summary: elements.milestoneSummaryInput.value || "",
+  };
+  const result = await sendRequest({
+    method: "POST",
+    path: "/api/v1/campaign/milestone/advance",
+    bodyText: JSON.stringify(body, null, 2),
+  });
+  setPreValue(elements.advanceMilestoneResult, result.responseText || "");
+  if (result.ok) {
+    await fetchCampaignStatus();
+  }
+}
+
+async function adoptCharacterFact() {
+  const characterId = elements.adoptCharacterId.value.trim();
+  if (!characterId) {
+    setStatus("CharacterFact adopt requires character_id.");
+    return;
+  }
+  const acceptedBy = elements.acceptedByInput.value.trim() || "system";
+  const result = await sendRequest({
+    method: "POST",
+    path: `/api/v1/campaigns/${encodeURIComponent(
+      state.currentCampaignId || ""
+    )}/characters/facts/${encodeURIComponent(characterId)}/adopt`,
+    bodyText: JSON.stringify({ accepted_by: acceptedBy }, null, 2),
+  });
+  setPreValue(elements.adoptFactResult, result.responseText || "");
+}
+
+function buildFocusPatchFromToggles() {
+  const patch = {};
+  if (elements.toggleStrictGuard.value !== "unchanged") {
+    patch["dialog.strict_semantic_guard"] =
+      elements.toggleStrictGuard.value === "true";
+  }
+  if (elements.toggleConflictTextChecks.value !== "unchanged") {
+    patch["dialog.conflict_text_checks_enabled"] =
+      elements.toggleConflictTextChecks.value === "true";
+  }
+  if (elements.toggleCompressEnabled.value !== "unchanged") {
+    const nextCompress = elements.toggleCompressEnabled.value === "true";
+    patch["context.compress_enabled"] = nextCompress;
+    patch["context.full_context_enabled"] = !nextCompress;
+  }
+  return patch;
+}
+
+async function applyFocusToggles() {
+  const patch = buildFocusPatchFromToggles();
+  if (!Object.keys(patch).length) {
+    setStatus("No focus toggle changed.");
+    return;
+  }
+  const result = await sendRequest({
+    method: "POST",
+    path: "/api/v1/settings/apply",
+    bodyText: JSON.stringify(
+      {
+        campaign_id: state.currentCampaignId || "",
+        patch,
+      },
+      null,
+      2
+    ),
+  });
+  setPreValue(elements.toggleApplyResult, result.responseText || "");
+  if (result.data && result.data.snapshot) {
+    applySettingsFocusSnapshot(result.data.snapshot);
+  }
+}
+
+function toggleAutoRefreshAfterTurn() {
+  state.autoRefreshStatusAfterTurn = !state.autoRefreshStatusAfterTurn;
+  elements.refreshAfterTurn.textContent = `Auto Refresh After Turn: ${
+    state.autoRefreshStatusAfterTurn ? "ON" : "OFF"
+  }`;
 }
 
 function exportHistory() {
@@ -578,6 +817,11 @@ function bindEvents() {
   elements.selectActorBtn.addEventListener("click", selectActor);
   elements.applyUserInput.addEventListener("click", applyUserInputToRaw);
   elements.sendTurn.addEventListener("click", sendTurn);
+  elements.fetchCampaignStatus.addEventListener("click", fetchCampaignStatus);
+  elements.refreshAfterTurn.addEventListener("click", toggleAutoRefreshAfterTurn);
+  elements.advanceMilestoneBtn.addEventListener("click", advanceMilestone);
+  elements.adoptFactBtn.addEventListener("click", adoptCharacterFact);
+  elements.applyFocusToggles.addEventListener("click", applyFocusToggles);
   elements.loadSchema.addEventListener("click", loadSchema);
   elements.applySettings.addEventListener("click", applySettings);
   elements.exportHistory.addEventListener("click", exportHistory);
@@ -635,6 +879,18 @@ function initTemplates() {
   );
 
   elements.settingsPatchRaw.value = '{ "dialog.auto_type_enabled": false }';
+  setPreValue(
+    elements.errorInspector,
+    formatField({ status: "", detail: "", suggestion: "" })
+  );
+  setPreValue(elements.turnGuardInsight, "");
+  setPreValue(elements.campaignLifecycle, "");
+  setPreValue(elements.campaignMilestone, "");
+  setPreValue(elements.activeActorState, "");
+  setPreValue(elements.settingsFocusView, "");
+  setPreValue(elements.advanceMilestoneResult, "");
+  setPreValue(elements.adoptFactResult, "");
+  setPreValue(elements.toggleApplyResult, "");
 }
 
 function init() {
@@ -648,6 +904,7 @@ function init() {
   }
 
   bindEvents();
+  elements.refreshAfterTurn.textContent = "Auto Refresh After Turn: OFF";
   setStatus("Ready.");
 }
 

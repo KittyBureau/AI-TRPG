@@ -262,3 +262,46 @@ Use this section as the source of truth for current API behavior. Do not infer b
 | Guaranteed | normalize output schema-invalid | return `422` | `backend/tests/test_character_fact_api.py:189` |
 | Guaranteed | campaign missing + payload also violates `allowed_tones` rule | return `404` (precedence over this `400`) | `backend/tests/test_character_fact_api.py:173` |
 | Unspecified | other multi-error combinations | precedence not frozen | not asserted |
+
+---
+
+## Frontend click-test checklist (V1.1 quick path)
+
+Using `frontend/index.html`:
+
+1. Create/select campaign
+   - Use **Connection & Session** panel to create a campaign and set current campaign id.
+
+2. Read campaign status
+   - Click **Fetch Campaign Status**.
+   - Verify lifecycle and milestone fields render in UI.
+
+3. Toggle V1.1 settings
+   - In **Campaign Status & V1.1 Ops**, set:
+     - `strict_semantic_guard`
+     - `conflict_text_checks_enabled`
+     - `context.compress_enabled`
+   - Click **Apply Focus Toggles** and verify response.
+
+4. Send turn and inspect guard output
+   - Send turn from **Turn Panel**.
+   - Check:
+     - `state_summary`
+     - `Turn Guard Insight`
+     - `Latest API Error` when request is rejected.
+
+5. Manual milestone advance
+   - Enter summary and click **Advance Milestone**.
+   - Re-fetch status and verify milestone changes.
+
+6. CharacterFact adopt
+   - Provide `character_id` and click **Adopt Fact**.
+   - Verify response includes `accepted_path`, `profile_changed`, `acceptance_changed`.
+   - Re-run with same inputs to confirm idempotent behavior indicators.
+
+7. Error visualization checks
+   - Ensure UI displays HTTP status + backend detail + suggested action for:
+     - ended campaign write rejection
+     - strict guard `422`
+     - unconscious active actor rejection
+     - repeat illegal suppression hints when present

@@ -26,6 +26,53 @@ Notes:
 - Sends raw JSON exactly as typed (no validation).
 - Displays response fields + raw response.
 - Records each request/response in local history with export/copy tools.
+- Includes a V1.1 operations panel for quick verification of lifecycle/milestone/settings/adoption workflows.
+
+## V1.1 quick operations in UI
+
+The frontend now provides a **Campaign Status & V1.1 Ops** panel:
+
+- `Fetch Campaign Status`
+  - Calls `GET /api/v1/campaign/status?campaign_id=...`
+  - Shows:
+    - lifecycle: `ended`, `reason`, `ended_at`
+    - milestone: `current`, `last_advanced_turn`, `turn_trigger_interval`, `pressure`, `pressure_threshold`, `summary`
+- `Advance Milestone`
+  - Calls `POST /api/v1/campaign/milestone/advance`
+  - Request body:
+    ```json
+    {
+      "campaign_id": "camp_0001",
+      "summary": "manual checkpoint"
+    }
+    ```
+- `Adopt Fact`
+  - Calls `POST /api/v1/campaigns/{campaign_id}/characters/facts/{character_id}/adopt`
+  - Request body:
+    ```json
+    { "accepted_by": "system" }
+    ```
+
+### Settings focus toggles
+
+The panel can patch key V1.1 switches through `POST /api/v1/settings/apply`:
+
+- `dialog.strict_semantic_guard`
+- `dialog.conflict_text_checks_enabled`
+- `context.compress_enabled`
+
+When toggling `context.compress_enabled`, the UI also patches
+`context.full_context_enabled` inversely to satisfy backend mutual exclusion.
+
+### Error and guard visibility
+
+- `Latest API Error` shows:
+  - HTTP status
+  - backend `detail`
+  - suggested action
+- `Turn Guard Insight` highlights:
+  - conflict/retry related hints
+  - `repeat_illegal_request` suppression signals from `tool_feedback`
 
 ## Map view (V0)
 

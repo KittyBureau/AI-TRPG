@@ -118,6 +118,10 @@ code {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
+.grid--three {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -132,6 +136,10 @@ code {
   font-weight: 500;
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+.field--compact {
+  gap: 0.35rem;
 }
 
 input,

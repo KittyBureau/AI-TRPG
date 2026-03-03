@@ -37,3 +37,16 @@ OpenAPI/docs are aligned to the same base path:
 - This migration changes routing only.
 - Existing route payload contracts remain backward compatible.
 - New v1 routes were added for lifecycle observability and CharacterFact adoption.
+
+## Frontend verification entry
+
+For quick manual verification, use the static frontend console (`frontend/index.html`).
+The V1.1 operations panel maps directly to these endpoints:
+
+- Campaign status -> `GET /api/v1/campaign/status`
+- Manual milestone advance -> `POST /api/v1/campaign/milestone/advance`
+- CharacterFact adopt -> `POST /api/v1/campaigns/{campaign_id}/characters/facts/{character_id}/adopt`
+- V1.1 settings switches -> `POST /api/v1/settings/apply`
+  - `dialog.strict_semantic_guard`
+  - `dialog.conflict_text_checks_enabled`
+  - `context.compress_enabled`
