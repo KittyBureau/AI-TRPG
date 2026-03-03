@@ -15,6 +15,7 @@ from backend.domain.character_fact_schema import (
     CharacterFactSchemaError,
     validate_character_fact,
 )
+from backend.domain.models import Campaign
 from backend.domain.state_utils import ensure_actor
 from backend.infra.file_repo import FileRepo
 
@@ -39,7 +40,7 @@ class CharacterFactApiService:
         campaign_id: str,
         request_payload: Dict[str, Any],
     ) -> CharacterFactBatchWriteResult:
-        self._require_campaign(campaign_id)
+        campaign = self._require_campaign(campaign_id)
         payload_size = len(json.dumps(request_payload, ensure_ascii=False).encode("utf-8"))
         if payload_size > MAX_GENERATE_REQUEST_BYTES:
             raise CharacterFactRequestError("request payload is too large.")
@@ -56,6 +57,8 @@ class CharacterFactApiService:
         request_snapshot["request_id"] = request_id
         request_snapshot["campaign_id"] = campaign_id
         request_snapshot["max_count"] = max_count
+        draft_mode = _read_draft_mode(campaign)
+        request_snapshot["draft_mode"] = draft_mode
 
         request = CharacterFactGenerationRequest(
             campaign_id=campaign_id,
@@ -69,6 +72,7 @@ class CharacterFactApiService:
             count=_read_int(request_payload.get("count"), 3),
             max_count=max_count,
             id_policy=_read_string(request_payload.get("id_policy"), "system"),
+            draft_mode=draft_mode,
             extra_params=request_snapshot,
         )
         return self.generation_service.generate_and_persist(request)
@@ -158,9 +162,9 @@ class CharacterFactApiService:
             "acceptance_changed": acceptance_changed,
         }
 
-    def _require_campaign(self, campaign_id: str) -> None:
+    def _require_campaign(self, campaign_id: str) -> Campaign:
         try:
-            self.repo.get_campaign(campaign_id)
+            return self.repo.get_campaign(campaign_id)
         except FileNotFoundError as exc:
             raise CharacterFactNotFoundError(str(exc)) from exc
 
@@ -202,3 +206,10 @@ def _read_int(value: object, default: int) -> int:
     if isinstance(value, int):
         return value
     return default
+
+
+def _read_draft_mode(campaign: Campaign) -> str:
+    value = campaign.settings_snapshot.characters.fact_generation.draft_mode
+    if value in {"deterministic", "llm"}:
+        return value
+    return "deterministic"

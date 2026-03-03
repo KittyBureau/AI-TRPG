@@ -49,11 +49,22 @@ class RollbackSettings(BaseModel):
     max_checkpoints: int = 0
 
 
+class CharacterFactGenerationSettings(BaseModel):
+    draft_mode: str = "deterministic"
+
+
+class CharactersSettings(BaseModel):
+    fact_generation: CharacterFactGenerationSettings = Field(
+        default_factory=CharacterFactGenerationSettings
+    )
+
+
 class SettingsSnapshot(BaseModel):
     context: ContextSettings = Field(default_factory=ContextSettings)
     rules: RulesSettings = Field(default_factory=RulesSettings)
     rollback: RollbackSettings = Field(default_factory=RollbackSettings)
     dialog: DialogSettings = Field(default_factory=DialogSettings)
+    characters: CharactersSettings = Field(default_factory=CharactersSettings)
 
 
 class Goal(BaseModel):

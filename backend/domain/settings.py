@@ -82,6 +82,15 @@ _DEFINITIONS: List[SettingDefinition] = [
         ui_hint="toggle",
         effect_tags=["dialog", "conflict"],
     ),
+    SettingDefinition(
+        key="characters.fact_generation.draft_mode",
+        type="str_enum",
+        default="deterministic",
+        scope="campaign",
+        validation={"allowed": ["deterministic", "llm"]},
+        ui_hint="select",
+        effect_tags=["characters", "generation", "llm"],
+    ),
 ]
 
 
@@ -143,6 +152,18 @@ def _validate_value(definition: SettingDefinition, value: Any) -> None:
             raise ValueError(f"Setting {definition.key} must be >= {min_value}")
         if max_value is not None and value > max_value:
             raise ValueError(f"Setting {definition.key} must be <= {max_value}")
+    elif expected_type == "str_enum":
+        if not isinstance(value, str):
+            raise ValueError(f"Setting {definition.key} must be a string")
+        allowed = definition.validation.get("allowed")
+        if not isinstance(allowed, list) or not all(
+            isinstance(item, str) for item in allowed
+        ):
+            raise ValueError(f"Setting {definition.key} missing allowed enum values")
+        if value not in allowed:
+            raise ValueError(
+                f"Setting {definition.key} must be one of: {', '.join(allowed)}"
+            )
     else:
         raise ValueError(f"Unsupported setting type: {expected_type}")
 

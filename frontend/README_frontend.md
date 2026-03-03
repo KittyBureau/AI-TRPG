@@ -52,6 +52,9 @@ The frontend now provides a **Campaign Status & V1.1 Ops** panel:
     ```json
     { "accepted_by": "system" }
     ```
+- `Generate Facts`
+  - Calls `POST /api/v1/campaigns/{campaign_id}/characters/generate`
+  - Uses a raw JSON textarea so `party_context` can be pasted directly.
 
 ### Settings focus toggles
 

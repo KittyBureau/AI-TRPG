@@ -41,6 +41,9 @@ const elements = {
   acceptedByInput: document.getElementById("acceptedByInput"),
   adoptFactBtn: document.getElementById("adoptFactBtn"),
   adoptFactResult: document.getElementById("adoptFactResult"),
+  generateCharacterRaw: document.getElementById("generateCharacterRaw"),
+  generateCharacterBtn: document.getElementById("generateCharacterBtn"),
+  generateCharacterResult: document.getElementById("generateCharacterResult"),
   toggleStrictGuard: document.getElementById("toggleStrictGuard"),
   toggleConflictTextChecks: document.getElementById("toggleConflictTextChecks"),
   toggleCompressEnabled: document.getElementById("toggleCompressEnabled"),
@@ -711,6 +714,20 @@ async function adoptCharacterFact() {
   setPreValue(elements.adoptFactResult, result.responseText || "");
 }
 
+async function generateCharacterFacts() {
+  const campaignId = state.currentCampaignId || "";
+  if (!campaignId) {
+    setStatus("CharacterFact generate requires a selected campaign.");
+    return;
+  }
+  const result = await sendRequest({
+    method: "POST",
+    path: `/api/v1/campaigns/${encodeURIComponent(campaignId)}/characters/generate`,
+    bodyText: elements.generateCharacterRaw.value,
+  });
+  setPreValue(elements.generateCharacterResult, result.responseText || "");
+}
+
 function buildFocusPatchFromToggles() {
   const patch = {};
   if (elements.toggleStrictGuard.value !== "unchanged") {
@@ -821,6 +838,7 @@ function bindEvents() {
   elements.refreshAfterTurn.addEventListener("click", toggleAutoRefreshAfterTurn);
   elements.advanceMilestoneBtn.addEventListener("click", advanceMilestone);
   elements.adoptFactBtn.addEventListener("click", adoptCharacterFact);
+  elements.generateCharacterBtn.addEventListener("click", generateCharacterFacts);
   elements.applyFocusToggles.addEventListener("click", applyFocusToggles);
   elements.loadSchema.addEventListener("click", loadSchema);
   elements.applySettings.addEventListener("click", applySettings);
@@ -878,6 +896,24 @@ function initTemplates() {
     2
   );
 
+  elements.generateCharacterRaw.value = JSON.stringify(
+    {
+      language: "zh-CN",
+      tone_style: ["grim", "mystery"],
+      tone_vocab_only: true,
+      allowed_tones: ["grim", "mystery", "low-magic"],
+      party_context: [],
+      constraints: {
+        allowed_roles: ["scout", "guardian", "speaker"],
+        style_notes: "grounded names",
+      },
+      count: 3,
+      request_id: "req_ui_manual_001",
+    },
+    null,
+    2
+  );
+
   elements.settingsPatchRaw.value = '{ "dialog.auto_type_enabled": false }';
   setPreValue(
     elements.errorInspector,
@@ -890,6 +926,7 @@ function initTemplates() {
   setPreValue(elements.settingsFocusView, "");
   setPreValue(elements.advanceMilestoneResult, "");
   setPreValue(elements.adoptFactResult, "");
+  setPreValue(elements.generateCharacterResult, "");
   setPreValue(elements.toggleApplyResult, "");
 }
 

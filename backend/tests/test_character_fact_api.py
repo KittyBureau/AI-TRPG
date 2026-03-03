@@ -111,6 +111,7 @@ def test_generate_returns_refs_and_writes_batch_and_individual(
     assert batch_payload["campaign_id"] == campaign_id
     assert batch_payload["request_id"] == "req_case_001"
     assert batch_payload["params"]["party_context"][0]["character_id"] == "pc_001"
+    assert batch_payload["params"]["draft_mode"] == "deterministic"
     assert len(batch_payload["items"]) == 3
 
     for item in batch_payload["items"]:
@@ -212,6 +213,33 @@ def test_generate_schema_invalid_output_returns_422(
         json=_payload("req_case_bad_422"),
     )
     assert response.status_code == 422
+
+
+def test_generate_uses_settings_draft_mode_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    campaign_id = _create_campaign(tmp_path)
+
+    settings_resp = client.post(
+        "/api/v1/settings/apply",
+        json={
+            "campaign_id": campaign_id,
+            "patch": {"characters.fact_generation.draft_mode": "llm"},
+        },
+    )
+    assert settings_resp.status_code == 200
+
+    response = client.post(
+        f"/api/v1/campaigns/{campaign_id}/characters/generate",
+        json=_payload("req_case_llm_mode_001"),
+    )
+    assert response.status_code == 200
+    body = response.json()
+    batch_file = _absolute(tmp_path, body["batch_path"])
+    batch_payload = json.loads(batch_file.read_text(encoding="utf-8"))
+    assert batch_payload["params"]["draft_mode"] == "llm"
 
 
 def test_list_batches_and_get_batch_by_request_id(

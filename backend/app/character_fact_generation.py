@@ -2,9 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Mapping, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence
 from uuid import uuid4
 
+from backend.app.character_fact_context_builder import CharacterFactContextBuilder
+from backend.app.character_fact_llm_adapter import (
+    CharacterFactLLMAdapter,
+    CharacterFactLLMResult,
+)
 from backend.domain.character_fact_schema import (
     CharacterFactSchemaError,
     is_valid_character_id,
@@ -89,6 +94,7 @@ class CharacterFactGenerationRequest:
     count: int = 3
     max_count: int = 20
     id_policy: str = "system"
+    draft_mode: str = "deterministic"
     extra_params: Dict[str, Any] = field(default_factory=dict)
 
     def to_snapshot(self) -> Dict[str, Any]:
@@ -106,6 +112,7 @@ class CharacterFactGenerationRequest:
                 "count": self.count,
                 "max_count": self.max_count,
                 "id_policy": self.id_policy,
+                "draft_mode": self.draft_mode,
             }
         )
         return snapshot
@@ -124,14 +131,76 @@ class CharacterFactBatchWriteResult:
     warnings: List[str] = field(default_factory=list)
 
 
+@dataclass
+class DraftGenerationResult:
+    drafts: List[Dict[str, Any]]
+    warnings: List[str] = field(default_factory=list)
+
+
+class DraftGenerator(Protocol):
+    def generate(
+        self,
+        request: CharacterFactGenerationRequest,
+        count: int,
+    ) -> DraftGenerationResult:
+        ...
+
+
+class DeterministicDraftGenerator:
+    def __init__(self, service: "CharacterFactGenerationService") -> None:
+        self.service = service
+
+    def generate(
+        self,
+        request: CharacterFactGenerationRequest,
+        count: int,
+    ) -> DraftGenerationResult:
+        return DraftGenerationResult(
+            drafts=self.service._run_draft_phase(request, count),
+            warnings=[],
+        )
+
+
+class LLMDraftGenerator:
+    def __init__(
+        self,
+        repo: FileRepo,
+        context_builder: CharacterFactContextBuilder,
+        adapter: CharacterFactLLMAdapter,
+    ) -> None:
+        self.repo = repo
+        self.context_builder = context_builder
+        self.adapter = adapter
+
+    def generate(
+        self,
+        request: CharacterFactGenerationRequest,
+        count: int,
+    ) -> DraftGenerationResult:
+        build_result = self.context_builder.build(self.repo, request, count)
+        llm_result: CharacterFactLLMResult = self.adapter.generate_drafts(
+            system_prompt=build_result.system_prompt,
+            user_payload=build_result.user_payload,
+        )
+        return DraftGenerationResult(
+            drafts=llm_result.drafts,
+            warnings=[*build_result.warnings, *llm_result.warnings],
+        )
+
+
 class CharacterFactGenerationService:
     def __init__(
         self,
         repo: FileRepo,
         config: CharacterFactGenerationConfig | None = None,
+        *,
+        context_builder: Optional[CharacterFactContextBuilder] = None,
+        llm_adapter: Optional[CharacterFactLLMAdapter] = None,
     ) -> None:
         self.repo = repo
         self.config = config or CharacterFactGenerationConfig()
+        self.context_builder = context_builder or CharacterFactContextBuilder()
+        self.llm_adapter = llm_adapter
 
     def persist_generated_batch(
         self,
@@ -219,10 +288,11 @@ class CharacterFactGenerationService:
     ) -> CharacterFactBatchWriteResult:
         self._validate_request(request)
         count, warnings = self._resolve_count(request)
-        drafts = self._run_draft_phase(request, count)
+        draft_result = self._generate_drafts(request, count)
+        warnings = [*warnings, *draft_result.warnings]
         return self.persist_generated_batch(
             request,
-            drafts,
+            draft_result.drafts,
             count_override=count,
             warnings=warnings,
         )
@@ -240,6 +310,10 @@ class CharacterFactGenerationService:
             raise CharacterFactRequestError("max_count must be > 0.")
         if request.id_policy not in {"system", "model"}:
             raise CharacterFactRequestError("id_policy must be 'system' or 'model'.")
+        if request.draft_mode not in {"deterministic", "llm"}:
+            raise CharacterFactRequestError(
+                "draft_mode must be 'deterministic' or 'llm'."
+            )
 
         allowed_roles = self._read_str_list(request.constraints.get("allowed_roles"))
         if not allowed_roles:
@@ -258,6 +332,44 @@ class CharacterFactGenerationService:
                 f"count capped from {request.count} to {target_count} by max_count policy."
             )
         return target_count, warnings
+
+    def _generate_drafts(
+        self,
+        request: CharacterFactGenerationRequest,
+        count: int,
+    ) -> DraftGenerationResult:
+        deterministic = DeterministicDraftGenerator(self)
+        if request.draft_mode != "llm":
+            return deterministic.generate(request, count)
+
+        try:
+            llm_generator = LLMDraftGenerator(
+                repo=self.repo,
+                context_builder=self.context_builder,
+                adapter=self._get_llm_adapter(),
+            )
+            llm_result = llm_generator.generate(request, count)
+        except Exception as exc:
+            fallback = deterministic.generate(request, count)
+            fallback.warnings.append(
+                f"LLM draft_mode fallback to deterministic: {exc.__class__.__name__}."
+            )
+            return fallback
+
+        if llm_result.drafts:
+            return llm_result
+
+        fallback = deterministic.generate(request, count)
+        fallback.warnings.extend(llm_result.warnings)
+        fallback.warnings.append(
+            "LLM draft_mode returned no usable items; fallback to deterministic."
+        )
+        return fallback
+
+    def _get_llm_adapter(self) -> CharacterFactLLMAdapter:
+        if self.llm_adapter is None:
+            self.llm_adapter = CharacterFactLLMAdapter()
+        return self.llm_adapter
 
     def _run_draft_phase(
         self,

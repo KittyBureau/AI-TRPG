@@ -8,6 +8,7 @@ from backend.app.character_fact_generation import (
     CharacterFactGenerationService,
 )
 from backend.app.character_facade_factory import create_runtime_character_facade
+from backend.app.character_fact_llm_adapter import CharacterFactLLMResult
 from backend.domain.models import (
     ActorState,
     Campaign,
@@ -17,6 +18,26 @@ from backend.domain.models import (
     SettingsSnapshot,
 )
 from backend.infra.file_repo import FileRepo
+
+
+class _StubCharacterFactLLMAdapter:
+    def __init__(self, drafts: list[dict[str, object]]) -> None:
+        self.drafts = drafts
+        self.last_system_prompt = ""
+        self.last_user_payload: dict[str, object] | None = None
+
+    def generate_drafts(
+        self,
+        *,
+        system_prompt: str,
+        user_payload: dict[str, object],
+    ) -> CharacterFactLLMResult:
+        self.last_system_prompt = system_prompt
+        self.last_user_payload = dict(user_payload)
+        return CharacterFactLLMResult(
+            drafts=[dict(item) for item in self.drafts],
+            warnings=[],
+        )
 
 
 def _make_campaign(campaign_id: str = "camp_0001") -> Campaign:
@@ -178,3 +199,72 @@ def test_runtime_character_facade_prefers_individual_then_batch_and_fallback(
     fallback = facade.get_view(campaign, "pc_001")
     assert fallback.name == "Fallback Name"
     assert fallback.role == "fallback_role"
+
+
+def test_generate_and_persist_llm_mode_injects_trimmed_party_context(
+    tmp_path: Path,
+) -> None:
+    campaign = _make_campaign()
+    repo = FileRepo(tmp_path)
+    repo.create_campaign(campaign)
+    llm = _StubCharacterFactLLMAdapter(
+        drafts=[
+            {
+                "character_id": "__AUTO_ID__",
+                "name": "LLM Scout",
+                "role": "scout",
+                "tags": ["scout"],
+                "attributes": {"origin": "generated"},
+                "background": "",
+                "appearance": "",
+                "personality_tags": ["steady"],
+                "meta": {"language": "zh-CN", "source": "llm", "hooks": []},
+            }
+        ]
+    )
+    service = CharacterFactGenerationService(repo, llm_adapter=llm)
+    request = CharacterFactGenerationRequest(
+        campaign_id=campaign.id,
+        request_id="req_llm_payload_001",
+        language="zh-CN",
+        tone_vocab_only=False,
+        constraints={"allowed_roles": ["scout"]},
+        count=1,
+        max_count=20,
+        id_policy="system",
+        draft_mode="llm",
+        party_context=[
+            {
+                "character_id": "pc_001",
+                "name": "Request Override",
+                "role": "scout",
+                "unknown_key": "drop me",
+            },
+            {
+                "character_id": "pc_new",
+                "name": "X" * 120,
+                "role": "scout",
+                "summary": "S" * 400,
+                "tags": ["stealth", "stealth", "verylongtagname_should_trim_here"],
+            },
+        ],
+    )
+
+    result = service.generate_and_persist(request)
+
+    assert result.count_generated == 1
+    assert llm.last_user_payload is not None
+    outbound_party_context = llm.last_user_payload.get("party_context")
+    assert isinstance(outbound_party_context, list)
+    by_id = {
+        item.get("character_id"): item
+        for item in outbound_party_context
+        if isinstance(item, dict)
+    }
+
+    assert by_id["pc_001"]["name"] == "Fallback Name"
+    assert "unknown_key" not in by_id["pc_001"]
+    assert len(by_id["pc_new"]["name"]) == 80
+    assert len(by_id["pc_new"]["summary"]) == 240
+    assert by_id["pc_new"]["tags"] == ["stealth", "verylongtagname_should_t"]
+    assert any("conflicts with storage-authoritative data" in msg for msg in result.warnings)
