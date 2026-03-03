@@ -63,6 +63,9 @@ Generated files are non-authoritative temporary artifacts:
 - Individual draft file:
   - `storage/campaigns/{campaign_id}/characters/generated/{character_id}.fact.draft.json`
   - `character_id` is always an allocated real ID (`__AUTO_ID__` is never persisted).
+- Adoption sidecar file:
+  - `storage/campaigns/{campaign_id}/characters/generated/{character_id}.fact.accepted.json`
+  - stores adoption metadata only; CharacterFact payload remains schema-frozen.
 
 ### Batch file structure (frozen)
 
@@ -107,6 +110,10 @@ Generated files are non-authoritative temporary artifacts:
 - `GET /api/v1/campaigns/{campaign_id}/characters/generated/batches`
 - `GET /api/v1/campaigns/{campaign_id}/characters/generated/batches/{request_id}`
 - `GET /api/v1/campaigns/{campaign_id}/characters/facts/{character_id}`
+- `POST /api/v1/campaigns/{campaign_id}/characters/facts/{character_id}/adopt`
+  - writes static profile data into `campaign.actors[*].meta.profile`
+  - writes adoption metadata to sidecar
+  - must not overwrite runtime fields (`position`, `hp`, `character_state`)
 
 ## 8. Test-backed behavior freeze (Guaranteed vs Unspecified)
 

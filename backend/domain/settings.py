@@ -64,6 +64,24 @@ _DEFINITIONS: List[SettingDefinition] = [
         ui_hint="toggle",
         effect_tags=["dialog"],
     ),
+    SettingDefinition(
+        key="dialog.strict_semantic_guard",
+        type="bool",
+        default=False,
+        scope="campaign",
+        validation={},
+        ui_hint="toggle",
+        effect_tags=["dialog"],
+    ),
+    SettingDefinition(
+        key="dialog.conflict_text_checks_enabled",
+        type="bool",
+        default=False,
+        scope="campaign",
+        validation={},
+        ui_hint="toggle",
+        effect_tags=["dialog", "conflict"],
+    ),
 ]
 
 

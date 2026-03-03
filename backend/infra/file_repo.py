@@ -233,15 +233,49 @@ class FileRepo:
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         return path
 
+    def character_fact_draft_path(self, campaign_id: str, character_id: str) -> Path:
+        safe_character_id = self._sanitize_character_file_id(character_id)
+        return self._generated_characters_dir(campaign_id) / (
+            f"{safe_character_id}.fact.draft.json"
+        )
+
+    def character_fact_acceptance_path(self, campaign_id: str, character_id: str) -> Path:
+        safe_character_id = self._sanitize_character_file_id(character_id)
+        return self._generated_characters_dir(campaign_id) / (
+            f"{safe_character_id}.fact.accepted.json"
+        )
+
+    def save_character_fact_acceptance(
+        self,
+        campaign_id: str,
+        character_id: str,
+        payload: Dict[str, Any],
+    ) -> Path:
+        generated_dir = self._generated_characters_dir(campaign_id)
+        generated_dir.mkdir(parents=True, exist_ok=True)
+        path = self.character_fact_acceptance_path(campaign_id, character_id)
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return path
+
+    def load_character_fact_acceptance(
+        self,
+        campaign_id: str,
+        character_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        path = self.character_fact_acceptance_path(campaign_id, character_id)
+        if not path.exists():
+            return None
+        payload = self._read_json_file(path)
+        if isinstance(payload, dict):
+            return payload
+        return None
+
     def load_character_fact_draft(
         self,
         campaign_id: str,
         character_id: str,
     ) -> Optional[Dict[str, Any]]:
-        safe_character_id = self._sanitize_character_file_id(character_id)
-        path = self._generated_characters_dir(campaign_id) / (
-            f"{safe_character_id}.fact.draft.json"
-        )
+        path = self.character_fact_draft_path(campaign_id, character_id)
         if not path.exists():
             return None
         data = self._read_json_file(path)
@@ -419,3 +453,27 @@ class FileRepo:
         line = json.dumps(data)
         with path.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
+
+    def read_recent_turn_log_rows(
+        self, campaign_id: str, limit: int = 3
+    ) -> List[Dict[str, Any]]:
+        path = self._turn_log_path(campaign_id)
+        if not path.exists():
+            return []
+        capped = max(1, min(limit, 200))
+        rows: List[Dict[str, Any]] = []
+        with path.open("r", encoding="utf-8") as handle:
+            lines = handle.readlines()
+        for line in reversed(lines):
+            raw = line.strip()
+            if not raw:
+                continue
+            try:
+                payload = json.loads(raw)
+            except Exception:
+                continue
+            if isinstance(payload, dict):
+                rows.append(payload)
+            if len(rows) >= capped:
+                break
+        return rows

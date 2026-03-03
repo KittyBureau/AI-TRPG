@@ -74,6 +74,18 @@ class CharacterBatchListResponse(BaseModel):
     batches: List[CharacterBatchSummary] = Field(default_factory=list)
 
 
+class CharacterFactAdoptRequest(BaseModel):
+    accepted_by: str = "system"
+
+
+class CharacterFactAdoptResponse(BaseModel):
+    campaign_id: str
+    character_id: str
+    accepted_path: str
+    profile_changed: bool
+    acceptance_changed: bool
+
+
 @router.post(
     "/{campaign_id}/characters/generate",
     response_model=CharacterGenerateRefsResponse,
@@ -144,3 +156,26 @@ def get_character_fact(campaign_id: str, character_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except CharacterFactValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{campaign_id}/characters/facts/{character_id}/adopt",
+    response_model=CharacterFactAdoptResponse,
+)
+def adopt_character_fact(
+    campaign_id: str,
+    character_id: str,
+    request: CharacterFactAdoptRequest,
+) -> CharacterFactAdoptResponse:
+    service = _service()
+    try:
+        result = service.adopt_fact(
+            campaign_id,
+            character_id,
+            accepted_by=request.accepted_by,
+        )
+    except CharacterFactNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except CharacterFactValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return CharacterFactAdoptResponse(**result)

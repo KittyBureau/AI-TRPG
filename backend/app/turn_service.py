@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
@@ -19,6 +20,7 @@ from backend.domain.models import (
     CampaignSummary,
     ConflictReport,
     Goal,
+    FailedCall,
     ActorState,
     MapArea,
     MapData,
@@ -27,6 +29,7 @@ from backend.domain.models import (
     SettingsSnapshot,
     StateSummary,
     ToolCall,
+    ToolFeedback,
     TurnLogEntry,
 )
 from backend.domain.state_utils import (
@@ -37,6 +40,10 @@ from backend.infra.file_repo import FileRepo
 from backend.infra.llm_client import LLMClient
 
 _CHARACTER_FACADE = create_runtime_character_facade()
+
+
+class SemanticGuardError(ValueError):
+    pass
 
 
 class TurnService:
@@ -119,7 +126,10 @@ class TurnService:
         active_actor_id = actor_id or campaign.selected.active_actor_id
         if active_actor_id not in campaign.selected.party_character_ids:
             raise ValueError("actor_id not in party_character_ids")
-        system_prompt = _build_system_prompt(campaign)
+        if _mark_ended_if_needed(campaign):
+            self.repo.save_campaign(campaign)
+        _assert_turn_writable(campaign, active_actor_id)
+        system_prompt = _build_system_prompt(campaign, active_actor_id)
         retry_count = 0
         last_conflicts = []
         debug_append = None
@@ -127,14 +137,27 @@ class TurnService:
 
         while True:
             llm_output = self.llm.generate(system_prompt, user_input, debug_append)
-            dialog_type, dialog_type_source = _resolve_dialog_type(
-                llm_output.get("dialog_type")
+            raw_dialog_type = llm_output.get("dialog_type")
+            _enforce_dialog_type_guard(
+                raw_dialog_type,
+                strict_mode=campaign.settings_snapshot.dialog.strict_semantic_guard,
             )
+            dialog_type, dialog_type_source = _resolve_dialog_type(raw_dialog_type)
             tool_calls = _parse_tool_calls(llm_output.get("tool_calls", []))
+            tool_calls, suppressed_failed_calls = _suppress_repeated_illegal_requests(
+                self.repo,
+                campaign_id,
+                tool_calls,
+            )
             state_before = _snapshot_state(campaign)
             applied_actions, tool_feedback = execute_tool_calls(
                 campaign, active_actor_id, tool_calls
             )
+            if suppressed_failed_calls:
+                failed_calls = list(suppressed_failed_calls)
+                if tool_feedback:
+                    failed_calls.extend(tool_feedback.failed_calls)
+                tool_feedback = ToolFeedback(failed_calls=failed_calls)
             state_after = _state_summary_dict(campaign)
             conflicts = detect_conflicts(
                 llm_output.get("assistant_text", ""),
@@ -143,6 +166,9 @@ class TurnService:
                 tool_feedback,
                 state_before,
                 state_after,
+                enable_text_checks=(
+                    campaign.settings_snapshot.dialog.conflict_text_checks_enabled
+                ),
             )
 
             if conflicts:
@@ -159,7 +185,16 @@ class TurnService:
                     conflict_report, campaign, active_actor_id, dialog_type
                 )
 
-            if applied_actions:
+            turn_id = self.repo.next_turn_id(campaign_id)
+            turn_number = _turn_id_to_number(turn_id)
+            milestone_changed = _advance_milestone(
+                campaign,
+                turn_number=turn_number,
+                retry_count=retry_count,
+            )
+            lifecycle_changed = _mark_ended_if_needed(campaign)
+
+            if applied_actions or milestone_changed or lifecycle_changed:
                 self.repo.save_campaign(campaign)
 
             conflict_report = (
@@ -167,7 +202,6 @@ class TurnService:
                 if retry_count > 0
                 else None
             )
-            turn_id = self.repo.next_turn_id(campaign_id)
             timestamp = datetime.now(timezone.utc).isoformat()
             entry = TurnLogEntry(
                 turn_id=turn_id,
@@ -333,30 +367,65 @@ def _derive_character_state_maps(campaign: Campaign) -> tuple[
     return _CHARACTER_FACADE.build_state_maps(campaign)
 
 
-def _build_system_prompt(campaign: Campaign) -> str:
+def _build_system_prompt(campaign: Campaign, active_actor_id: str) -> str:
     positions, _, _, hp, character_states = _derive_character_state_maps(campaign)
     actors_payload = {
         actor_id: _model_to_dict(actor)
         for actor_id, actor in campaign.actors.items()
     }
-    payload = {
-        "dialog_types": DIALOG_TYPES,
-        "default_dialog_type": DEFAULT_DIALOG_TYPE,
-        "allowlist": campaign.allowlist,
-        "selected": _model_to_dict(campaign.selected),
-        "settings_snapshot": _model_to_dict(campaign.settings_snapshot),
-        "map": _model_to_dict(campaign.map),
-        "state": _model_to_dict(campaign.state),
-        "actors": actors_payload,
-        "positions": positions,
-        "hp": hp,
-        "character_states": character_states,
-        "response_format": {
-            "assistant_text": "string narrative",
-            "dialog_type": "one of dialog_types",
-            "tool_calls": "array of tool calls",
-        },
-    }
+    compress_enabled = campaign.settings_snapshot.context.compress_enabled
+    if compress_enabled:
+        active_state = _CHARACTER_FACADE.get_state(campaign, active_actor_id)
+        payload = {
+            "context_mode": "compressed",
+            "dialog_types": DIALOG_TYPES,
+            "default_dialog_type": DEFAULT_DIALOG_TYPE,
+            "allowlist": campaign.allowlist,
+            "selected": _model_to_dict(campaign.selected),
+            "settings_snapshot": _model_to_dict(campaign.settings_snapshot),
+            "lifecycle": _model_to_dict(campaign.lifecycle),
+            "milestone": _model_to_dict(campaign.milestone),
+            "map_summary": {
+                "area_count": len(campaign.map.areas),
+                "active_actor_area_id": active_state.position,
+                "reachable_from_active": (
+                    campaign.map.areas[active_state.position].reachable_area_ids
+                    if isinstance(active_state.position, str)
+                    and active_state.position in campaign.map.areas
+                    else []
+                ),
+            },
+            "positions": positions,
+            "hp": hp,
+            "character_states": character_states,
+            "response_format": {
+                "assistant_text": "string narrative",
+                "dialog_type": "one of dialog_types",
+                "tool_calls": "array of tool calls",
+            },
+        }
+    else:
+        payload = {
+            "context_mode": "full",
+            "dialog_types": DIALOG_TYPES,
+            "default_dialog_type": DEFAULT_DIALOG_TYPE,
+            "allowlist": campaign.allowlist,
+            "selected": _model_to_dict(campaign.selected),
+            "settings_snapshot": _model_to_dict(campaign.settings_snapshot),
+            "lifecycle": _model_to_dict(campaign.lifecycle),
+            "milestone": _model_to_dict(campaign.milestone),
+            "map": _model_to_dict(campaign.map),
+            "state": _model_to_dict(campaign.state),
+            "actors": actors_payload,
+            "positions": positions,
+            "hp": hp,
+            "character_states": character_states,
+            "response_format": {
+                "assistant_text": "string narrative",
+                "dialog_type": "one of dialog_types",
+                "tool_calls": "array of tool calls",
+            },
+        }
     return (
         "You are the AI GM. Output JSON with keys 'assistant_text', 'dialog_type', and 'tool_calls'. "
         "The world state is authoritative and can change only via tool_calls. "
@@ -415,6 +484,19 @@ def _resolve_dialog_type(value: object) -> tuple[str, str]:
         if normalized in DIALOG_TYPES:
             return normalized, "model"
     return DEFAULT_DIALOG_TYPE, "fallback"
+
+
+def _enforce_dialog_type_guard(value: object, *, strict_mode: bool) -> None:
+    if not strict_mode:
+        return
+    if not isinstance(value, str):
+        return
+    normalized = value.strip().lower()
+    if not normalized:
+        return
+    if normalized in DIALOG_TYPES:
+        return
+    raise SemanticGuardError(f"invalid dialog_type in strict mode: {value}")
 
 
 def _build_success_response(
@@ -476,3 +558,179 @@ def _build_failure_response(
         "conflict_report": _model_to_dict(conflict_report),
         "state_summary": _model_to_dict(state_summary),
     }
+
+
+def _assert_turn_writable(campaign: Campaign, active_actor_id: str) -> None:
+    if campaign.lifecycle.ended:
+        reason = campaign.lifecycle.reason or "ended"
+        raise ValueError(f"campaign has ended: {reason}")
+    active_state = _CHARACTER_FACADE.get_state(campaign, active_actor_id)
+    if active_state.character_state != "unconscious":
+        return
+    has_actionable_peer = any(
+        actor_id != active_actor_id
+        and _CHARACTER_FACADE.get_state(campaign, actor_id).character_state == "alive"
+        for actor_id in campaign.selected.party_character_ids
+    )
+    if has_actionable_peer:
+        raise ValueError(
+            "active actor is unconscious; switch actor via /api/v1/campaign/select_actor."
+        )
+
+
+def _suppress_repeated_illegal_requests(
+    repo: FileRepo,
+    campaign_id: str,
+    tool_calls: List[ToolCall],
+) -> tuple[List[ToolCall], List[FailedCall]]:
+    blocked_signatures = _load_repeat_illegal_signatures(repo, campaign_id, window=3)
+    if not blocked_signatures or not tool_calls:
+        return tool_calls, []
+    allowed: List[ToolCall] = []
+    suppressed: List[FailedCall] = []
+    for call in tool_calls:
+        signature = _tool_call_signature(call.tool, call.args)
+        if signature in blocked_signatures:
+            suppressed.append(
+                FailedCall(
+                    id=call.id,
+                    tool=call.tool,
+                    status="rejected",
+                    reason="repeat_illegal_request",
+                )
+            )
+            continue
+        allowed.append(call)
+    return allowed, suppressed
+
+
+def _load_repeat_illegal_signatures(
+    repo: FileRepo, campaign_id: str, *, window: int
+) -> set[str]:
+    # V1.1: single-process assumption. Future lock provider can guard read/write windows.
+    rows = repo.read_recent_turn_log_rows(campaign_id, limit=window)
+    if len(rows) < window:
+        return set()
+    per_turn: List[set[str]] = []
+    for row in rows:
+        structured = row.get("assistant_structured")
+        tool_feedback = row.get("tool_feedback")
+        if not isinstance(structured, dict) or not isinstance(tool_feedback, dict):
+            return set()
+        calls = structured.get("tool_calls")
+        failed_calls = tool_feedback.get("failed_calls")
+        if not isinstance(calls, list) or not isinstance(failed_calls, list):
+            return set()
+        failed_tools = {
+            item.get("tool")
+            for item in failed_calls
+            if isinstance(item, dict) and isinstance(item.get("tool"), str)
+        }
+        signatures: set[str] = set()
+        for item in calls:
+            if not isinstance(item, dict):
+                continue
+            tool = item.get("tool")
+            args = item.get("args")
+            if not isinstance(tool, str) or tool not in failed_tools:
+                continue
+            if not isinstance(args, dict):
+                continue
+            signatures.add(_tool_call_signature(tool, args))
+        if not signatures:
+            return set()
+        per_turn.append(signatures)
+    shared = set(per_turn[0])
+    for signatures in per_turn[1:]:
+        shared &= signatures
+    return shared
+
+
+def _tool_call_signature(tool: str, args: Dict[str, object]) -> str:
+    payload = {"tool": tool, "args": args}
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _turn_id_to_number(turn_id: str) -> int:
+    if not isinstance(turn_id, str):
+        return 0
+    if "_" not in turn_id:
+        return 0
+    suffix = turn_id.split("_", 1)[1]
+    if not suffix.isdigit():
+        return 0
+    return int(suffix)
+
+
+def _advance_milestone(campaign: Campaign, turn_number: int, retry_count: int) -> bool:
+    milestone = campaign.milestone
+    changed = False
+    if retry_count > 0:
+        next_pressure = milestone.pressure + retry_count
+        if next_pressure != milestone.pressure:
+            milestone.pressure = next_pressure
+            changed = True
+    should_advance = False
+    if turn_number > 0 and turn_number - milestone.last_advanced_turn >= max(
+        1, milestone.turn_trigger_interval
+    ):
+        should_advance = True
+    if milestone.pressure >= max(1, milestone.pressure_threshold):
+        should_advance = True
+    if not should_advance:
+        return changed
+    next_current = _next_milestone_label(milestone.current)
+    if next_current != milestone.current:
+        milestone.current = next_current
+        changed = True
+    if milestone.last_advanced_turn != turn_number:
+        milestone.last_advanced_turn = turn_number
+        changed = True
+    if milestone.pressure != 0:
+        milestone.pressure = 0
+        changed = True
+    if milestone.summary != "":
+        milestone.summary = ""
+        changed = True
+    return changed
+
+
+def _next_milestone_label(current: str) -> str:
+    if current == "intro":
+        return "milestone_1"
+    if current.startswith("milestone_"):
+        number = current.replace("milestone_", "", 1)
+        if number.isdigit():
+            return f"milestone_{int(number) + 1}"
+    return "milestone_1"
+
+
+def _mark_ended_if_needed(campaign: Campaign) -> bool:
+    if campaign.lifecycle.ended:
+        return False
+    reason = _compute_end_reason(campaign)
+    if reason is None:
+        return False
+    campaign.lifecycle.ended = True
+    campaign.lifecycle.reason = reason
+    campaign.lifecycle.ended_at = datetime.now(timezone.utc).isoformat()
+    return True
+
+
+def _compute_end_reason(campaign: Campaign) -> Optional[str]:
+    goal_status = campaign.goal.status.strip().lower()
+    if goal_status in {"achieved", "goal_achieved", "completed"}:
+        return "goal_achieved"
+
+    party_states = [
+        _CHARACTER_FACADE.get_state(campaign, actor_id).character_state
+        for actor_id in campaign.selected.party_character_ids
+    ]
+    if not party_states:
+        return None
+    if all(state == "restrained_permanent" for state in party_states):
+        return "restrained_permanent"
+    if all(state in {"dead", "dying"} for state in party_states):
+        return "party_dead"
+    return None

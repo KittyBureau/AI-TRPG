@@ -37,6 +37,8 @@ class ContextSettings(BaseModel):
 
 class DialogSettings(BaseModel):
     auto_type_enabled: bool = True
+    strict_semantic_guard: bool = False
+    conflict_text_checks_enabled: bool = False
 
 
 class RulesSettings(BaseModel):
@@ -62,6 +64,16 @@ class Goal(BaseModel):
 class Milestone(BaseModel):
     current: str
     last_advanced_turn: int = 0
+    turn_trigger_interval: int = 6
+    pressure: int = 0
+    pressure_threshold: int = 2
+    summary: str = ""
+
+
+class CampaignLifecycle(BaseModel):
+    ended: bool = False
+    reason: Optional[str] = None
+    ended_at: Optional[str] = None
 
 
 class CampaignState(BaseModel):
@@ -93,6 +105,7 @@ class Campaign(BaseModel):
     character_states: Dict[str, str] = Field(default_factory=dict)
     goal: Goal
     milestone: Milestone
+    lifecycle: CampaignLifecycle = Field(default_factory=CampaignLifecycle)
     created_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )

@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from backend.app.turn_service import TurnService
+from backend.app.turn_service import SemanticGuardError, TurnService
 from backend.infra.file_repo import FileRepo
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -43,6 +43,8 @@ def submit_turn(request: TurnRequest) -> TurnResponse:
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except SemanticGuardError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return TurnResponse(**response)

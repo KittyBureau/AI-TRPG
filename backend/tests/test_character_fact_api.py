@@ -333,6 +333,46 @@ def test_get_fact_schema_invalid_draft_returns_422_without_batch_fallback(
     assert invalid_read.status_code == 422
 
 
+def test_adopt_fact_writes_sidecar_and_profile_idempotently(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    campaign_id = _create_campaign(tmp_path)
+    request_id = "req_case_adopt_001"
+    generated = client.post(
+        f"/api/v1/campaigns/{campaign_id}/characters/generate",
+        json=_payload(request_id),
+    )
+    assert generated.status_code == 200
+    refs = generated.json()
+    first_path = _absolute(tmp_path, refs["individual_paths"][0])
+    first_fact = json.loads(first_path.read_text(encoding="utf-8"))
+    character_id = first_fact["character_id"]
+
+    first_adopt = client.post(
+        f"/api/v1/campaigns/{campaign_id}/characters/facts/{character_id}/adopt",
+        json={"accepted_by": "tester"},
+    )
+    assert first_adopt.status_code == 200
+    first_body = first_adopt.json()
+    assert first_body["profile_changed"] is True
+    sidecar_path = _absolute(tmp_path, first_body["accepted_path"])
+    assert sidecar_path.exists()
+    sidecar_payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    assert sidecar_payload["accepted_by"] == "tester"
+    assert sidecar_payload["character_id"] == character_id
+
+    second_adopt = client.post(
+        f"/api/v1/campaigns/{campaign_id}/characters/facts/{character_id}/adopt",
+        json={"accepted_by": "tester"},
+    )
+    assert second_adopt.status_code == 200
+    second_body = second_adopt.json()
+    assert second_body["profile_changed"] is False
+    assert second_body["acceptance_changed"] is False
+
+
 def test_openapi_docs_and_old_characters_path_regression(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

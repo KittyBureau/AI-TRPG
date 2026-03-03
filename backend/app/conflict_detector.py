@@ -17,13 +17,20 @@ def detect_conflicts(
     tool_feedback: Optional[ToolFeedback],
     state_before: Dict[str, Any],
     state_after: Dict[str, Any],
+    *,
+    enable_text_checks: Optional[bool] = None,
 ) -> List[ConflictItem]:
     conflicts: List[ConflictItem] = []
     tool_activity = bool(applied_actions) or bool(
         tool_feedback and tool_feedback.failed_calls
     )
 
-    if ENABLE_TEXT_CONFLICT_CHECKS:
+    text_checks_enabled = (
+        ENABLE_TEXT_CONFLICT_CHECKS
+        if enable_text_checks is None
+        else bool(enable_text_checks)
+    )
+    if text_checks_enabled:
         lowered = narrative_text.lower()
 
         if _mentions_forbidden_change(lowered):

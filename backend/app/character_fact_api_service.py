@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from backend.app.character_fact_generation import (
@@ -14,6 +15,7 @@ from backend.domain.character_fact_schema import (
     CharacterFactSchemaError,
     validate_character_fact,
 )
+from backend.domain.state_utils import ensure_actor
 from backend.infra.file_repo import FileRepo
 
 MAX_GENERATE_REQUEST_BYTES = 200_000
@@ -97,6 +99,64 @@ class CharacterFactApiService:
             return validate_character_fact(payload)
         except CharacterFactSchemaError as exc:
             raise CharacterFactValidationError(str(exc)) from exc
+
+    def adopt_fact(
+        self,
+        campaign_id: str,
+        character_id: str,
+        *,
+        accepted_by: str = "system",
+    ) -> Dict[str, Any]:
+        fact = self.get_fact(campaign_id, character_id)
+        campaign = self.repo.get_campaign(campaign_id)
+        actor = ensure_actor(campaign, character_id)
+        if not isinstance(actor.meta, dict):
+            actor.meta = {}
+        profile_before = actor.meta.get("profile")
+        actor.meta["profile"] = dict(fact)
+        profile_changed = profile_before != actor.meta["profile"]
+
+        draft_path = self.repo.character_fact_draft_path(campaign_id, character_id)
+        if draft_path.exists():
+            source_ref = self.repo.to_storage_relative_path(draft_path)
+        else:
+            source_ref = "batch_fallback"
+        acceptance_before = self.repo.load_character_fact_acceptance(
+            campaign_id, character_id
+        )
+        normalized_accepted_by = accepted_by.strip() or "system"
+        accepted_at = datetime.now(timezone.utc).isoformat()
+        if (
+            isinstance(acceptance_before, dict)
+            and acceptance_before.get("character_id") == character_id
+            and acceptance_before.get("accepted_by") == normalized_accepted_by
+            and acceptance_before.get("source_draft_ref") == source_ref
+            and isinstance(acceptance_before.get("accepted_at"), str)
+        ):
+            accepted_at = acceptance_before["accepted_at"]
+        accepted_payload = {
+            "character_id": character_id,
+            "accepted_at": accepted_at,
+            "accepted_by": normalized_accepted_by,
+            "source_draft_ref": source_ref,
+        }
+        acceptance_changed = acceptance_before != accepted_payload
+        # V1.1: single-process semantics; keep write path simple and leave lock strategy for a later milestone.
+        acceptance_path = self.repo.save_character_fact_acceptance(
+            campaign_id,
+            character_id,
+            accepted_payload,
+        )
+        if profile_changed:
+            self.repo.save_campaign(campaign)
+
+        return {
+            "campaign_id": campaign_id,
+            "character_id": character_id,
+            "accepted_path": self.repo.to_storage_relative_path(acceptance_path),
+            "profile_changed": profile_changed,
+            "acceptance_changed": acceptance_changed,
+        }
 
     def _require_campaign(self, campaign_id: str) -> None:
         try:

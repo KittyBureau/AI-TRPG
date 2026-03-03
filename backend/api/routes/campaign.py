@@ -49,6 +49,31 @@ class SelectActorResponse(BaseModel):
     active_actor_id: str
 
 
+class CampaignStatusMilestoneResponse(BaseModel):
+    current: str
+    last_advanced_turn: int
+    pressure: int
+    summary: str
+
+
+class CampaignStatusResponse(BaseModel):
+    campaign_id: str
+    ended: bool
+    reason: Optional[str] = None
+    ended_at: Optional[str] = None
+    milestone: CampaignStatusMilestoneResponse
+
+
+class AdvanceMilestoneRequest(BaseModel):
+    campaign_id: str
+    summary: str = ""
+
+
+class AdvanceMilestoneResponse(BaseModel):
+    campaign_id: str
+    milestone: CampaignStatusMilestoneResponse
+
+
 @router.post("/create", response_model=CreateCampaignResponse)
 def create_campaign(request: CreateCampaignRequest) -> CreateCampaignResponse:
     world_id = request.world_id or "world_001"
@@ -97,4 +122,55 @@ def select_actor(request: SelectActorRequest) -> SelectActorResponse:
     return SelectActorResponse(
         campaign_id=campaign.id,
         active_actor_id=campaign.selected.active_actor_id,
+    )
+
+
+@router.get("/status", response_model=CampaignStatusResponse)
+def campaign_status(campaign_id: str) -> CampaignStatusResponse:
+    repo = FileRepo(Path.cwd() / "storage")
+    try:
+        campaign = repo.get_campaign(campaign_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return CampaignStatusResponse(
+        campaign_id=campaign.id,
+        ended=campaign.lifecycle.ended,
+        reason=campaign.lifecycle.reason,
+        ended_at=campaign.lifecycle.ended_at,
+        milestone=CampaignStatusMilestoneResponse(
+            current=campaign.milestone.current,
+            last_advanced_turn=campaign.milestone.last_advanced_turn,
+            pressure=campaign.milestone.pressure,
+            summary=campaign.milestone.summary,
+        ),
+    )
+
+
+@router.post("/milestone/advance", response_model=AdvanceMilestoneResponse)
+def advance_milestone(request: AdvanceMilestoneRequest) -> AdvanceMilestoneResponse:
+    repo = FileRepo(Path.cwd() / "storage")
+    try:
+        campaign = repo.get_campaign(request.campaign_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    current = campaign.milestone.current
+    if current == "intro":
+        next_current = "milestone_1"
+    elif current.startswith("milestone_") and current.replace("milestone_", "", 1).isdigit():
+        next_current = f"milestone_{int(current.replace('milestone_', '', 1)) + 1}"
+    else:
+        next_current = "milestone_1"
+    campaign.milestone.current = next_current
+    campaign.milestone.last_advanced_turn += 1
+    campaign.milestone.pressure = 0
+    campaign.milestone.summary = request.summary
+    repo.save_campaign(campaign)
+    return AdvanceMilestoneResponse(
+        campaign_id=campaign.id,
+        milestone=CampaignStatusMilestoneResponse(
+            current=campaign.milestone.current,
+            last_advanced_turn=campaign.milestone.last_advanced_turn,
+            pressure=campaign.milestone.pressure,
+            summary=campaign.milestone.summary,
+        ),
     )

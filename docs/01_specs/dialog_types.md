@@ -14,6 +14,12 @@ Enum source: `backend/domain/dialog_rules.py` (`DIALOG_TYPES`).
 Dialog type is provided by the LLM output. The system accepts only the enumerated
 values above. Missing or invalid values fall back to `scene_description`.
 
+Strict semantic guard (default off):
+
+- Setting: `settings_snapshot.dialog.strict_semantic_guard`
+- `false` (default): keep fallback behavior.
+- `true`: severe invalid `dialog_type` input is rejected with HTTP `422`.
+
 ## Source Field
 
 Each turn log stores `dialog_type_source`:

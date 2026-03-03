@@ -22,6 +22,8 @@ Registry keys (default values):
 - `rules.hp_zero_ends_game` (bool, default `true`)
 - `rollback.max_checkpoints` (int, default `0`)
 - `dialog.auto_type_enabled` (bool, default `true`)
+- `dialog.strict_semantic_guard` (bool, default `false`)
+- `dialog.conflict_text_checks_enabled` (bool, default `false`)
 
 ## Snapshot
 
@@ -34,6 +36,10 @@ Each valid patch increments `settings_revision`.
 - Range enforced for `rollback.max_checkpoints` (`0..10`).
 - Mutual exclusion: `context.full_context_enabled` and
   `context.compress_enabled` cannot both be `true`.
+- `dialog.strict_semantic_guard=true` enables hard `422` rejection for severe
+  invalid `dialog_type` outputs; default `false` preserves fallback behavior.
+- `dialog.conflict_text_checks_enabled=true` enables text-based conflict checks;
+  default `false` keeps the existing non-text baseline behavior.
 
 ## API
 
@@ -71,7 +77,9 @@ Response:
       "max_checkpoints": 3
     },
     "dialog": {
-      "auto_type_enabled": false
+      "auto_type_enabled": false,
+      "strict_semantic_guard": false,
+      "conflict_text_checks_enabled": false
     }
   },
   "change_summary": [

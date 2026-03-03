@@ -34,10 +34,13 @@ Conflicts are detected before logging and can trigger retries:
 - `tool_result_mismatch`: tool execution results do not match authoritative state.
 - `forbidden_change`: narrative attempts to change rules, maps, or world data (text checks only).
 
-Text-based checks are disabled by default. Set `CONFLICT_TEXT_CHECKS=1` to
-enable narrative keyword checks for `state_mismatch`, `tool_result_mismatch`,
-and `forbidden_change`. When enabled, `dialog_type=rule_explanation` only
-evaluates `forbidden_change`.
+Text-based checks are disabled by default.
+
+- Global env gate: `CONFLICT_TEXT_CHECKS=1`
+- Campaign gate: `settings_snapshot.dialog.conflict_text_checks_enabled=true`
+
+Text checks execute when either gate is enabled. When enabled,
+`dialog_type=rule_explanation` only evaluates `forbidden_change`.
 
 Example conflict report:
 
@@ -63,6 +66,15 @@ On conflict:
 3. Retry with the same user input (max retries = 2).
 
 If retries are exhausted, return `conflict_report` and do not persist changes or logs.
+
+## Repeat illegal request suppression (V1.1)
+
+- Runtime inspects recent 3 turn logs and computes a signature from `tool+args`.
+- If the same signature was repeatedly failed in each of those turns, the new
+  request is suppressed before tool execution.
+- Suppressed calls are reported via `tool_feedback.failed_calls[*].reason`:
+  - `repeat_illegal_request`
+- V1.1 keeps single-process semantics; no file lock strategy is applied yet.
 
 ## TurnLog Conflict Report
 

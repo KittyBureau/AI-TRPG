@@ -76,7 +76,9 @@ storage/
       "max_checkpoints": 0
     },
     "dialog": {
-      "auto_type_enabled": true
+      "auto_type_enabled": true,
+      "strict_semantic_guard": false,
+      "conflict_text_checks_enabled": false
     }
   },
   "goal": {
@@ -85,7 +87,16 @@ storage/
   },
   "milestone": {
     "current": "intro",
-    "last_advanced_turn": 0
+    "last_advanced_turn": 0,
+    "turn_trigger_interval": 6,
+    "pressure": 0,
+    "pressure_threshold": 2,
+    "summary": ""
+  },
+  "lifecycle": {
+    "ended": false,
+    "reason": null,
+    "ended_at": null
   },
   "created_at": "2026-01-14T16:05:00+00:00"
 }
@@ -116,7 +127,8 @@ storage/
 | settings_snapshot.rollback | object | Rollback settings (stage 2 only stores). |
 | settings_snapshot.dialog | object | Dialog settings. |
 | goal | object | Goal placeholder. |
-| milestone | object | Milestone placeholder. |
+| milestone | object | Milestone progression state and lightweight pressure counters. |
+| lifecycle | object | Campaign lifecycle status (`ended`, `reason`, `ended_at`). |
 | created_at | string | ISO timestamp. |
 
 ## Character access boundary (current)
@@ -138,6 +150,7 @@ runtime actor authority:
 
 - `storage/campaigns/{campaign_id}/characters/generated/batch_{utc_ts}_{request_id}.json`
 - `storage/campaigns/{campaign_id}/characters/generated/{character_id}.fact.draft.json`
+- `storage/campaigns/{campaign_id}/characters/generated/{character_id}.fact.accepted.json`
 
 Batch payload shape:
 
@@ -179,6 +192,8 @@ Rules:
 - `meta` is predefined-only (`hooks`, `language`, `source`).
 - `request_id` must be unique within one campaign (`409 Conflict` on duplicate submit).
 - `__AUTO_ID__` is never written to disk; IDs are allocated before batch/individual writes.
+- Adoption status is sidecar-based and does not mutate CharacterFact schema:
+  - sidecar keys: `character_id`, `accepted_at`, `accepted_by`, `source_draft_ref`.
 - Turn/tool request-response contracts remain unchanged.
 
 Behavior source-of-truth note:
@@ -276,6 +291,8 @@ that includes `from_area_id` now fails with `invalid_args`. The backend still re
 `from_area_id` in applied_actions for audit.
 `actor_id` may be omitted in move args and then defaults to `selected.active_actor_id`.
 `to_area_id` must exist and be reachable from the actor's current area; same-area move is rejected.
+When repeat-illegal-request suppression is triggered (same failed tool+args over the recent 3 turns),
+tool feedback may include reason `repeat_illegal_request`.
 
 ## turn_log.jsonl fields
 
