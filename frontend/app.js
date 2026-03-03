@@ -44,6 +44,8 @@ const elements = {
   generateCharacterRaw: document.getElementById("generateCharacterRaw"),
   generateCharacterBtn: document.getElementById("generateCharacterBtn"),
   generateCharacterResult: document.getElementById("generateCharacterResult"),
+  runLoopBtn: document.getElementById("runLoopBtn"),
+  runLoopResult: document.getElementById("runLoopResult"),
   toggleStrictGuard: document.getElementById("toggleStrictGuard"),
   toggleConflictTextChecks: document.getElementById("toggleConflictTextChecks"),
   toggleCompressEnabled: document.getElementById("toggleCompressEnabled"),
@@ -728,6 +730,109 @@ async function generateCharacterFacts() {
   setPreValue(elements.generateCharacterResult, result.responseText || "");
 }
 
+function inferCharacterIdFromGenerate(data) {
+  if (!data || typeof data !== "object") {
+    return "";
+  }
+  if (!Array.isArray(data.individual_paths) || !data.individual_paths.length) {
+    return "";
+  }
+  const first = String(data.individual_paths[0] || "");
+  const match = first.match(/\/([^/]+)\.fact\.draft\.json$/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+async function runCharacterLoop() {
+  const campaignId = state.currentCampaignId || "";
+  if (!campaignId) {
+    setStatus("Run Loop requires a selected campaign.");
+    return;
+  }
+  const resultView = {};
+
+  const generateResult = await sendRequest({
+    method: "POST",
+    path: `/api/v1/campaigns/${encodeURIComponent(campaignId)}/characters/generate`,
+    bodyText: elements.generateCharacterRaw.value,
+  });
+  setPreValue(elements.generateCharacterResult, generateResult.responseText || "");
+  resultView.generate =
+    generateResult.data && typeof generateResult.data === "object"
+      ? generateResult.data
+      : { status: generateResult.status, raw: generateResult.responseText || "" };
+  if (!generateResult.ok || !generateResult.data) {
+    setPreValue(elements.runLoopResult, formatField(resultView));
+    return;
+  }
+
+  const characterId =
+    elements.adoptCharacterId.value.trim() ||
+    inferCharacterIdFromGenerate(generateResult.data);
+  if (!characterId) {
+    resultView.error = "Could not infer character_id for adoption.";
+    setPreValue(elements.runLoopResult, formatField(resultView));
+    return;
+  }
+  elements.adoptCharacterId.value = characterId;
+
+  const acceptedBy = elements.acceptedByInput.value.trim() || "system";
+  const adoptResult = await sendRequest({
+    method: "POST",
+    path: `/api/v1/campaigns/${encodeURIComponent(
+      campaignId
+    )}/characters/facts/${encodeURIComponent(characterId)}/adopt`,
+    bodyText: JSON.stringify({ accepted_by: acceptedBy }, null, 2),
+  });
+  setPreValue(elements.adoptFactResult, adoptResult.responseText || "");
+  resultView.adopt =
+    adoptResult.data && typeof adoptResult.data === "object"
+      ? adoptResult.data
+      : { status: adoptResult.status, raw: adoptResult.responseText || "" };
+  if (!adoptResult.ok) {
+    setPreValue(elements.runLoopResult, formatField(resultView));
+    return;
+  }
+
+  const turnResult = await sendRequest({
+    method: "POST",
+    path: "/api/v1/chat/turn",
+    bodyText: JSON.stringify(
+      {
+        campaign_id: campaignId,
+        user_input: "Introduce yourself briefly.",
+      },
+      null,
+      2
+    ),
+  });
+  renderTurnResponse(turnResult.responseText);
+  resultView.turn =
+    turnResult.data && typeof turnResult.data === "object"
+      ? turnResult.data
+      : { status: turnResult.status, raw: turnResult.responseText || "" };
+  resultView.turn_debug =
+    turnResult.data && turnResult.data.debug ? turnResult.data.debug : null;
+  if (!turnResult.ok) {
+    setPreValue(elements.runLoopResult, formatField(resultView));
+    return;
+  }
+
+  const query = new URLSearchParams({ campaign_id: campaignId });
+  const statusResult = await sendRequest({
+    method: "GET",
+    path: `/api/v1/campaign/status?${query.toString()}`,
+  });
+  if (statusResult.data) {
+    renderCampaignStatusPanel(statusResult.data);
+  }
+  resultView.status =
+    statusResult.data && typeof statusResult.data === "object"
+      ? statusResult.data
+      : { status: statusResult.status, raw: statusResult.responseText || "" };
+
+  setPreValue(elements.runLoopResult, formatField(resultView));
+}
+
 function buildFocusPatchFromToggles() {
   const patch = {};
   if (elements.toggleStrictGuard.value !== "unchanged") {
@@ -839,6 +944,7 @@ function bindEvents() {
   elements.advanceMilestoneBtn.addEventListener("click", advanceMilestone);
   elements.adoptFactBtn.addEventListener("click", adoptCharacterFact);
   elements.generateCharacterBtn.addEventListener("click", generateCharacterFacts);
+  elements.runLoopBtn.addEventListener("click", runCharacterLoop);
   elements.applyFocusToggles.addEventListener("click", applyFocusToggles);
   elements.loadSchema.addEventListener("click", loadSchema);
   elements.applySettings.addEventListener("click", applySettings);
@@ -927,6 +1033,7 @@ function initTemplates() {
   setPreValue(elements.advanceMilestoneResult, "");
   setPreValue(elements.adoptFactResult, "");
   setPreValue(elements.generateCharacterResult, "");
+  setPreValue(elements.runLoopResult, "");
   setPreValue(elements.toggleApplyResult, "");
 }
 

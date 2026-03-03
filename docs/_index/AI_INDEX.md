@@ -18,7 +18,7 @@ Use this as the default reference for every task.
 ## 2. API & Data Contracts
 **Rules**
 - Request/response shapes follow `backend/api/routes/*.py` and `backend/domain/models.py`.
-- `/api/v1/chat/turn` responses include `narrative_text`, `dialog_type`, `tool_calls`, `applied_actions`, `tool_feedback`, `conflict_report`, and `state_summary`.
+- `/api/v1/chat/turn` responses include `narrative_text`, `dialog_type`, `tool_calls`, `applied_actions`, `tool_feedback`, `conflict_report`, and `state_summary`; optional top-level `debug` may appear when debug settings are enabled.
 - Changes to `Campaign`, `TurnLogEntry`, or API payloads must update `docs/01_specs/storage_layout.md` and `docs/02_guides/testing/api_test_guide.md`.
 **Checks**
 - Run the API test guide for any changed endpoints.

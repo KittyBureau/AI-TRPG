@@ -39,6 +39,7 @@ class DialogSettings(BaseModel):
     auto_type_enabled: bool = True
     strict_semantic_guard: bool = False
     conflict_text_checks_enabled: bool = False
+    turn_profile_trace_enabled: bool = False
 
 
 class RulesSettings(BaseModel):

@@ -32,6 +32,7 @@ class TurnResponse(BaseModel):
     tool_feedback: Optional[Dict[str, Any]] = None
     conflict_report: Optional[Dict[str, Any]] = None
     state_summary: Dict[str, Any]
+    debug: Optional[Dict[str, Any]] = None
 
 
 @router.post("/turn", response_model=TurnResponse)

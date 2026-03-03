@@ -83,6 +83,15 @@ _DEFINITIONS: List[SettingDefinition] = [
         effect_tags=["dialog", "conflict"],
     ),
     SettingDefinition(
+        key="dialog.turn_profile_trace_enabled",
+        type="bool",
+        default=False,
+        scope="campaign",
+        validation={},
+        ui_hint="toggle",
+        effect_tags=["dialog", "debug", "profile"],
+    ),
+    SettingDefinition(
         key="characters.fact_generation.draft_mode",
         type="str_enum",
         default="deterministic",

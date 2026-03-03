@@ -55,6 +55,13 @@ The frontend now provides a **Campaign Status & V1.1 Ops** panel:
 - `Generate Facts`
   - Calls `POST /api/v1/campaigns/{campaign_id}/characters/generate`
   - Uses a raw JSON textarea so `party_context` can be pasted directly.
+- `Run Loop`
+  - Chains:
+    1. `POST /api/v1/campaigns/{campaign_id}/characters/generate`
+    2. `POST /api/v1/campaigns/{campaign_id}/characters/facts/{character_id}/adopt`
+    3. `POST /api/v1/chat/turn` (fixed short input: `Introduce yourself briefly.`)
+    4. `GET /api/v1/campaign/status?campaign_id=...`
+  - Shows compact combined output in **Character Loop** result panel.
 
 ### Settings focus toggles
 
@@ -63,6 +70,7 @@ The panel can patch key V1.1 switches through `POST /api/v1/settings/apply`:
 - `dialog.strict_semantic_guard`
 - `dialog.conflict_text_checks_enabled`
 - `context.compress_enabled`
+- `dialog.turn_profile_trace_enabled` (set via raw settings patch panel)
 
 When toggling `context.compress_enabled`, the UI also patches
 `context.full_context_enabled` inversely to satisfy backend mutual exclusion.

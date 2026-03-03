@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from typing import Any, Dict
 
@@ -77,6 +79,13 @@ def _create_campaign(
     )
     repo.create_campaign(campaign)
     return campaign
+
+
+def _extract_prompt_context(system_prompt: str) -> Dict[str, Any]:
+    marker = "Context: "
+    if marker not in system_prompt:
+        return {}
+    return json.loads(system_prompt.rsplit(marker, 1)[1])
 
 
 def test_submit_turn_blocks_when_campaign_already_ended(
@@ -219,3 +228,76 @@ def test_repeat_illegal_request_suppression_after_three_turns(
     fourth = service.submit_turn("camp_0006", "repeat invalid move")
     failed = fourth["tool_feedback"]["failed_calls"][0]
     assert failed["reason"] == "repeat_illegal_request"
+
+
+def test_turn_prompt_has_adopted_profiles_block_without_profile_duplication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_0007")
+    campaign.actors["pc_001"].meta = {
+        "name": "Stub Name",
+        "summary": "stub-summary",
+        "profile": {
+            "character_id": "pc_001",
+            "name": "Adopted Name",
+            "role": "scout",
+            "tags": ["stealth"],
+        },
+    }
+    repo.save_campaign(campaign)
+    llm = _StubLLM(
+        {
+            "assistant_text": "ok",
+            "dialog_type": "scene_description",
+            "tool_calls": [],
+        }
+    )
+    service.llm = llm
+
+    service.submit_turn("camp_0007", "introduce yourself")
+    context = _extract_prompt_context(llm.system_prompt)
+    assert context["adopted_profiles_by_actor"]["pc_001"]["name"] == "Adopted Name"
+    assert context["actors"]["pc_001"]["meta"]["name"] == "Stub Name"
+    assert "profile" not in context["actors"]["pc_001"]["meta"]
+
+
+def test_turn_profile_trace_debug_gated_by_setting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_0008")
+    campaign.actors["pc_001"].meta["profile"] = {
+        "character_id": "pc_001",
+        "name": "Trace",
+        "role": "guardian",
+    }
+    repo.save_campaign(campaign)
+
+    without_trace = service.submit_turn("camp_0008", "hello")
+    assert "debug" not in without_trace
+
+    campaign = repo.get_campaign("camp_0008")
+    campaign.settings_snapshot.dialog.turn_profile_trace_enabled = True
+    repo.save_campaign(campaign)
+    with_trace = service.submit_turn("camp_0008", "hello again")
+    assert "debug" in with_trace
+    debug = with_trace["debug"]
+    assert isinstance(debug, dict)
+    assert "used_profile_hash" in debug
+    expected_payload = {
+        "pc_001": {
+            "character_id": "pc_001",
+            "name": "Trace",
+            "role": "guardian",
+        }
+    }
+    expected_hash = hashlib.sha256(
+        json.dumps(
+            expected_payload,
+            sort_keys=True,
+            ensure_ascii=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    assert debug["used_profile_hash"] == expected_hash

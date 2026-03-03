@@ -377,6 +377,15 @@ def test_adopt_fact_writes_sidecar_and_profile_idempotently(
     first_path = _absolute(tmp_path, refs["individual_paths"][0])
     first_fact = json.loads(first_path.read_text(encoding="utf-8"))
     character_id = first_fact["character_id"]
+    repo = FileRepo(tmp_path / "storage")
+    campaign = repo.get_campaign(campaign_id)
+    campaign.actors[character_id] = ActorState(
+        position="area_001",
+        hp=10,
+        character_state="alive",
+        meta={"profile": {"legacy_only": "should_be_replaced"}},
+    )
+    repo.save_campaign(campaign)
 
     first_adopt = client.post(
         f"/api/v1/campaigns/{campaign_id}/characters/facts/{character_id}/adopt",
@@ -390,6 +399,10 @@ def test_adopt_fact_writes_sidecar_and_profile_idempotently(
     sidecar_payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
     assert sidecar_payload["accepted_by"] == "tester"
     assert sidecar_payload["character_id"] == character_id
+    adopted_campaign = repo.get_campaign(campaign_id)
+    adopted_profile = adopted_campaign.actors[character_id].meta.get("profile")
+    assert adopted_profile == first_fact
+    assert "legacy_only" not in adopted_profile
 
     second_adopt = client.post(
         f"/api/v1/campaigns/{campaign_id}/characters/facts/{character_id}/adopt",

@@ -129,6 +129,11 @@ class TurnService:
         if _mark_ended_if_needed(campaign):
             self.repo.save_campaign(campaign)
         _assert_turn_writable(campaign, active_actor_id)
+        response_debug = (
+            _build_turn_debug_payload(campaign, active_actor_id)
+            if campaign.settings_snapshot.dialog.turn_profile_trace_enabled
+            else None
+        )
         system_prompt = _build_system_prompt(campaign, active_actor_id)
         retry_count = 0
         last_conflicts = []
@@ -182,7 +187,11 @@ class TurnService:
                     retries=retry_count, conflicts=conflicts
                 )
                 return _build_failure_response(
-                    conflict_report, campaign, active_actor_id, dialog_type
+                    conflict_report,
+                    campaign,
+                    active_actor_id,
+                    dialog_type,
+                    debug_payload=response_debug,
                 )
 
             turn_id = self.repo.next_turn_id(campaign_id)
@@ -230,7 +239,13 @@ class TurnService:
             entry.state_summary.hp = hp
             entry.state_summary.character_states = character_states
             self.repo.append_turn_log(campaign_id, entry)
-            return _build_success_response(entry, tool_calls, applied_actions, tool_feedback)
+            return _build_success_response(
+                entry,
+                tool_calls,
+                applied_actions,
+                tool_feedback,
+                debug_payload=response_debug,
+            )
 
 
 def _ensure_minimum_state(campaign: Campaign) -> bool:
@@ -367,12 +382,30 @@ def _derive_character_state_maps(campaign: Campaign) -> tuple[
     return _CHARACTER_FACADE.build_state_maps(campaign)
 
 
+def _build_actor_prompt_payloads(
+    campaign: Campaign,
+) -> tuple[Dict[str, Dict[str, object]], Dict[str, Dict[str, object]]]:
+    actors_payload: Dict[str, Dict[str, object]] = {}
+    adopted_profiles_by_actor: Dict[str, Dict[str, object]] = {}
+    for actor_id in sorted(campaign.actors.keys()):
+        actor = campaign.actors[actor_id]
+        actor_meta = actor.meta if isinstance(actor.meta, dict) else {}
+        meta_payload = {key: value for key, value in actor_meta.items() if key != "profile"}
+        actors_payload[actor_id] = {
+            "position": actor.position,
+            "hp": actor.hp,
+            "character_state": actor.character_state,
+            "meta": meta_payload,
+        }
+        profile_payload = actor_meta.get("profile")
+        if isinstance(profile_payload, dict):
+            adopted_profiles_by_actor[actor_id] = dict(profile_payload)
+    return actors_payload, adopted_profiles_by_actor
+
+
 def _build_system_prompt(campaign: Campaign, active_actor_id: str) -> str:
     positions, _, _, hp, character_states = _derive_character_state_maps(campaign)
-    actors_payload = {
-        actor_id: _model_to_dict(actor)
-        for actor_id, actor in campaign.actors.items()
-    }
+    actors_payload, adopted_profiles_by_actor = _build_actor_prompt_payloads(campaign)
     compress_enabled = campaign.settings_snapshot.context.compress_enabled
     if compress_enabled:
         active_state = _CHARACTER_FACADE.get_state(campaign, active_actor_id)
@@ -398,6 +431,7 @@ def _build_system_prompt(campaign: Campaign, active_actor_id: str) -> str:
             "positions": positions,
             "hp": hp,
             "character_states": character_states,
+            "adopted_profiles_by_actor": adopted_profiles_by_actor,
             "response_format": {
                 "assistant_text": "string narrative",
                 "dialog_type": "one of dialog_types",
@@ -417,6 +451,7 @@ def _build_system_prompt(campaign: Campaign, active_actor_id: str) -> str:
             "map": _model_to_dict(campaign.map),
             "state": _model_to_dict(campaign.state),
             "actors": actors_payload,
+            "adopted_profiles_by_actor": adopted_profiles_by_actor,
             "positions": positions,
             "hp": hp,
             "character_states": character_states,
@@ -461,9 +496,32 @@ def _build_system_prompt(campaign: Campaign, active_actor_id: str) -> str:
         "Example 3 (no tool call required; MUST respond with non-empty assistant_text): "
         "{\"assistant_text\":\"You are currently in area_002. The corridor is quiet. What do you do next?\","
         "\"dialog_type\":\"scene_description\",\"tool_calls\":[]} "
+        "For descriptive character facts, prioritize Context.adopted_profiles_by_actor[actor_id] "
+        "when present; otherwise fallback to Context.actors[actor_id].meta. "
         "Do not modify rules, maps, or character sheets. "
         f"Context: {json.dumps(payload, ensure_ascii=False)}"
     )
+
+
+def _build_turn_debug_payload(
+    campaign: Campaign, active_actor_id: str
+) -> Dict[str, object]:
+    _, adopted_profiles_by_actor = _build_actor_prompt_payloads(campaign)
+    encoded = json.dumps(
+        adopted_profiles_by_actor,
+        sort_keys=True,
+        ensure_ascii=True,
+        separators=(",", ":"),
+    )
+    payload: Dict[str, object] = {
+        "used_profile_hash": hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    }
+    active_profile = adopted_profiles_by_actor.get(active_actor_id)
+    if isinstance(active_profile, dict):
+        version = active_profile.get("schema_version")
+        if isinstance(version, str) and version.strip():
+            payload["used_profile_version"] = version
+    return payload
 
 
 def _build_debug_append(conflicts: List[object], campaign: Campaign) -> str:
@@ -504,6 +562,7 @@ def _build_success_response(
     tool_calls: List[ToolCall],
     applied_actions: List[object],
     tool_feedback: object,
+    debug_payload: Optional[Dict[str, object]] = None,
 ) -> Dict[str, object]:
     if hasattr(entry.state_summary, "model_dump"):
         state_summary = entry.state_summary.model_dump()
@@ -519,7 +578,7 @@ def _build_success_response(
         if entry.conflict_report
         else None
     )
-    return {
+    response = {
         "narrative_text": entry.assistant_text,
         "dialog_type": entry.dialog_type,
         "tool_calls": tool_calls_payload,
@@ -528,6 +587,9 @@ def _build_success_response(
         "conflict_report": conflict_report_payload,
         "state_summary": state_summary,
     }
+    if debug_payload:
+        response["debug"] = dict(debug_payload)
+    return response
 
 
 def _build_failure_response(
@@ -535,6 +597,7 @@ def _build_failure_response(
     campaign: Campaign,
     active_actor_id: str,
     dialog_type: str,
+    debug_payload: Optional[Dict[str, object]] = None,
 ) -> Dict[str, object]:
     state_summary = StateSummary(active_actor_id=active_actor_id)
     (
@@ -549,7 +612,7 @@ def _build_failure_response(
     state_summary.positions_child = positions_child
     state_summary.hp = hp
     state_summary.character_states = character_states
-    return {
+    response = {
         "narrative_text": "",
         "dialog_type": dialog_type,
         "tool_calls": [],
@@ -558,6 +621,9 @@ def _build_failure_response(
         "conflict_report": _model_to_dict(conflict_report),
         "state_summary": _model_to_dict(state_summary),
     }
+    if debug_payload:
+        response["debug"] = dict(debug_payload)
+    return response
 
 
 def _assert_turn_writable(campaign: Campaign, active_actor_id: str) -> None:

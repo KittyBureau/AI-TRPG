@@ -24,6 +24,8 @@ Registry keys (default values):
 - `dialog.auto_type_enabled` (bool, default `true`)
 - `dialog.strict_semantic_guard` (bool, default `false`)
 - `dialog.conflict_text_checks_enabled` (bool, default `false`)
+- `dialog.turn_profile_trace_enabled` (bool, default `false`)
+- `characters.fact_generation.draft_mode` (str_enum, default `deterministic`, allowed: `deterministic`, `llm`)
 
 ## Snapshot
 
@@ -40,6 +42,8 @@ Each valid patch increments `settings_revision`.
   invalid `dialog_type` outputs; default `false` preserves fallback behavior.
 - `dialog.conflict_text_checks_enabled=true` enables text-based conflict checks;
   default `false` keeps the existing non-text baseline behavior.
+- `dialog.turn_profile_trace_enabled=true` enables optional `debug.used_profile_hash`
+  in `/api/v1/chat/turn` responses; default `false` omits `debug`.
 
 ## API
 
@@ -79,7 +83,13 @@ Response:
     "dialog": {
       "auto_type_enabled": false,
       "strict_semantic_guard": false,
-      "conflict_text_checks_enabled": false
+      "conflict_text_checks_enabled": false,
+      "turn_profile_trace_enabled": false
+    },
+    "characters": {
+      "fact_generation": {
+        "draft_mode": "deterministic"
+      }
     }
   },
   "change_summary": [

@@ -78,7 +78,13 @@ storage/
     "dialog": {
       "auto_type_enabled": true,
       "strict_semantic_guard": false,
-      "conflict_text_checks_enabled": false
+      "conflict_text_checks_enabled": false,
+      "turn_profile_trace_enabled": false
+    },
+    "characters": {
+      "fact_generation": {
+        "draft_mode": "deterministic"
+      }
     }
   },
   "goal": {
@@ -126,6 +132,7 @@ storage/
 | settings_snapshot.rules | object | Rules settings. |
 | settings_snapshot.rollback | object | Rollback settings (stage 2 only stores). |
 | settings_snapshot.dialog | object | Dialog settings. |
+| settings_snapshot.characters | object | Character generation settings. |
 | goal | object | Goal placeholder. |
 | milestone | object | Milestone progression state and lightweight pressure counters. |
 | lifecycle | object | Campaign lifecycle status (`ended`, `reason`, `ended_at`). |

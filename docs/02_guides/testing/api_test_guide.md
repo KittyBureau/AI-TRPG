@@ -305,3 +305,47 @@ Using `frontend/index.html`:
      - strict guard `422`
      - unconscious active actor rejection
      - repeat illegal suppression hints when present
+
+---
+
+## Turn adopted profile trace gate (new)
+
+1. Keep default setting (`dialog.turn_profile_trace_enabled=false`)
+   - Call `POST /api/v1/chat/turn`
+   - Verify response has no top-level `debug` field.
+
+2. Enable trace setting
+   - Call `POST /api/v1/settings/apply`:
+     ```json
+     {
+       "campaign_id": "camp_0001",
+       "patch": {
+         "dialog.turn_profile_trace_enabled": true
+       }
+     }
+     ```
+   - Call `POST /api/v1/chat/turn` again.
+   - Verify response contains top-level:
+     - `debug.used_profile_hash` (stable hash string).
+     - `debug.used_profile_version` only when profile payload provides it.
+
+3. Prompt context assembly verification (mock/spy LLM in tests)
+   - Assert turn context includes `adopted_profiles_by_actor`.
+   - Assert `Context.actors[*].meta` does not duplicate full `profile`.
+   - Do not assert natural-language output text.
+
+---
+
+## Frontend one-click Run Loop check
+
+In `frontend/index.html`:
+
+1. Select campaign.
+2. Click **Run Loop** in **Campaign Status & V1.1 Ops**.
+3. Verify chained calls complete in order:
+   - generate -> adopt -> turn -> status
+4. Verify **Character Loop** result panel includes:
+   - `generate` refs payload
+   - `adopt` result payload
+   - `turn` payload (and `turn_debug` when trace is enabled)
+   - latest `status` payload
