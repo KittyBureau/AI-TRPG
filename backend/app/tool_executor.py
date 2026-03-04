@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
+from backend.app.actor_service import spawn_actor
 from backend.app.character_facade_factory import create_runtime_character_facade
 from backend.app.world_service import generate_world
 from backend.domain.character_access import (
@@ -130,6 +131,8 @@ def _apply_tool_call(
         return action, "invalid_args" if action is None else None
     if call.tool == "world_generate":
         return _apply_world_generate(campaign, call, timestamp, repo=repo)
+    if call.tool == "actor_spawn":
+        return _apply_actor_spawn(campaign, actor_id, call, timestamp)
     return None, "invalid_args"
 
 
@@ -382,6 +385,26 @@ def _apply_world_generate(
     return (
         AppliedAction(
             tool="world_generate",
+            args=call.args,
+            result=result,
+            timestamp=timestamp,
+        ),
+        None,
+    )
+
+
+def _apply_actor_spawn(
+    campaign: Campaign,
+    active_actor_id: str,
+    call: ToolCall,
+    timestamp: str,
+) -> Tuple[Optional[AppliedAction], Optional[str]]:
+    result, error = spawn_actor(call.args, campaign, active_actor_id=active_actor_id)
+    if result is None:
+        return None, error or "invalid_args"
+    return (
+        AppliedAction(
+            tool="actor_spawn",
             args=call.args,
             result=result,
             timestamp=timestamp,

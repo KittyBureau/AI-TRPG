@@ -56,11 +56,12 @@ Use this as the default reference for every task.
 - `move_options` is read-only and must not change positions or other state.
 - Movement state changes require a `move` tool_call; narration alone does not change positions.
 - `world_generate` is metadata-only in v1 (no map generation chain); missing resolved world id returns tool reason `world_id_missing`.
+- `actor_spawn` creates runtime actors in `campaign.actors`; explicit invalid `spawn_position` returns `invalid_args`.
 **Checks**
-- Run `backend/tests/test_map_generate.py`, `backend/tests/test_move_options.py`, and `backend/tests/test_world_generate_tool.py` when touching tool execution or validation.
+- Run `backend/tests/test_map_generate.py`, `backend/tests/test_move_options.py`, `backend/tests/test_world_generate_tool.py`, and `backend/tests/test_actor_spawn_tool.py` when touching tool execution or validation.
 - Review `docs/01_specs/tools.md` for param and reason updates.
 **Scope**
-- `backend/app/tool_executor.py`, `backend/app/world_service.py`, `backend/domain/models.py`, `docs/01_specs/tools.md`, `backend/tests/test_map_generate.py`, `backend/tests/test_move_options.py`, `backend/tests/test_world_generate_tool.py`.
+- `backend/app/tool_executor.py`, `backend/app/world_service.py`, `backend/app/actor_service.py`, `backend/domain/models.py`, `docs/01_specs/tools.md`, `backend/tests/test_map_generate.py`, `backend/tests/test_move_options.py`, `backend/tests/test_world_generate_tool.py`, `backend/tests/test_actor_spawn_tool.py`.
 
 ## 6. Storage Layout & Persistence
 **Rules**
@@ -102,7 +103,7 @@ Use this as the default reference for every task.
 - Allowed states: `alive`, `dying`, `unconscious`, `restrained_permanent`, `dead`.
 - `dying` only allows `hp_delta` with positive delta on the actor; other non-alive states reject all tools.
 - `rules.hp_zero_ends_game` drives state transitions on HP changes.
-- `world_generate` follows standard tool permission gates (`alive` allowed when in allowlist; non-alive restricted).
+- `world_generate` and `actor_spawn` follow standard tool permission gates (`alive` allowed when in allowlist; non-alive restricted).
 **Checks**
 - Review `backend/domain/state_machine.py` and tool executor behavior.
 - Add or update tests when changing state permission logic.

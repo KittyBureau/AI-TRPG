@@ -56,7 +56,7 @@ World lazy-create migration (v1):
     "active_actor_id": "pc_001"
   },
   "settings_revision": 0,
-  "allowlist": ["move", "move_options", "hp_delta", "map_generate", "world_generate"],
+  "allowlist": ["move", "move_options", "hp_delta", "map_generate", "world_generate", "actor_spawn"],
   "map": {
     "areas": {
       "area_001": {

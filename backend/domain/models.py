@@ -113,6 +113,7 @@ class Campaign(BaseModel):
             "map_generate",
             "move_options",
             "world_generate",
+            "actor_spawn",
         ]
     )
     map: MapData = Field(default_factory=MapData)
