@@ -4,90 +4,30 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI-TRPG Play</title>
-    <link rel="stylesheet" href="./app.css" />
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <header class="hero">
-      <div class="hero__content">
-        <p class="eyebrow">AI-TRPG</p>
-        <h1>Play Mode (Round MVP)</h1>
-        <p class="lead">
-          Execute one round across multiple actors in initiative order using
-          `execution.actor_id`.
-        </p>
-        <p class="status" id="statusLine">Idle</p>
-        <div class="inline" style="margin-top: 0.75rem">
-          <a href="./debug.html">Open Debug Page</a>
+    <div class="page">
+      <header class="page-header">
+        <div>
+          <h1 class="page-title">AI-TRPG Play</h1>
+          <p class="page-subtitle">Panel-based playable UI (Round MVP)</p>
         </div>
-      </div>
-    </header>
+        <div class="inline">
+          <span class="status-chip" id="statusLine">Idle</span>
+          <a href="./debug.html">Open Debug</a>
+          <a href="./index.html">Legacy Console</a>
+        </div>
+      </header>
 
-    <main class="layout">
-      <section class="panel">
-        <div class="panel__header">
-          <h2>Session</h2>
-          <p class="panel__hint">Select campaign and define actors for round.</p>
-        </div>
-        <div class="grid grid--two">
-          <div class="field">
-            <span>Base URL</span>
-            <input id="baseUrlInput" type="text" placeholder="http://127.0.0.1:8000" />
-          </div>
-          <div class="field">
-            <span>Campaign</span>
-            <div class="inline">
-              <select id="campaignSelect"></select>
-              <button class="ghost" id="refreshCampaignsBtn">Refresh</button>
-            </div>
-          </div>
-        </div>
-        <div class="field">
-          <span>Actor IDs (CSV or newline)</span>
-          <textarea id="actorIdsInput" rows="3" placeholder="pc_001,pc_002"></textarea>
-          <div class="inline">
-            <button class="ghost" id="applyActorsBtn">Apply Actors</button>
-            <button class="ghost" id="useSnapshotActorsBtn">
-              Use Actors From Snapshot
-            </button>
-          </div>
-        </div>
-      </section>
+      <main class="play-grid">
+        <div id="campaignMount" class="campaign-mount"></div>
+        <div id="leftMount" class="left-mount"></div>
+        <div id="centerMount" class="center-mount"></div>
+        <div id="rightMount" class="right-mount"></div>
+      </main>
+    </div>
 
-      <section class="panel">
-        <div class="panel__header">
-          <h2>Round Panel</h2>
-          <p class="panel__hint">
-            Edit initiative order and per-actor action, then run sequentially.
-          </p>
-        </div>
-        <div id="initiativeList" class="stack"></div>
-        <div class="inline" style="margin-top: 1rem">
-          <label for="failureStrategySelect">On Failure</label>
-          <select id="failureStrategySelect">
-            <option value="stop">Stop Round</option>
-            <option value="continue">Continue Round</option>
-          </select>
-          <button id="runRoundBtn">Run Round</button>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel__header">
-          <h2>Round Log</h2>
-          <p class="panel__hint">Narrative and minimal per-actor delta.</p>
-        </div>
-        <div id="roundLog" class="stack"></div>
-      </section>
-
-      <section class="panel">
-        <div class="panel__header">
-          <h2>Current Snapshot</h2>
-          <p class="panel__hint">Latest state summary after round execution.</p>
-        </div>
-        <pre id="snapshotView"></pre>
-      </section>
-    </main>
-
-    <script src="./play.js"></script>
+    <script type="module" src="./play.js"></script>
   </body>
 </html>

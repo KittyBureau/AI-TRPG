@@ -2,14 +2,30 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="refresh" content="0; url=./index.html" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI-TRPG Debug</title>
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <p>
-      Redirecting to debug console...
-      <a href="./index.html">Open index.html</a>
-    </p>
+    <div class="page">
+      <header class="page-header">
+        <div>
+          <h1 class="page-title">AI-TRPG Debug</h1>
+          <p class="page-subtitle">Raw request/response tools for reproducible troubleshooting</p>
+        </div>
+        <div class="inline">
+          <span class="status-chip" id="statusLine">Idle</span>
+          <a href="./play.html">Open Play</a>
+          <a href="./index.html">Legacy Console</a>
+        </div>
+      </header>
+
+      <main class="debug-layout">
+        <div id="debugLeftMount" class="debug-mount"></div>
+        <div id="debugRightMount" class="debug-mount"></div>
+      </main>
+    </div>
+
+    <script type="module" src="./debug.js"></script>
   </body>
 </html>

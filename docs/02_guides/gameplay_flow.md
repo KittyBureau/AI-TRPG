@@ -150,14 +150,29 @@ Expected check:
 
 - response includes `narrative_text` (non-empty preferred)
 
-## Frontend Minimal Flow (single page)
+## Frontend Minimal Flow
 
 Open `frontend/index.html` through a static server and set Base URL.
 
 Page roles:
 
-- `play.html`: player-facing round execution (narrative + delta + snapshot).
-- `debug.html` / `index.html`: debug-facing raw console (raw request/response, tool details).
+- `play.html`: player-facing round execution (panel architecture, no raw JSON).
+- `debug.html`: debug-facing request builder + raw response + trace export.
+- `index.html`: legacy raw console and flow buttons (world/map/spawn/move chain).
+
+Play architecture (module-based):
+
+```text
+frontend/
+  play.html
+  debug.html
+  styles.css
+  api/api.js
+  store/store.js
+  panels/*.js
+  models/log_entry.js
+  renderers/delta_renderer.js
+```
 
 The page now includes these flow panels:
 

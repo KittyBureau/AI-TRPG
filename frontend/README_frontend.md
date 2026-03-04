@@ -18,9 +18,9 @@ Then open `http://127.0.0.1:5173` and set **Base URL** to `http://127.0.0.1:8000
 The map view page reads the same base URL from local storage.
 
 Main entry points:
-- `http://127.0.0.1:5173/play.html` (play mode)
-- `http://127.0.0.1:5173/debug.html` (debug mode; redirects to raw console)
-- `http://127.0.0.1:5173/index.html` (raw debug console)
+- `http://127.0.0.1:5173/play.html` (play mode, panel architecture)
+- `http://127.0.0.1:5173/debug.html` (debug mode, raw request/response)
+- `http://127.0.0.1:5173/index.html` (legacy raw console)
 
 Notes:
 - CORS is enabled for `http://localhost:*` and `http://127.0.0.1:*` in `backend/api/main.py`.
@@ -34,17 +34,48 @@ Notes:
 - Records each request/response in local history with export/copy tools.
 - Includes a V1.1 operations panel for quick verification of lifecycle/milestone/settings/adoption workflows.
 
+## Frontend architecture (panel-based)
+
+Play/Debug v0 architecture uses plain HTML + CSS Grid + JavaScript modules:
+
+```text
+frontend/
+  play.html
+  debug.html
+  styles.css
+  play.js
+  debug.js
+  api/api.js
+  store/store.js
+  panels/registry.js
+  panels/party_panel.js
+  panels/action_planner.js
+  panels/scene_panel.js
+  panels/log_panel.js
+  models/log_entry.js
+  renderers/delta_renderer.js
+```
+
+Key constraints implemented:
+- UI modules are mounted as Panels via `panels/registry.js`.
+- State authority is centralized in `store/store.js`.
+- Network calls are encapsulated in `api/api.js`.
+- Play page avoids raw JSON output.
+- Debug page exposes raw request/response and trace export.
+
 ## Play vs Debug pages
 
-- `frontend/play.html`: lightweight playable round UI.
-  - Accepts actor list input (CSV/newline).
-  - Supports editable initiative order (up/down).
-  - Supports configurable failure strategy (`Stop Round` / `Continue Round`).
-  - Runs one round by sequentially calling `/api/v1/chat/turn` with `execution.actor_id`.
-  - Shows narrative + fixed delta object + current snapshot.
-- `frontend/index.html` (and `frontend/debug.html` entry): debug console UI.
-  - Full raw request/response.
-  - Tool calls, failures, conflict report, and copy helpers.
+- `frontend/play.html`:
+  - CSS Grid layout with campaign bar + 3 columns.
+  - Left: Party + Action Planner.
+  - Center: Scene + Map Placeholder.
+  - Right: Round Log.
+  - Round Log renders narrative + delta lines only (no raw JSON).
+- `frontend/debug.html`:
+  - Request Builder, Response Viewer, Trace Log.
+  - Copy request/response and export reproduction bundle.
+- `frontend/index.html`:
+  - Legacy raw console remains available for backward compatibility.
 
 ## V1.1 quick operations in UI
 

@@ -149,7 +149,7 @@ Use this as the default reference for every task.
 - Reference/legacy docs are non-authoritative; do not treat them as implementation truth.
 - When modifying backend/frontend API routes, request/response fields, status codes, storage paths, JSON keys, enums, or settings keys/defaults/validation, you must update the matching docs.
 - Every code commit touching those areas must include at least one docs update, or add a tracked entry to `docs/01_specs/TODO_DOCS_ALIGNMENT.md` explaining why the docs change is deferred.
-- Frontend MVP gameplay flow uses single-page controls in `frontend/index.html` + `frontend/app.js`, with tool execution driven by templated `user_input` through `/api/v1/chat/turn`; keep this aligned with `docs/02_guides/gameplay_flow.md`.
+- Frontend MVP now has panel-based pages (`frontend/play.html`, `frontend/debug.html`) using `styles.css` + JS modules (`api/store/panels/models/renderers`); legacy single-page console (`frontend/index.html` + `frontend/app.js`) remains for compatibility and scripted flow checks. Keep this aligned with `docs/02_guides/gameplay_flow.md`.
 **Checks**
 - Confirm updated docs cover API routes, storage layout, enums, and settings changes.
 - If docs are deferred, ensure `docs/01_specs/TODO_DOCS_ALIGNMENT.md` contains a dated entry with evidence.
