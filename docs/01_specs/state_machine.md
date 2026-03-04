@@ -15,6 +15,7 @@
 - `restrained_permanent` and `dead`: no tool execution.
 - `alive`: tools may execute if allowed by allowlist.
 - Movement position changes require tool execution (move); narration alone does not move characters.
+- Item gain requires tool execution (`inventory_add`); narration alone does not change inventory.
 
 `rules.hp_zero_ends_game`:
 
@@ -25,10 +26,10 @@ State is persisted in `campaign.json` under `character_states`.
 
 ## Tool Decision Matrix
 
-| State | move | move_options | hp_delta | map_generate | world_generate | actor_spawn |
-| --- | --- | --- | --- | --- | --- | --- |
-| alive | allow | allow | allow | allow | allow | allow |
-| dying | reject | reject | allow if delta > 0 on actor | reject | reject | reject |
-| unconscious | reject | reject | reject | reject | reject | reject |
-| restrained_permanent | reject | reject | reject | reject | reject | reject |
-| dead | reject | reject | reject | reject | reject | reject |
+| State | move | move_options | hp_delta | inventory_add | map_generate | world_generate | actor_spawn |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| alive | allow | allow | allow | allow | allow | allow | allow |
+| dying | reject | reject | allow if delta > 0 on actor | reject | reject | reject | reject |
+| unconscious | reject | reject | reject | reject | reject | reject | reject |
+| restrained_permanent | reject | reject | reject | reject | reject | reject | reject |
+| dead | reject | reject | reject | reject | reject | reject | reject |

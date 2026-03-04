@@ -121,6 +121,11 @@ def _apply_tool_call(
     if call.tool == "hp_delta":
         action = _apply_hp_delta(campaign, call, timestamp, character_facade)
         return action, "invalid_args" if action is None else None
+    if call.tool == "inventory_add":
+        action = _apply_inventory_add(
+            campaign, actor_id, call, timestamp, character_facade
+        )
+        return action, "invalid_args" if action is None else None
     if call.tool == "move_options":
         action = _apply_move_options(
             campaign, actor_id, call, timestamp, character_facade
@@ -221,6 +226,52 @@ def _apply_hp_delta(
         tool="hp_delta",
         args=call.args,
         result={"new_hp": new_hp},
+        timestamp=timestamp,
+    )
+
+
+def _apply_inventory_add(
+    campaign: Campaign,
+    active_actor_id: str,
+    call: ToolCall,
+    timestamp: str,
+    character_facade: CharacterFacade,
+) -> Optional[AppliedAction]:
+    actor_id = call.args.get("actor_id")
+    item_id = call.args.get("item_id")
+    quantity = call.args.get("quantity", 1)
+    if actor_id is None:
+        actor_id = active_actor_id
+    if not isinstance(actor_id, str) or actor_id != active_actor_id:
+        return None
+    if not isinstance(item_id, str):
+        return None
+    normalized_item_id = item_id.strip()
+    if not normalized_item_id:
+        return None
+    if not isinstance(quantity, int) or quantity <= 0:
+        return None
+    actor_state = character_facade.get_state(campaign, actor_id)
+    character_facade.set_state(campaign, actor_id, actor_state)
+    actor = campaign.actors.get(actor_id)
+    if actor is None:
+        return None
+    if not isinstance(actor.inventory, dict):
+        actor.inventory = {}
+    current_qty = actor.inventory.get(normalized_item_id, 0)
+    if not isinstance(current_qty, int) or current_qty < 0:
+        current_qty = 0
+    new_qty = current_qty + quantity
+    actor.inventory[normalized_item_id] = new_qty
+    return AppliedAction(
+        tool="inventory_add",
+        args=call.args,
+        result={
+            "actor_id": actor_id,
+            "item_id": normalized_item_id,
+            "quantity_added": quantity,
+            "new_quantity": new_qty,
+        },
         timestamp=timestamp,
     )
 

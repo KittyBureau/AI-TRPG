@@ -66,6 +66,10 @@ def validate_actors_state(
         if not isinstance(actor.character_state, str):
             actor.character_state = DEFAULT_CHARACTER_STATE
             updated = True
+        normalized_inventory = _normalize_inventory(actor.inventory)
+        if normalized_inventory != actor.inventory:
+            actor.inventory = normalized_inventory
+            updated = True
         if not isinstance(actor.meta, dict):
             actor.meta = {}
             updated = True
@@ -98,3 +102,21 @@ def derive_state_maps(
         character_states[actor_id] = actor.character_state
         positions_child[actor_id] = None
     return positions, dict(positions), positions_child, hp, character_states
+
+
+def _normalize_inventory(value: object) -> Dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: Dict[str, int] = {}
+    for raw_key, raw_qty in value.items():
+        if not isinstance(raw_key, str):
+            continue
+        key = raw_key.strip()
+        if not key:
+            continue
+        if not isinstance(raw_qty, int):
+            continue
+        if raw_qty <= 0:
+            continue
+        normalized[key] = raw_qty
+    return normalized

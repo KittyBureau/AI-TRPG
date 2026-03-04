@@ -20,6 +20,9 @@ class WorldResponse(BaseModel):
     world_id: str
     name: str
     seed: int | str
+    world_description: str
+    objective: str
+    start_area: str
     generator: WorldGenerator
     schema_version: str
     created_at: str

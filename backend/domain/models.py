@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 class MapArea(BaseModel):
     id: str
     name: str
+    description: str = ""
     parent_area_id: Optional[str] = None
     reachable_area_ids: List[str] = Field(default_factory=list)
 
@@ -98,6 +99,7 @@ class ActorState(BaseModel):
     position: Optional[str] = None
     hp: int = 10
     character_state: str = "alive"
+    inventory: Dict[str, int] = Field(default_factory=dict)
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -110,6 +112,7 @@ class Campaign(BaseModel):
         default_factory=lambda: [
             "move",
             "hp_delta",
+            "inventory_add",
             "map_generate",
             "move_options",
             "world_generate",
@@ -178,6 +181,11 @@ class StateSummary(BaseModel):
     positions_child: Dict[str, Optional[str]] = Field(default_factory=dict)
     hp: Dict[str, int] = Field(default_factory=dict)
     character_states: Dict[str, str] = Field(default_factory=dict)
+    objective: str = ""
+    active_area_id: Optional[str] = None
+    active_area_name: str = ""
+    active_area_description: str = ""
+    active_actor_inventory: Dict[str, int] = Field(default_factory=dict)
 
 
 class TurnLogEntry(BaseModel):

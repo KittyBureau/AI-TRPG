@@ -27,6 +27,8 @@ Contract:
 
 - Output schema: `assistant_text`, `dialog_type`, `tool_calls`.
 - Movement intent -> tool_calls must include `move`; assistant_text may be empty or a very short plan_note.
+- If narration implies item gain (obtain/loot/pick up/receive), tool_calls must include `inventory_add`.
+- If narration implies injury/heal/HP change, tool_calls must include `hp_delta`.
 - Target unclear or user asks where they can go -> use `move_options`; explicitly state no movement yet.
 - If tool_calls is empty -> assistant_text MUST be a non-empty GM response; must not claim completed movement.
 - Context JSON uses `ensure_ascii=False` so Chinese remains readable in the prompt.
@@ -58,6 +60,7 @@ Example 3 (no tool call required; MUST respond with non-empty assistant_text):
 - `move`
 - `move_options`
 - `hp_delta`
+- `inventory_add`
 - `map_generate`
 - `world_generate`
 - `actor_spawn`
@@ -107,6 +110,23 @@ Required args:
 - `target_character_id`
 - `delta`
 - `cause`
+
+### inventory_add
+
+Required args:
+
+- `item_id`
+
+Optional args:
+
+- `quantity` (int, default `1`, must be `> 0`)
+- `actor_id` (defaults to active actor id; if provided must match active actor id)
+
+Notes:
+
+- Adds quantity to `actors[actor_id].inventory[item_id]`.
+- `item_id` must be a non-empty string.
+- Invalid item/quantity/actor args fail with `reason=invalid_args`.
 
 ### map_generate
 

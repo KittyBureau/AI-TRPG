@@ -23,6 +23,9 @@ World data is stored independently from campaigns. Campaigns keep only
   "world_id": "world_001",
   "name": "world_001",
   "seed": 123456789,
+  "world_description": "A sparse frontier of connected rooms and uncertain paths.",
+  "objective": "Explore the nearby areas and recover one useful item.",
+  "start_area": "area_001",
   "generator": {
     "id": "stub",
     "version": "1",
@@ -56,18 +59,20 @@ World lazy-create migration (v1):
     "active_actor_id": "pc_001"
   },
   "settings_revision": 0,
-  "allowlist": ["move", "move_options", "hp_delta", "map_generate", "world_generate", "actor_spawn"],
+  "allowlist": ["move", "move_options", "hp_delta", "inventory_add", "map_generate", "world_generate", "actor_spawn"],
   "map": {
     "areas": {
       "area_001": {
         "id": "area_001",
         "name": "Starting Area",
+        "description": "A quiet checkpoint lit by a flickering lantern.",
         "parent_area_id": null,
         "reachable_area_ids": ["area_002"]
       },
       "area_002": {
         "id": "area_002",
         "name": "Side Room",
+        "description": "A cramped side room with scattered crates.",
         "parent_area_id": null,
         "reachable_area_ids": []
       }
@@ -86,12 +91,14 @@ World lazy-create migration (v1):
       "position": "area_001",
       "hp": 10,
       "character_state": "alive",
+      "inventory": {},
       "meta": {}
     },
     "pc_002": {
       "position": "area_001",
       "hp": 10,
       "character_state": "alive",
+      "inventory": {},
       "meta": {}
     }
   },
@@ -151,13 +158,15 @@ World lazy-create migration (v1):
 | settings_revision | int | Settings revision, increments on valid patch. |
 | allowlist | array | Allowed tools for this campaign. |
 | map | object | Areas and derived connections. |
+| map.areas.*.description | string | Area narration text used by GM/UI. |
 | map.areas.*.reachable_area_ids | array | Authoritative outbound reachability list. |
 | map.connections | array | Derived from `reachable_area_ids` on write. |
 | state | object | Reserved for future map-related flags; not authoritative for actor positions. |
 | state.positions | object | Legacy position mirrors (empty after migration). |
 | state.positions_parent | object | Legacy position mirrors (empty after migration). |
 | state.positions_child | object | Legacy position mirrors (empty after migration). |
-| actors | object | Actor state keyed by actor id (`position` is authoritative). |
+| actors | object | Actor state keyed by actor id (`position` and `inventory` are authoritative). |
+| actors.*.inventory | object | Item quantities keyed by `item_id` (`Dict[str,int]`, positive ints only). |
 | positions | object | Legacy positions (empty after migration; derived from actors when needed). |
 | hp | object | Legacy HP map (empty after migration; derived from actors when needed). |
 | character_states | object | Legacy character state map (empty after migration; derived from actors when needed). |
@@ -322,6 +331,13 @@ Each line is a JSON object:
     "character_states": {
       "pc_001": "alive",
       "pc_002": "alive"
+    },
+    "objective": "Explore the nearby areas and recover one useful item.",
+    "active_area_id": "area_002",
+    "active_area_name": "Side Room",
+    "active_area_description": "A cramped side room with scattered crates.",
+    "active_actor_inventory": {
+      "torch": 1
     }
   }
 }
@@ -350,4 +366,4 @@ tool feedback may include reason `repeat_illegal_request`.
 | applied_actions | array | Applied tool results. |
 | tool_feedback | object | Failed tool calls with reasons. |
 | conflict_report | object | Conflict info when retries occur. |
-| state_summary | object | Includes `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states` (derived from `actors`). |
+| state_summary | object | Includes `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, `active_actor_inventory`. |

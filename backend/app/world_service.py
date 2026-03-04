@@ -140,6 +140,20 @@ def _normalize_world_v1(
         world.name = world.world_id
         changed = True
 
+    if not world.world_description.strip():
+        world.world_description = (
+            "A sparse frontier of connected rooms and uncertain paths."
+        )
+        changed = True
+
+    if not world.objective.strip():
+        world.objective = "Explore the nearby areas and recover one useful item."
+        changed = True
+
+    if not world.start_area.strip():
+        world.start_area = "area_001"
+        changed = True
+
     if not world.schema_version.strip():
         world.schema_version = "1"
         changed = True

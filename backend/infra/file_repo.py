@@ -486,6 +486,9 @@ class FileRepo:
             migrate_map_dict(map_data)
         campaign = _model_from_dict(Campaign, data)
         updated = _migrate_actors_if_needed(campaign, data)
+        if "inventory_add" not in campaign.allowlist:
+            campaign.allowlist.append("inventory_add")
+            updated = True
         for actor_id in campaign.selected.party_character_ids:
             if actor_id not in campaign.actors:
                 ensure_actor(campaign, actor_id)

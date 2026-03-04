@@ -9,13 +9,14 @@ This guide documents the complete MVP loop from campaign creation to at least on
 3. `map_generate`
 4. `actor_spawn`
 5. `move`
-6. `chat/turn`
+6. `inventory_add`
+7. `chat/turn`
 
 It covers both API-first usage and the minimal frontend flow controls.
 
 ## Important Constraint
 
-The backend currently exposes `world_generate`, `map_generate`, `actor_spawn`, and `move` as tool calls executed inside `POST /api/v1/chat/turn`. There are no dedicated HTTP endpoints for these tools.
+The backend currently exposes `world_generate`, `map_generate`, `actor_spawn`, `move`, and `inventory_add` as tool calls executed inside `POST /api/v1/chat/turn`. There are no dedicated HTTP endpoints for these tools.
 
 Because of this, frontend flow buttons trigger tool execution through templated `user_input` in `/api/v1/chat/turn`.
 
@@ -111,7 +112,22 @@ Expected check:
 
 - `applied_actions[*].tool` contains `move`
 
-### 6) Submit one regular turn
+### 6) Trigger `inventory_add` via turn
+
+```bash
+curl -sS -X POST "$BASE/api/v1/chat/turn" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "campaign_id":"camp_0001",
+    "user_input":"[UI_FLOW_STEP] Return JSON with keys assistant_text, dialog_type, tool_calls. Execute exactly one tool_call now: inventory_add. Use args exactly: {\"item_id\":\"torch\",\"quantity\":1}. Do not call any additional tools. Keep assistant_text empty."
+  }'
+```
+
+Expected check:
+
+- `applied_actions[*].tool` contains `inventory_add`
+
+### 7) Submit one regular turn
 
 ```bash
 curl -sS -X POST "$BASE/api/v1/chat/turn" \
@@ -146,13 +162,15 @@ Use the following buttons in order:
 3. `Generate Map`
 4. `Spawn Actor`
 5. `Move`
-6. `Submit Turn`
+6. `Inventory Add` (through Turn Panel quick input/template)
+7. `Submit Turn`
 
 ### One-click chain
 
 Use `Run Full Flow` in `Flow Buttons` to run:
 
 - create campaign -> world -> map -> spawn -> move -> turn
+- Inventory feedback is visible in turn `state_summary.active_actor_inventory`.
 
 The flow result is shown in the panel output.
 
@@ -175,6 +193,7 @@ Optional:
 - `actor_spawn.bind_to_party` defaults to `true`.
 - blank `spawn_position` uses backend default behavior.
 - move input is minimal (`to_area_id` required); no `move_options` coupling in this version.
+- objective / area description / inventory are displayed from `state_summary` extensions in turn response.
 - retries for tool steps are controlled by `Tool Retry Attempts` (1..5).
 
 ## What to inspect after running

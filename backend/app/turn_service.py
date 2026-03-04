@@ -64,10 +64,14 @@ class TurnService:
                 "area_001": MapArea(
                     id="area_001",
                     name="Starting Area",
+                    description="A quiet checkpoint lit by a flickering lantern.",
                     reachable_area_ids=["area_002"],
                 ),
                 "area_002": MapArea(
-                    id="area_002", name="Side Room", reachable_area_ids=[]
+                    id="area_002",
+                    name="Side Room",
+                    description="A cramped side room with scattered crates.",
+                    reachable_area_ids=[],
                 ),
             },
             connections=[],
@@ -163,7 +167,7 @@ class TurnService:
                 if tool_feedback:
                     failed_calls.extend(tool_feedback.failed_calls)
                 tool_feedback = ToolFeedback(failed_calls=failed_calls)
-            state_after = _state_summary_dict(campaign)
+            state_after = _state_summary_dict(campaign, active_actor_id=active_actor_id)
             conflicts = detect_conflicts(
                 llm_output.get("assistant_text", ""),
                 dialog_type,
@@ -238,6 +242,15 @@ class TurnService:
             entry.state_summary.positions_child = positions_child
             entry.state_summary.hp = hp
             entry.state_summary.character_states = character_states
+            entry.state_summary.objective = campaign.goal.text.strip()
+            (
+                entry.state_summary.active_area_id,
+                entry.state_summary.active_area_name,
+                entry.state_summary.active_area_description,
+            ) = _active_area_context(campaign, active_actor_id)
+            entry.state_summary.active_actor_inventory = _active_actor_inventory(
+                campaign, active_actor_id
+            )
             self.repo.append_turn_log(campaign_id, entry)
             return _build_success_response(
                 entry,
@@ -256,10 +269,14 @@ def _ensure_minimum_state(campaign: Campaign) -> bool:
                 "area_001": MapArea(
                     id="area_001",
                     name="Starting Area",
+                    description="A quiet checkpoint lit by a flickering lantern.",
                     reachable_area_ids=["area_002"],
                 ),
                 "area_002": MapArea(
-                    id="area_002", name="Side Room", reachable_area_ids=[]
+                    id="area_002",
+                    name="Side Room",
+                    description="A cramped side room with scattered crates.",
+                    reachable_area_ids=[],
                 ),
             },
             connections=[],
@@ -355,7 +372,9 @@ def _restore_state(campaign: Campaign, snapshot: Dict[str, object]) -> None:
     campaign.map = snapshot["map"]
 
 
-def _state_summary_dict(campaign: Campaign) -> Dict[str, object]:
+def _state_summary_dict(
+    campaign: Campaign, active_actor_id: Optional[str] = None
+) -> Dict[str, object]:
     (
         positions,
         positions_parent,
@@ -363,12 +382,21 @@ def _state_summary_dict(campaign: Campaign) -> Dict[str, object]:
         hp,
         character_states,
     ) = _derive_character_state_maps(campaign)
+    resolved_actor_id = active_actor_id or campaign.selected.active_actor_id
+    active_area_id, active_area_name, active_area_description = _active_area_context(
+        campaign, resolved_actor_id
+    )
     return {
         "positions": positions,
         "positions_parent": positions_parent,
         "positions_child": positions_child,
         "hp": hp,
         "character_states": character_states,
+        "objective": campaign.goal.text.strip(),
+        "active_area_id": active_area_id,
+        "active_area_name": active_area_name,
+        "active_area_description": active_area_description,
+        "active_actor_inventory": _active_actor_inventory(campaign, resolved_actor_id),
     }
 
 
@@ -395,6 +423,7 @@ def _build_actor_prompt_payloads(
             "position": actor.position,
             "hp": actor.hp,
             "character_state": actor.character_state,
+            "inventory": _active_actor_inventory(campaign, actor_id),
             "meta": meta_payload,
         }
         profile_payload = actor_meta.get("profile")
@@ -409,6 +438,9 @@ def _build_system_prompt(campaign: Campaign, active_actor_id: str) -> str:
     compress_enabled = campaign.settings_snapshot.context.compress_enabled
     if compress_enabled:
         active_state = _CHARACTER_FACADE.get_state(campaign, active_actor_id)
+        _, active_area_name, active_area_description = _active_area_context(
+            campaign, active_actor_id
+        )
         payload = {
             "context_mode": "compressed",
             "dialog_types": DIALOG_TYPES,
@@ -416,11 +448,14 @@ def _build_system_prompt(campaign: Campaign, active_actor_id: str) -> str:
             "allowlist": campaign.allowlist,
             "selected": _model_to_dict(campaign.selected),
             "settings_snapshot": _model_to_dict(campaign.settings_snapshot),
+            "goal": _model_to_dict(campaign.goal),
             "lifecycle": _model_to_dict(campaign.lifecycle),
             "milestone": _model_to_dict(campaign.milestone),
             "map_summary": {
                 "area_count": len(campaign.map.areas),
                 "active_actor_area_id": active_state.position,
+                "active_area_name": active_area_name,
+                "active_area_description": active_area_description,
                 "reachable_from_active": (
                     campaign.map.areas[active_state.position].reachable_area_ids
                     if isinstance(active_state.position, str)
@@ -431,6 +466,7 @@ def _build_system_prompt(campaign: Campaign, active_actor_id: str) -> str:
             "positions": positions,
             "hp": hp,
             "character_states": character_states,
+            "active_actor_inventory": _active_actor_inventory(campaign, active_actor_id),
             "adopted_profiles_by_actor": adopted_profiles_by_actor,
             "response_format": {
                 "assistant_text": "string narrative",
@@ -446,6 +482,7 @@ def _build_system_prompt(campaign: Campaign, active_actor_id: str) -> str:
             "allowlist": campaign.allowlist,
             "selected": _model_to_dict(campaign.selected),
             "settings_snapshot": _model_to_dict(campaign.settings_snapshot),
+            "goal": _model_to_dict(campaign.goal),
             "lifecycle": _model_to_dict(campaign.lifecycle),
             "milestone": _model_to_dict(campaign.milestone),
             "map": _model_to_dict(campaign.map),
@@ -466,6 +503,10 @@ def _build_system_prompt(campaign: Campaign, active_actor_id: str) -> str:
         "The world state is authoritative and can change only via tool_calls. "
         "Movement is a state change. If you narrate that an actor moved/entered/arrived/left/changed location, "
         "you MUST include a 'move' tool_call in the same response. "
+        "Inventory gain is a state change. If you narrate gaining/obtaining/receiving/picking up an item, "
+        "you MUST include an 'inventory_add' tool_call in the same response. "
+        "HP change is a state change. If you narrate injury/damage/healing/recovery, "
+        "you MUST include an 'hp_delta' tool_call in the same response. "
         "For move tool_calls, args must include to_area_id and may include actor_id; do NOT include from_area_id. "
         "If you do not include a 'move' tool_call, do not narrate any completed movement or location change; "
         "you may describe the current scene or discuss options/intentions. "
@@ -476,7 +517,7 @@ def _build_system_prompt(campaign: Campaign, active_actor_id: str) -> str:
         "call 'move_options' to fetch 1-hop options and state that no movement happened yet. "
         "If tool_calls is empty, assistant_text must not describe any completed movement or location change. "
         "If tool_calls is empty, assistant_text MUST be a non-empty GM response (answer, description, or guidance). "
-        "assistant_text may be empty ONLY when you are making a tool call (move or move_options). "
+        "assistant_text may be empty ONLY when you are making a tool call. "
         "For questions like 'Can I move?' or 'Where can I go?', call 'move_options' and list the returned "
         "1-hop options; explicitly state that no movement has happened yet. "
         "Examples (JSON outputs, schema-accurate). "
@@ -612,6 +653,15 @@ def _build_failure_response(
     state_summary.positions_child = positions_child
     state_summary.hp = hp
     state_summary.character_states = character_states
+    state_summary.objective = campaign.goal.text.strip()
+    (
+        state_summary.active_area_id,
+        state_summary.active_area_name,
+        state_summary.active_area_description,
+    ) = _active_area_context(campaign, active_actor_id)
+    state_summary.active_actor_inventory = _active_actor_inventory(
+        campaign, active_actor_id
+    )
     response = {
         "narrative_text": "",
         "dialog_type": dialog_type,
@@ -624,6 +674,35 @@ def _build_failure_response(
     if debug_payload:
         response["debug"] = dict(debug_payload)
     return response
+
+
+def _active_area_context(
+    campaign: Campaign, active_actor_id: str
+) -> tuple[Optional[str], str, str]:
+    actor = campaign.actors.get(active_actor_id)
+    if actor is None or not isinstance(actor.position, str):
+        return None, "", ""
+    area = campaign.map.areas.get(actor.position)
+    if area is None:
+        return actor.position, "", ""
+    return actor.position, area.name, area.description
+
+
+def _active_actor_inventory(campaign: Campaign, actor_id: str) -> Dict[str, int]:
+    actor = campaign.actors.get(actor_id)
+    if actor is None or not isinstance(actor.inventory, dict):
+        return {}
+    inventory: Dict[str, int] = {}
+    for item_id, qty in actor.inventory.items():
+        if not isinstance(item_id, str):
+            continue
+        normalized_id = item_id.strip()
+        if not normalized_id:
+            continue
+        if not isinstance(qty, int) or qty <= 0:
+            continue
+        inventory[normalized_id] = qty
+    return inventory
 
 
 def _assert_turn_writable(campaign: Campaign, active_actor_id: str) -> None:

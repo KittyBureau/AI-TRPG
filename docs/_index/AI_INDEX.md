@@ -55,13 +55,15 @@ Use this as the default reference for every task.
 - Tool params and allowlist follow `docs/01_specs/tools.md`.
 - `move_options` is read-only and must not change positions or other state.
 - Movement state changes require a `move` tool_call; narration alone does not change positions.
+- Inventory gain requires an `inventory_add` tool_call; narration alone does not change inventory.
+- Injury/healing narration requires an `hp_delta` tool_call.
 - `world_generate` is metadata-only in v1 (no map generation chain); missing resolved world id returns tool reason `world_id_missing`.
 - `actor_spawn` creates runtime actors in `campaign.actors`; explicit invalid `spawn_position` returns `invalid_args`.
 **Checks**
-- Run `backend/tests/test_map_generate.py`, `backend/tests/test_move_options.py`, `backend/tests/test_world_generate_tool.py`, and `backend/tests/test_actor_spawn_tool.py` when touching tool execution or validation.
+- Run `backend/tests/test_map_generate.py`, `backend/tests/test_move_options.py`, `backend/tests/test_world_generate_tool.py`, `backend/tests/test_actor_spawn_tool.py`, and `backend/tests/test_inventory_add_tool.py` when touching tool execution or validation.
 - Review `docs/01_specs/tools.md` for param and reason updates.
 **Scope**
-- `backend/app/tool_executor.py`, `backend/app/world_service.py`, `backend/app/actor_service.py`, `backend/domain/models.py`, `docs/01_specs/tools.md`, `backend/tests/test_map_generate.py`, `backend/tests/test_move_options.py`, `backend/tests/test_world_generate_tool.py`, `backend/tests/test_actor_spawn_tool.py`.
+- `backend/app/tool_executor.py`, `backend/app/world_service.py`, `backend/app/actor_service.py`, `backend/domain/models.py`, `docs/01_specs/tools.md`, `backend/tests/test_map_generate.py`, `backend/tests/test_move_options.py`, `backend/tests/test_world_generate_tool.py`, `backend/tests/test_actor_spawn_tool.py`, `backend/tests/test_inventory_add_tool.py`.
 
 ## 6. Storage Layout & Persistence
 **Rules**
@@ -147,7 +149,7 @@ Use this as the default reference for every task.
 - Confirm updated docs cover API routes, storage layout, enums, and settings changes.
 - If docs are deferred, ensure `docs/01_specs/TODO_DOCS_ALIGNMENT.md` contains a dated entry with evidence.
 - For alignment tasks, confirm report output path is under `docs/99_human_only/alignment_reports/`.
-- When changing gameplay flow UI controls or turn templates, run a manual chain check: create campaign -> world_generate -> map_generate -> actor_spawn -> move -> chat/turn.
+- When changing gameplay flow UI controls or turn templates, run a manual chain check: create campaign -> world_generate -> map_generate -> actor_spawn -> move -> inventory_add -> chat/turn.
 **Scope**
 - `backend/**`, `frontend/**`, `docs/00_overview/**`, `docs/01_specs/**`, `docs/02_guides/**`, `docs/99_human_only/alignment_reports/**`, `docs/01_specs/TODO_DOCS_ALIGNMENT.md`.
 

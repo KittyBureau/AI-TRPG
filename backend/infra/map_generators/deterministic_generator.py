@@ -44,9 +44,15 @@ class DeterministicMapGenerator:
                 if is_entry
                 else f"{theme_name} Area {index:02d}"
             )
+            description = (
+                f"The main entry of the {theme_name} route."
+                if is_entry
+                else f"A {theme_name.lower()} zone marked as area {index:02d}."
+            )
             new_areas[area_id] = MapArea(
                 id=area_id,
                 name=name,
+                description=description,
                 parent_area_id=parent_area_id,
             )
 

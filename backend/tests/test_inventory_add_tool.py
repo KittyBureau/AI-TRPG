@@ -1,0 +1,155 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Dict
+
+import pytest
+
+import backend.app.turn_service as turn_service_module
+from backend.app.tool_executor import execute_tool_calls
+from backend.app.turn_service import TurnService
+from backend.domain.models import (
+    ActorState,
+    Campaign,
+    Goal,
+    MapArea,
+    MapData,
+    Milestone,
+    Selected,
+    SettingsSnapshot,
+    ToolCall,
+)
+from backend.infra.file_repo import FileRepo
+
+
+class _StubLLM:
+    def __init__(self, payload: Dict[str, Any]) -> None:
+        self.payload = payload
+
+    def generate(
+        self, system_prompt: str, user_input: str, debug_append: Any
+    ) -> Dict[str, Any]:
+        return dict(self.payload)
+
+
+def _make_campaign(campaign_id: str = "camp_inventory") -> Campaign:
+    return Campaign(
+        id=campaign_id,
+        selected=Selected(
+            world_id="world_001",
+            map_id="map_001",
+            party_character_ids=["pc_001"],
+            active_actor_id="pc_001",
+        ),
+        settings_snapshot=SettingsSnapshot(),
+        goal=Goal(text="Find one useful item.", status="active"),
+        milestone=Milestone(current="intro", last_advanced_turn=0),
+        map=MapData(
+            areas={
+                "area_001": MapArea(
+                    id="area_001",
+                    name="Start",
+                    description="A plain start room.",
+                    reachable_area_ids=["area_002"],
+                ),
+                "area_002": MapArea(
+                    id="area_002",
+                    name="Side Room",
+                    description="A narrow side room.",
+                    reachable_area_ids=[],
+                ),
+            },
+            connections=[],
+        ),
+        actors={
+            "pc_001": ActorState(
+                position="area_001",
+                hp=10,
+                character_state="alive",
+                inventory={},
+                meta={},
+            )
+        },
+    )
+
+
+def test_inventory_add_applies_and_updates_actor_inventory() -> None:
+    campaign = _make_campaign()
+    call = ToolCall(
+        id="call_inventory_001",
+        tool="inventory_add",
+        args={"item_id": "torch", "quantity": 2},
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    action = applied_actions[0]
+    assert action.tool == "inventory_add"
+    assert action.result == {
+        "actor_id": "pc_001",
+        "item_id": "torch",
+        "quantity_added": 2,
+        "new_quantity": 2,
+    }
+    assert campaign.actors["pc_001"].inventory["torch"] == 2
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        {"item_id": "", "quantity": 1},
+        {"item_id": "rope", "quantity": 0},
+        {"item_id": "rope", "quantity": -1},
+        {"item_id": "rope", "quantity": "2"},
+        {"item_id": "rope", "actor_id": "pc_999"},
+    ],
+)
+def test_inventory_add_rejects_invalid_args(args: Dict[str, Any]) -> None:
+    campaign = _make_campaign()
+    call = ToolCall(id="call_inventory_bad", tool="inventory_add", args=args)
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert applied_actions == []
+    assert tool_feedback is not None
+    assert tool_feedback.failed_calls[0].reason == "invalid_args"
+    assert campaign.actors["pc_001"].inventory == {}
+
+
+def test_inventory_add_persists_via_turn_service(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        turn_service_module,
+        "LLMClient",
+        lambda: _StubLLM(
+            {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": "call_inventory_turn",
+                        "tool": "inventory_add",
+                        "args": {"item_id": "medkit", "quantity": 1},
+                    }
+                ],
+            }
+        ),
+    )
+
+    repo = FileRepo(tmp_path / "storage")
+    service = TurnService(repo)
+    campaign = _make_campaign("camp_inventory_turn")
+    repo.create_campaign(campaign)
+
+    response = service.submit_turn("camp_inventory_turn", "Pick up the medkit.")
+
+    assert response["tool_feedback"] is None
+    assert len(response["applied_actions"]) == 1
+    assert response["applied_actions"][0]["tool"] == "inventory_add"
+    assert response["state_summary"]["active_actor_inventory"] == {"medkit": 1}
+    reloaded = repo.get_campaign("camp_inventory_turn")
+    assert reloaded.actors["pc_001"].inventory == {"medkit": 1}

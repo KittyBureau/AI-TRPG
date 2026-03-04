@@ -17,6 +17,9 @@ class World(BaseModel):
     world_id: str
     name: str
     seed: Union[int, str]
+    world_description: str = ""
+    objective: str = ""
+    start_area: str = "area_001"
     generator: WorldGenerator = Field(default_factory=WorldGenerator)
     schema_version: str = "1"
     created_at: str = Field(
@@ -35,6 +38,9 @@ def stable_seed_from_world_id(world_id: str) -> int:
 def normalize_world(world: World) -> None:
     world.world_id = world.world_id.strip()
     world.name = world.name.strip() or world.world_id
+    world.world_description = world.world_description.strip()
+    world.objective = world.objective.strip()
+    world.start_area = world.start_area.strip() or "area_001"
     world.schema_version = world.schema_version.strip() or "1"
     if not world.generator.id.strip():
         world.generator.id = "stub"
@@ -51,6 +57,8 @@ def require_valid_world(world: World) -> None:
         errors.append("name_empty")
     if not world.schema_version:
         errors.append("schema_version_empty")
+    if not world.start_area:
+        errors.append("start_area_empty")
     if not world.generator.id:
         errors.append("generator_id_empty")
     if not world.generator.version:
@@ -72,6 +80,9 @@ def build_world_stub(
         world_id=normalized_world_id,
         name=normalized_world_id,
         seed=seed,
+        world_description="A sparse frontier of connected rooms and uncertain paths.",
+        objective="Explore the nearby areas and recover one useful item.",
+        start_area="area_001",
         generator=WorldGenerator(
             id=generator_default,
             version="1",

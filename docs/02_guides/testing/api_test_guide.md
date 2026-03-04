@@ -349,3 +349,30 @@ In `frontend/index.html`:
    - `adopt` result payload
    - `turn` payload (and `turn_debug` when trace is enabled)
    - latest `status` payload
+
+---
+
+## MVP Playable v0 contract additions (2026-03-04)
+
+When validating current mainline behavior, include these checks:
+
+1. New tool in allowlist
+   - `campaign.json.allowlist` includes `inventory_add`.
+
+2. `inventory_add` turn behavior
+   - submit `/api/v1/chat/turn` with one `inventory_add` tool_call.
+   - expect one `applied_actions[*].tool == "inventory_add"`.
+   - expect item quantity change persisted at `campaign.json.actors.<active_actor_id>.inventory`.
+
+3. `state_summary` extensions in turn response
+   - `state_summary.objective`
+   - `state_summary.active_area_id`
+   - `state_summary.active_area_name`
+   - `state_summary.active_area_description`
+   - `state_summary.active_actor_inventory`
+
+4. World payload extensions
+   - `GET /api/v1/campaigns/{campaign_id}/world` includes:
+     - `world_description`
+     - `objective`
+     - `start_area`

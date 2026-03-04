@@ -49,6 +49,9 @@ const elements = {
   flowCurrentActor: document.getElementById("flowCurrentActor"),
   flowCurrentPosition: document.getElementById("flowCurrentPosition"),
   flowNarrative: document.getElementById("flowNarrative"),
+  flowObjective: document.getElementById("flowObjective"),
+  flowAreaDescription: document.getElementById("flowAreaDescription"),
+  flowInventory: document.getElementById("flowInventory"),
   flowRetryCount: document.getElementById("flowRetryCount"),
   runFlowCreateCampaign: document.getElementById("runFlowCreateCampaign"),
   runFlowWorld: document.getElementById("runFlowWorld"),
@@ -218,10 +221,14 @@ function renderActiveActorStateFromSummary(summary) {
   const payload = {
     active_actor_id: actorId,
     position: summary.positions ? summary.positions[actorId] : undefined,
+    area_name: summary.active_area_name || undefined,
+    area_description: summary.active_area_description || undefined,
     hp: summary.hp ? summary.hp[actorId] : undefined,
     character_state: summary.character_states
       ? summary.character_states[actorId]
       : undefined,
+    inventory: summary.active_actor_inventory || {},
+    objective: summary.objective || undefined,
   };
   state.latestTurnStateSummary = summary;
   setPreValue(elements.activeActorState, formatField(payload));
@@ -232,18 +239,32 @@ function renderGameplaySnapshot(turnData) {
     setPreValue(elements.flowCurrentActor, "");
     setPreValue(elements.flowCurrentPosition, "");
     setPreValue(elements.flowNarrative, "");
+    setPreValue(elements.flowObjective, "");
+    setPreValue(elements.flowAreaDescription, "");
+    setPreValue(elements.flowInventory, "");
     return;
   }
   const summary = turnData.state_summary || {};
   const actorId = summary.active_actor_id || "";
-  const position =
-    summary.positions && actorId ? summary.positions[actorId] : undefined;
+  const areaName = summary.active_area_name || "";
+  const areaId = summary.active_area_id || "";
+  const position = areaName && areaId ? `${areaName} (${areaId})` : areaId || areaName;
+  const inventory =
+    summary.active_actor_inventory && typeof summary.active_actor_inventory === "object"
+      ? summary.active_actor_inventory
+      : {};
   setPreValue(elements.flowCurrentActor, formatField(actorId || ""));
   setPreValue(
     elements.flowCurrentPosition,
     formatField(position === undefined ? "" : position)
   );
   setPreValue(elements.flowNarrative, formatField(turnData.narrative_text || ""));
+  setPreValue(elements.flowObjective, formatField(summary.objective || ""));
+  setPreValue(
+    elements.flowAreaDescription,
+    formatField(summary.active_area_description || "")
+  );
+  setPreValue(elements.flowInventory, formatField(inventory));
 }
 
 function loadHistory() {
@@ -1443,6 +1464,9 @@ function initTemplates() {
   setPreValue(elements.flowCurrentActor, "");
   setPreValue(elements.flowCurrentPosition, "");
   setPreValue(elements.flowNarrative, "");
+  setPreValue(elements.flowObjective, "");
+  setPreValue(elements.flowAreaDescription, "");
+  setPreValue(elements.flowInventory, "");
   setPreValue(elements.narrativeTurnResult, "");
   setPreValue(elements.flowResult, "");
 }

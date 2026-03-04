@@ -25,6 +25,7 @@ Notes:
 
 - Sends raw JSON exactly as typed (no validation).
 - Displays response fields + raw response.
+- Shows gameplay snapshot fields from `state_summary`: objective, active area description, and active actor inventory.
 - Records each request/response in local history with export/copy tools.
 - Includes a V1.1 operations panel for quick verification of lifecycle/milestone/settings/adoption workflows.
 
@@ -111,3 +112,4 @@ What it validates:
 4. `actor_spawn` via templated `/api/v1/chat/turn`
 5. `move` via templated `/api/v1/chat/turn`
 6. one narrative-only `chat/turn` shape check (`narrative_text`, `state_summary`)
+7. state snapshot visibility (`state_summary.active_actor_inventory`, area/objective fields)
