@@ -115,6 +115,7 @@ Use this as the default reference for every task.
 - API contract changes require updating `docs/02_guides/testing/api_test_guide.md`.
 - Tool/state/map changes require running `backend/tests/test_map_generate.py`, `backend/tests/test_move_options.py`, and reviewing the manual map_generate guide when map logic changes.
 - `world_generate` changes require running `backend/tests/test_world_generate_tool.py` and the local smoke script `scripts/smoke_world_generate.ps1` (guide: `docs/02_guides/testing/world_generate_smoke_test.md`).
+- Frontend gameplay flow UI/protocol changes require running `scripts/smoke_frontend_flow.ps1` and checking `frontend/README_frontend.md` + `docs/02_guides/gameplay_flow.md` for sync.
 - Spec changes in `docs/01_specs/**` must be reflected in this AI_INDEX.
 **Checks**
 - Run targeted tests and document results in the task output.
@@ -141,10 +142,12 @@ Use this as the default reference for every task.
 - Reference/legacy docs are non-authoritative; do not treat them as implementation truth.
 - When modifying backend/frontend API routes, request/response fields, status codes, storage paths, JSON keys, enums, or settings keys/defaults/validation, you must update the matching docs.
 - Every code commit touching those areas must include at least one docs update, or add a tracked entry to `docs/01_specs/TODO_DOCS_ALIGNMENT.md` explaining why the docs change is deferred.
+- Frontend MVP gameplay flow uses single-page controls in `frontend/index.html` + `frontend/app.js`, with tool execution driven by templated `user_input` through `/api/v1/chat/turn`; keep this aligned with `docs/02_guides/gameplay_flow.md`.
 **Checks**
 - Confirm updated docs cover API routes, storage layout, enums, and settings changes.
 - If docs are deferred, ensure `docs/01_specs/TODO_DOCS_ALIGNMENT.md` contains a dated entry with evidence.
 - For alignment tasks, confirm report output path is under `docs/99_human_only/alignment_reports/`.
+- When changing gameplay flow UI controls or turn templates, run a manual chain check: create campaign -> world_generate -> map_generate -> actor_spawn -> move -> chat/turn.
 **Scope**
 - `backend/**`, `frontend/**`, `docs/00_overview/**`, `docs/01_specs/**`, `docs/02_guides/**`, `docs/99_human_only/alignment_reports/**`, `docs/01_specs/TODO_DOCS_ALIGNMENT.md`.
 

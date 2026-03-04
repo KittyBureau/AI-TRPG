@@ -27,6 +27,39 @@ const elements = {
   turnConflictReport: document.getElementById("turnConflictReport"),
   turnStateSummary: document.getElementById("turnStateSummary"),
   turnRawResponse: document.getElementById("turnRawResponse"),
+  worldIdInput: document.getElementById("worldIdInput"),
+  worldBindToCampaign: document.getElementById("worldBindToCampaign"),
+  runWorldGenerate: document.getElementById("runWorldGenerate"),
+  worldGenerateResult: document.getElementById("worldGenerateResult"),
+  mapParentAreaInput: document.getElementById("mapParentAreaInput"),
+  mapThemeInput: document.getElementById("mapThemeInput"),
+  mapSizeInput: document.getElementById("mapSizeInput"),
+  mapSeedInput: document.getElementById("mapSeedInput"),
+  runMapGenerate: document.getElementById("runMapGenerate"),
+  mapGenerateResult: document.getElementById("mapGenerateResult"),
+  spawnCharacterIdInput: document.getElementById("spawnCharacterIdInput"),
+  spawnPositionInput: document.getElementById("spawnPositionInput"),
+  spawnBindToParty: document.getElementById("spawnBindToParty"),
+  runActorSpawn: document.getElementById("runActorSpawn"),
+  actorSpawnResult: document.getElementById("actorSpawnResult"),
+  moveActorIdInput: document.getElementById("moveActorIdInput"),
+  moveToAreaInput: document.getElementById("moveToAreaInput"),
+  runMove: document.getElementById("runMove"),
+  moveResult: document.getElementById("moveResult"),
+  flowCurrentActor: document.getElementById("flowCurrentActor"),
+  flowCurrentPosition: document.getElementById("flowCurrentPosition"),
+  flowNarrative: document.getElementById("flowNarrative"),
+  flowRetryCount: document.getElementById("flowRetryCount"),
+  runFlowCreateCampaign: document.getElementById("runFlowCreateCampaign"),
+  runFlowWorld: document.getElementById("runFlowWorld"),
+  runFlowMap: document.getElementById("runFlowMap"),
+  runFlowSpawn: document.getElementById("runFlowSpawn"),
+  runFlowMove: document.getElementById("runFlowMove"),
+  runFlowTurn: document.getElementById("runFlowTurn"),
+  runFullFlow: document.getElementById("runFullFlow"),
+  narrativeTurnInput: document.getElementById("narrativeTurnInput"),
+  narrativeTurnResult: document.getElementById("narrativeTurnResult"),
+  flowResult: document.getElementById("flowResult"),
   errorInspector: document.getElementById("errorInspector"),
   fetchCampaignStatus: document.getElementById("fetchCampaignStatus"),
   refreshAfterTurn: document.getElementById("refreshAfterTurn"),
@@ -70,6 +103,7 @@ const state = {
   history: [],
   autoRefreshStatusAfterTurn: false,
   latestTurnStateSummary: null,
+  latestTurnResponse: null,
   latestSettingsSnapshot: null,
 };
 
@@ -191,6 +225,25 @@ function renderActiveActorStateFromSummary(summary) {
   };
   state.latestTurnStateSummary = summary;
   setPreValue(elements.activeActorState, formatField(payload));
+}
+
+function renderGameplaySnapshot(turnData) {
+  if (!turnData || typeof turnData !== "object") {
+    setPreValue(elements.flowCurrentActor, "");
+    setPreValue(elements.flowCurrentPosition, "");
+    setPreValue(elements.flowNarrative, "");
+    return;
+  }
+  const summary = turnData.state_summary || {};
+  const actorId = summary.active_actor_id || "";
+  const position =
+    summary.positions && actorId ? summary.positions[actorId] : undefined;
+  setPreValue(elements.flowCurrentActor, formatField(actorId || ""));
+  setPreValue(
+    elements.flowCurrentPosition,
+    formatField(position === undefined ? "" : position)
+  );
+  setPreValue(elements.flowNarrative, formatField(turnData.narrative_text || ""));
 }
 
 function loadHistory() {
@@ -425,6 +478,7 @@ function renderTurnResponse(rawText) {
   const data = safeJsonParse(rawText);
   setPreValue(elements.turnRawResponse, rawText || "");
   if (!data) {
+    state.latestTurnResponse = null;
     setPreValue(elements.turnNarrative, "");
     setPreValue(elements.turnDialogType, "");
     setPreValue(elements.turnToolCalls, "");
@@ -433,8 +487,10 @@ function renderTurnResponse(rawText) {
     setPreValue(elements.turnConflictReport, "");
     setPreValue(elements.turnStateSummary, "");
     setPreValue(elements.turnGuardInsight, "");
+    renderGameplaySnapshot(null);
     return;
   }
+  state.latestTurnResponse = data;
   setPreValue(elements.turnNarrative, formatField(data.narrative_text));
   setPreValue(elements.turnDialogType, formatField(data.dialog_type));
   setPreValue(elements.turnToolCalls, formatField(data.tool_calls));
@@ -443,6 +499,7 @@ function renderTurnResponse(rawText) {
   setPreValue(elements.turnConflictReport, formatField(data.conflict_report));
   setPreValue(elements.turnStateSummary, formatField(data.state_summary));
   renderActiveActorStateFromSummary(data.state_summary);
+  renderGameplaySnapshot(data);
 
   const failedCalls =
     data.tool_feedback &&
@@ -604,6 +661,12 @@ async function createCampaign() {
   if (campaignId) {
     setCurrentCampaignId(campaignId);
   }
+  return {
+    ok: result.ok,
+    status: result.status,
+    campaign_id: campaignId || "",
+    raw: result.responseText || "",
+  };
 }
 
 async function selectActor() {
@@ -626,6 +689,301 @@ async function sendTurn() {
   if (state.autoRefreshStatusAfterTurn) {
     await fetchCampaignStatus();
   }
+  return result;
+}
+
+function getFlowRetryCount() {
+  const parsed = Number(elements.flowRetryCount.value);
+  if (!Number.isFinite(parsed)) {
+    return 2;
+  }
+  const normalized = Math.round(parsed);
+  if (normalized < 1) {
+    return 1;
+  }
+  if (normalized > 5) {
+    return 5;
+  }
+  return normalized;
+}
+
+function getPreferredMoveActorId() {
+  const explicit = elements.moveActorIdInput.value.trim();
+  if (explicit) {
+    return explicit;
+  }
+  const summaryActorId =
+    state.latestTurnStateSummary &&
+    state.latestTurnStateSummary.active_actor_id
+      ? String(state.latestTurnStateSummary.active_actor_id)
+      : "";
+  if (summaryActorId) {
+    return summaryActorId;
+  }
+  const actorInput = elements.activeActorInput.value.trim();
+  if (actorInput) {
+    return actorInput;
+  }
+  return "pc_001";
+}
+
+function buildToolStepInstruction(tool, args) {
+  return [
+    "[UI_FLOW_STEP]",
+    "Return JSON with keys assistant_text, dialog_type, tool_calls.",
+    `Execute exactly one tool_call now: ${tool}.`,
+    `Use args exactly: ${JSON.stringify(args)}.`,
+    "Do not call any additional tools.",
+    "Keep assistant_text empty.",
+  ].join(" ");
+}
+
+function findAppliedActionByTool(data, expectedTool) {
+  if (!data || typeof data !== "object" || !Array.isArray(data.applied_actions)) {
+    return null;
+  }
+  return data.applied_actions.find(
+    (item) => item && typeof item === "object" && item.tool === expectedTool
+  );
+}
+
+function summarizeStepFailure(lastResult, expectedTool, attempts) {
+  const data = lastResult && lastResult.data ? lastResult.data : null;
+  const failedCalls =
+    data &&
+    data.tool_feedback &&
+    Array.isArray(data.tool_feedback.failed_calls)
+      ? data.tool_feedback.failed_calls
+      : [];
+  return {
+    ok: false,
+    expected_tool: expectedTool,
+    attempts,
+    status: lastResult ? lastResult.status : "NO_RESPONSE",
+    failed_calls: failedCalls,
+    conflict_report: data ? data.conflict_report || null : null,
+    applied_actions: data ? data.applied_actions || [] : [],
+    raw: lastResult ? lastResult.responseText || "" : "",
+  };
+}
+
+async function runToolStep({ stepName, expectedTool, args, resultTarget }) {
+  const campaignId = state.currentCampaignId || "";
+  if (!campaignId) {
+    const payload = { ok: false, error: "Select or create a campaign first." };
+    if (resultTarget) {
+      setPreValue(resultTarget, formatField(payload));
+    }
+    setStatus(`${stepName} blocked: no campaign selected.`);
+    return payload;
+  }
+  const attempts = getFlowRetryCount();
+  let lastResult = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const body = JSON.stringify(
+      {
+        campaign_id: campaignId,
+        user_input: buildToolStepInstruction(expectedTool, args),
+      },
+      null,
+      2
+    );
+    const result = await sendRequest({
+      method: "POST",
+      path: "/api/v1/chat/turn",
+      bodyText: body,
+    });
+    lastResult = result;
+    renderTurnResponse(result.responseText);
+    const action = result.data
+      ? findAppliedActionByTool(result.data, expectedTool)
+      : null;
+    if (result.ok && action) {
+      const payload = {
+        ok: true,
+        step: stepName,
+        expected_tool: expectedTool,
+        attempts_used: attempt,
+        action,
+      };
+      if (resultTarget) {
+        setPreValue(resultTarget, formatField(payload));
+      }
+      return payload;
+    }
+    if (attempt < attempts) {
+      setStatus(
+        `${stepName}: expected tool ${expectedTool} not applied (attempt ${attempt}/${attempts}), retrying...`
+      );
+    }
+  }
+  const failure = summarizeStepFailure(lastResult, expectedTool, attempts);
+  if (resultTarget) {
+    setPreValue(resultTarget, formatField(failure));
+  }
+  return failure;
+}
+
+async function runWorldGenerateStep() {
+  const worldId = elements.worldIdInput.value.trim();
+  if (!worldId) {
+    const payload = { ok: false, error: "world_id is required." };
+    setPreValue(elements.worldGenerateResult, formatField(payload));
+    setStatus("World generate requires world_id.");
+    return payload;
+  }
+  const args = {
+    world_id: worldId,
+    bind_to_campaign: Boolean(elements.worldBindToCampaign.checked),
+  };
+  return runToolStep({
+    stepName: "world_generate",
+    expectedTool: "world_generate",
+    args,
+    resultTarget: elements.worldGenerateResult,
+  });
+}
+
+async function runMapGenerateStep() {
+  const parentRaw = elements.mapParentAreaInput.value.trim();
+  const themeRaw = elements.mapThemeInput.value.trim();
+  const seedRaw = elements.mapSeedInput.value.trim();
+  const parsedSize = Number(elements.mapSizeInput.value);
+  const size = Number.isFinite(parsedSize) ? Math.round(parsedSize) : 3;
+  const args = {
+    parent_area_id: parentRaw || null,
+    theme: themeRaw || "Generated",
+    constraints: {
+      size: Math.min(30, Math.max(1, size)),
+    },
+  };
+  if (seedRaw) {
+    args.constraints.seed = seedRaw;
+  }
+  return runToolStep({
+    stepName: "map_generate",
+    expectedTool: "map_generate",
+    args,
+    resultTarget: elements.mapGenerateResult,
+  });
+}
+
+async function runActorSpawnStep() {
+  const characterId = elements.spawnCharacterIdInput.value.trim();
+  if (!characterId) {
+    const payload = { ok: false, error: "character_id is required." };
+    setPreValue(elements.actorSpawnResult, formatField(payload));
+    setStatus("Actor spawn requires character_id.");
+    return payload;
+  }
+  const spawnPosition = elements.spawnPositionInput.value.trim();
+  const args = {
+    character_id: characterId,
+    bind_to_party: Boolean(elements.spawnBindToParty.checked),
+  };
+  if (spawnPosition) {
+    args.spawn_position = spawnPosition;
+  }
+  return runToolStep({
+    stepName: "actor_spawn",
+    expectedTool: "actor_spawn",
+    args,
+    resultTarget: elements.actorSpawnResult,
+  });
+}
+
+async function runMoveStep() {
+  const toAreaId = elements.moveToAreaInput.value.trim();
+  if (!toAreaId) {
+    const payload = { ok: false, error: "to_area_id is required." };
+    setPreValue(elements.moveResult, formatField(payload));
+    setStatus("Move requires to_area_id.");
+    return payload;
+  }
+  const args = {
+    actor_id: getPreferredMoveActorId(),
+    to_area_id: toAreaId,
+  };
+  return runToolStep({
+    stepName: "move",
+    expectedTool: "move",
+    args,
+    resultTarget: elements.moveResult,
+  });
+}
+
+async function runNarrativeTurnStep() {
+  const campaignId = state.currentCampaignId || "";
+  if (!campaignId) {
+    const payload = { ok: false, error: "Select or create a campaign first." };
+    setPreValue(elements.narrativeTurnResult, formatField(payload));
+    setStatus("Narrative turn blocked: no campaign selected.");
+    return payload;
+  }
+  const userInput =
+    elements.narrativeTurnInput.value.trim() ||
+    "Describe the current scene without any tool call.";
+  const result = await sendRequest({
+    method: "POST",
+    path: "/api/v1/chat/turn",
+    bodyText: JSON.stringify(
+      { campaign_id: campaignId, user_input: userInput },
+      null,
+      2
+    ),
+  });
+  renderTurnResponse(result.responseText);
+  const payload = {
+    ok: result.ok,
+    status: result.status,
+    narrative_text:
+      result.data && typeof result.data === "object"
+        ? result.data.narrative_text || ""
+        : "",
+    applied_actions:
+      result.data && typeof result.data === "object"
+        ? result.data.applied_actions || []
+        : [],
+  };
+  setPreValue(elements.narrativeTurnResult, formatField(payload));
+  return payload;
+}
+
+async function runFullGameplayFlow() {
+  const resultView = {};
+  const createResult = await createCampaign();
+  resultView.create_campaign = createResult;
+  if (!createResult.ok || !createResult.campaign_id) {
+    setPreValue(elements.flowResult, formatField(resultView));
+    return;
+  }
+  const worldResult = await runWorldGenerateStep();
+  resultView.world_generate = worldResult;
+  if (!worldResult.ok) {
+    setPreValue(elements.flowResult, formatField(resultView));
+    return;
+  }
+  const mapResult = await runMapGenerateStep();
+  resultView.map_generate = mapResult;
+  if (!mapResult.ok) {
+    setPreValue(elements.flowResult, formatField(resultView));
+    return;
+  }
+  const spawnResult = await runActorSpawnStep();
+  resultView.actor_spawn = spawnResult;
+  if (!spawnResult.ok) {
+    setPreValue(elements.flowResult, formatField(resultView));
+    return;
+  }
+  const moveResult = await runMoveStep();
+  resultView.move = moveResult;
+  if (!moveResult.ok) {
+    setPreValue(elements.flowResult, formatField(resultView));
+    return;
+  }
+  const turnResult = await runNarrativeTurnStep();
+  resultView.chat_turn = turnResult;
+  setPreValue(elements.flowResult, formatField(resultView));
 }
 
 async function loadSchema() {
@@ -935,6 +1293,35 @@ function bindEvents() {
     }
   });
   elements.createCampaignBtn.addEventListener("click", createCampaign);
+  elements.runWorldGenerate.addEventListener("click", runWorldGenerateStep);
+  elements.runMapGenerate.addEventListener("click", runMapGenerateStep);
+  elements.runActorSpawn.addEventListener("click", runActorSpawnStep);
+  elements.runMove.addEventListener("click", runMoveStep);
+  elements.runFlowCreateCampaign.addEventListener("click", async () => {
+    const result = await createCampaign();
+    setPreValue(elements.flowResult, formatField({ create_campaign: result }));
+  });
+  elements.runFlowWorld.addEventListener("click", async () => {
+    const result = await runWorldGenerateStep();
+    setPreValue(elements.flowResult, formatField({ world_generate: result }));
+  });
+  elements.runFlowMap.addEventListener("click", async () => {
+    const result = await runMapGenerateStep();
+    setPreValue(elements.flowResult, formatField({ map_generate: result }));
+  });
+  elements.runFlowSpawn.addEventListener("click", async () => {
+    const result = await runActorSpawnStep();
+    setPreValue(elements.flowResult, formatField({ actor_spawn: result }));
+  });
+  elements.runFlowMove.addEventListener("click", async () => {
+    const result = await runMoveStep();
+    setPreValue(elements.flowResult, formatField({ move: result }));
+  });
+  elements.runFlowTurn.addEventListener("click", async () => {
+    const result = await runNarrativeTurnStep();
+    setPreValue(elements.flowResult, formatField({ chat_turn: result }));
+  });
+  elements.runFullFlow.addEventListener("click", runFullGameplayFlow);
   elements.applyActorToRaw.addEventListener("click", applyActorToRaw);
   elements.selectActorBtn.addEventListener("click", selectActor);
   elements.applyUserInput.addEventListener("click", applyUserInputToRaw);
@@ -1021,6 +1408,20 @@ function initTemplates() {
   );
 
   elements.settingsPatchRaw.value = '{ "dialog.auto_type_enabled": false }';
+  elements.worldIdInput.value = "world_ui_flow_v1";
+  elements.worldBindToCampaign.checked = true;
+  elements.mapParentAreaInput.value = "area_001";
+  elements.mapThemeInput.value = "UI Path";
+  elements.mapSizeInput.value = "3";
+  elements.mapSeedInput.value = "ui-flow";
+  elements.spawnCharacterIdInput.value = "char_ui_support";
+  elements.spawnPositionInput.value = "";
+  elements.spawnBindToParty.checked = true;
+  elements.moveActorIdInput.value = "";
+  elements.moveToAreaInput.value = "area_002";
+  elements.flowRetryCount.value = "2";
+  elements.narrativeTurnInput.value =
+    "Describe the current scene without calling tools.";
   setPreValue(
     elements.errorInspector,
     formatField({ status: "", detail: "", suggestion: "" })
@@ -1035,6 +1436,15 @@ function initTemplates() {
   setPreValue(elements.generateCharacterResult, "");
   setPreValue(elements.runLoopResult, "");
   setPreValue(elements.toggleApplyResult, "");
+  setPreValue(elements.worldGenerateResult, "");
+  setPreValue(elements.mapGenerateResult, "");
+  setPreValue(elements.actorSpawnResult, "");
+  setPreValue(elements.moveResult, "");
+  setPreValue(elements.flowCurrentActor, "");
+  setPreValue(elements.flowCurrentPosition, "");
+  setPreValue(elements.flowNarrative, "");
+  setPreValue(elements.narrativeTurnResult, "");
+  setPreValue(elements.flowResult, "");
 }
 
 function init() {

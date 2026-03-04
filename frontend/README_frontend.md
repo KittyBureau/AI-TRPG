@@ -88,3 +88,26 @@ When toggling `context.compress_enabled`, the UI also patches
 ## Map view (V0)
 
 Open `http://127.0.0.1:5173/map.html` to see the read-only map snapshot.
+
+## Frontend flow regression script (lightweight)
+
+To quickly validate the frontend gameplay button chain protocol (without browser automation),
+run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/smoke_frontend_flow.ps1
+```
+
+Optional flags:
+
+- `-RetryAttempts 3` to increase tool-step retries (range: 1..5)
+- `-KeepWorkspace` to keep artifacts under `.tmp/smoke_frontend_flow/<run_id>`
+
+What it validates:
+
+1. `create_campaign`
+2. `world_generate` via templated `/api/v1/chat/turn`
+3. `map_generate` via templated `/api/v1/chat/turn`
+4. `actor_spawn` via templated `/api/v1/chat/turn`
+5. `move` via templated `/api/v1/chat/turn`
+6. one narrative-only `chat/turn` shape check (`narrative_text`, `state_summary`)

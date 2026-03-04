@@ -149,6 +149,166 @@
         </div>
       </section>
 
+      <section class="panel" id="worldSetupPanel">
+        <div class="panel__header">
+          <h2>World Setup</h2>
+          <p class="panel__hint">Trigger world/map tools via chat turn with templated user_input.</p>
+        </div>
+
+        <div class="grid grid--two">
+          <div class="field">
+            <span>World Generate</span>
+            <div class="inline">
+              <input
+                type="text"
+                id="worldIdInput"
+                placeholder="world_id"
+                autocomplete="off"
+              />
+              <label class="subtle">
+                <input type="checkbox" id="worldBindToCampaign" checked />
+                bind_to_campaign
+              </label>
+              <button id="runWorldGenerate">Generate World</button>
+            </div>
+            <pre id="worldGenerateResult"></pre>
+          </div>
+          <div class="field">
+            <span>Map Generate</span>
+            <div class="inline">
+              <input
+                type="text"
+                id="mapParentAreaInput"
+                placeholder="parent_area_id (e.g. area_001)"
+                autocomplete="off"
+              />
+              <input
+                type="text"
+                id="mapThemeInput"
+                placeholder="theme"
+                autocomplete="off"
+              />
+            </div>
+            <div class="inline">
+              <input
+                type="number"
+                id="mapSizeInput"
+                min="1"
+                max="30"
+                placeholder="size"
+              />
+              <input
+                type="text"
+                id="mapSeedInput"
+                placeholder="seed"
+                autocomplete="off"
+              />
+              <button id="runMapGenerate">Generate Map</button>
+            </div>
+            <pre id="mapGenerateResult"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="actorSpawnPanel">
+        <div class="panel__header">
+          <h2>Actor Spawn</h2>
+          <p class="panel__hint">character_id required; spawn_position optional.</p>
+        </div>
+
+        <div class="inline">
+          <input
+            type="text"
+            id="spawnCharacterIdInput"
+            placeholder="character_id (required)"
+            autocomplete="off"
+          />
+          <input
+            type="text"
+            id="spawnPositionInput"
+            placeholder="spawn_position (optional)"
+            autocomplete="off"
+          />
+          <label class="subtle">
+            <input type="checkbox" id="spawnBindToParty" checked />
+            bind_to_party
+          </label>
+          <button id="runActorSpawn">Spawn Actor</button>
+        </div>
+        <pre id="actorSpawnResult"></pre>
+      </section>
+
+      <section class="panel" id="movePanel">
+        <div class="panel__header">
+          <h2>Move</h2>
+          <p class="panel__hint">Minimal move input: to_area_id.</p>
+        </div>
+
+        <div class="inline">
+          <input
+            type="text"
+            id="moveActorIdInput"
+            placeholder="actor_id (optional, defaults to active)"
+            autocomplete="off"
+          />
+          <input
+            type="text"
+            id="moveToAreaInput"
+            placeholder="to_area_id (required)"
+            autocomplete="off"
+          />
+          <button id="runMove">Move</button>
+        </div>
+        <pre id="moveResult"></pre>
+
+        <div class="grid grid--three">
+          <div class="field field--compact">
+            <span>Current Actor</span>
+            <pre id="flowCurrentActor"></pre>
+          </div>
+          <div class="field field--compact">
+            <span>Current Position</span>
+            <pre id="flowCurrentPosition"></pre>
+          </div>
+          <div class="field field--compact">
+            <span>Narrative Text</span>
+            <pre id="flowNarrative"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="flowButtonsPanel">
+        <div class="panel__header">
+          <h2>Flow Buttons</h2>
+          <p class="panel__hint">Create campaign and run gameplay chain with retry for tool turns.</p>
+        </div>
+
+        <div class="inline">
+          <label class="field field--compact">
+            <span>Tool Retry Attempts</span>
+            <input type="number" id="flowRetryCount" min="1" max="5" />
+          </label>
+        </div>
+
+        <div class="inline">
+          <button class="ghost" id="runFlowCreateCampaign">Create Campaign</button>
+          <button class="ghost" id="runFlowWorld">Generate World</button>
+          <button class="ghost" id="runFlowMap">Generate Map</button>
+          <button class="ghost" id="runFlowSpawn">Spawn Actor</button>
+          <button class="ghost" id="runFlowMove">Move</button>
+          <button class="ghost" id="runFlowTurn">Submit Turn</button>
+          <button id="runFullFlow">Run Full Flow</button>
+        </div>
+
+        <div class="field">
+          <span>Turn Input (final chat/turn)</span>
+          <textarea id="narrativeTurnInput" rows="4"></textarea>
+          <pre id="narrativeTurnResult"></pre>
+        </div>
+
+        <pre id="flowResult"></pre>
+      </section>
+
       <section class="panel" id="campaignOpsPanel">
         <div class="panel__header">
           <h2>Campaign Status & V1.1 Ops</h2>

@@ -2,6 +2,10 @@
 
 Minimal backend scaffolding for the AI TRPG prototype.
 
+## Version
+
+- Project version: `1.0`
+
 ## Start
 
 1. Create a virtual environment and install dependencies (FastAPI + Uvicorn).
