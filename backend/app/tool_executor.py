@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime, timezone
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from backend.app.actor_service import spawn_actor
 from backend.app.character_facade_factory import create_runtime_character_facade
@@ -14,6 +14,8 @@ from backend.domain.character_access import (
 from backend.domain.models import (
     AppliedAction,
     Campaign,
+    Entity,
+    EntityLocation,
     FailedCall,
     ToolCall,
     ToolFeedback,
@@ -171,6 +173,11 @@ def _apply_tool_call(
         return _apply_world_generate(campaign, call, timestamp, repo=repo)
     if call.tool == "actor_spawn":
         return _apply_actor_spawn(campaign, actor_id, call, timestamp)
+    if call.tool == "scene_action":
+        action = _apply_scene_action(
+            campaign, actor_id, call, timestamp, character_facade
+        )
+        return action, "invalid_args" if action is None else None
     return None, "invalid_args"
 
 
@@ -497,6 +504,624 @@ def _apply_actor_spawn(
         ),
         None,
     )
+
+
+SCENE_ACTIONS = {
+    "inspect",
+    "talk",
+    "open",
+    "search",
+    "take",
+    "drop",
+    "detach",
+    "use",
+    "wait",
+}
+
+PORTABLE_ENTITY_KINDS = {"item", "object", "container"}
+DEFAULT_CARRY_MASS_LIMIT = 60.0
+DEFAULT_ENTITY_MASS = 1.0
+
+
+def _apply_scene_action(
+    campaign: Campaign,
+    effective_actor_id: str,
+    call: ToolCall,
+    timestamp: str,
+    character_facade: CharacterFacade,
+) -> Optional[AppliedAction]:
+    actor_id = call.args.get("actor_id")
+    action = call.args.get("action")
+    target_id = call.args.get("target_id")
+    params = call.args.get("params", {})
+
+    if actor_id is None:
+        actor_id = effective_actor_id
+    if not isinstance(actor_id, str) or actor_id != effective_actor_id:
+        return None
+    if actor_id not in campaign.actors:
+        return None
+    if not isinstance(action, str):
+        return None
+    if not isinstance(params, dict):
+        return None
+    normalized_action = action.strip().lower()
+    if normalized_action not in SCENE_ACTIONS:
+        return None
+
+    if normalized_action == "wait":
+        normalized_target_id = target_id.strip() if isinstance(target_id, str) else ""
+    else:
+        if not isinstance(target_id, str):
+            return None
+        normalized_target_id = target_id.strip()
+        if not normalized_target_id:
+            return None
+
+    actor_state = character_facade.get_state(campaign, actor_id)
+    current_area_id = actor_state.position
+
+    target: Optional[Entity] = None
+    is_area_search = False
+    if normalized_action not in {"wait"}:
+        target = campaign.entities.get(normalized_target_id)
+        if target is None:
+            if (
+                normalized_action == "search"
+                and isinstance(current_area_id, str)
+                and normalized_target_id == current_area_id
+            ):
+                is_area_search = True
+            else:
+                return _scene_action_applied(
+                    call,
+                    timestamp,
+                    _scene_action_result(
+                        ok=False,
+                        narrative="You cannot find that target here.",
+                        error_code="target_not_found",
+                        error_message=f"target not found: {normalized_target_id}",
+                    ),
+                )
+
+    if target is not None:
+        if not _is_entity_reachable(
+            campaign, target, actor_id=actor_id, current_area_id=current_area_id
+        ):
+            return _scene_action_applied(
+                call,
+                timestamp,
+                _scene_action_result(
+                    ok=False,
+                    narrative=f"{target.label} is not reachable right now.",
+                    error_code="not_reachable",
+                    error_message=f"target not reachable: {target.id}",
+                ),
+            )
+        if not _is_scene_action_allowed(normalized_action, target):
+            return _scene_action_applied(
+                call,
+                timestamp,
+                _scene_action_result(
+                    ok=False,
+                    narrative=f"You cannot {normalized_action} {target.label}.",
+                    error_code="not_allowed",
+                    error_message=f"action not allowed: {normalized_action}",
+                ),
+            )
+
+    entity_patches: List[Dict[str, Any]] = []
+    new_entities: List[Dict[str, Any]] = []
+    removed_entities: List[Dict[str, Any]] = []
+
+    if normalized_action == "inspect":
+        label = target.label if target is not None else "the scene"
+        return _scene_action_applied(
+            call,
+            timestamp,
+            _scene_action_result(
+                ok=True,
+                narrative=f"You inspect {label}.",
+                entity_patches=entity_patches,
+                new_entities=new_entities,
+                removed_entities=removed_entities,
+            ),
+        )
+
+    if normalized_action == "talk":
+        if target is None:
+            return None
+        return _scene_action_applied(
+            call,
+            timestamp,
+            _scene_action_result(
+                ok=True,
+                narrative=f"You talk to {target.label}.",
+                entity_patches=entity_patches,
+                new_entities=new_entities,
+                removed_entities=removed_entities,
+            ),
+        )
+
+    if normalized_action == "open":
+        if target is None:
+            return None
+        if target.state.get("locked") is True:
+            return _scene_action_applied(
+                call,
+                timestamp,
+                _scene_action_result(
+                    ok=False,
+                    narrative=f"{target.label} is locked.",
+                    error_code="locked",
+                    error_message=f"target locked: {target.id}",
+                    entity_patches=entity_patches,
+                    new_entities=new_entities,
+                    removed_entities=removed_entities,
+                ),
+            )
+        if target.state.get("opened") is not True:
+            before = _entity_to_dict(target)
+            target.state["opened"] = True
+            _append_entity_patch(entity_patches, target, before)
+        return _scene_action_applied(
+            call,
+            timestamp,
+            _scene_action_result(
+                ok=True,
+                narrative=f"You open {target.label}.",
+                entity_patches=entity_patches,
+                new_entities=new_entities,
+                removed_entities=removed_entities,
+            ),
+        )
+
+    if normalized_action == "search":
+        if is_area_search:
+            return _scene_action_applied(
+                call,
+                timestamp,
+                _scene_action_result(
+                    ok=True,
+                    narrative="You search the area but find nothing new.",
+                    entity_patches=entity_patches,
+                    new_entities=new_entities,
+                    removed_entities=removed_entities,
+                ),
+            )
+        if target is None:
+            return None
+        if target.kind == "container" and target.state.get("opened") is True:
+            has_nested = any(
+                entity.loc.type == "entity" and entity.loc.id == target.id
+                for entity in campaign.entities.values()
+            )
+            if not has_nested:
+                spawned = Entity(
+                    id=_next_spawn_entity_id(campaign, target.id),
+                    kind="item",
+                    label=f"{target.label} Trinket",
+                    tags=["loot"],
+                    loc=EntityLocation(type="entity", id=target.id),
+                    verbs=["inspect", "take"],
+                    state={},
+                    props={"mass": 1},
+                )
+                campaign.entities[spawned.id] = spawned
+                new_entities.append(_entity_to_dict(spawned))
+                return _scene_action_applied(
+                    call,
+                    timestamp,
+                    _scene_action_result(
+                        ok=True,
+                        narrative=f"You search {target.label} and find {spawned.label}.",
+                        entity_patches=entity_patches,
+                        new_entities=new_entities,
+                        removed_entities=removed_entities,
+                    ),
+                )
+        return _scene_action_applied(
+            call,
+            timestamp,
+            _scene_action_result(
+                ok=True,
+                narrative=f"You search {target.label} but find nothing useful.",
+                entity_patches=entity_patches,
+                new_entities=new_entities,
+                removed_entities=removed_entities,
+            ),
+        )
+
+    if normalized_action == "take":
+        if target is None:
+            return None
+        if target.kind == "npc":
+            return _scene_action_applied(
+                call,
+                timestamp,
+                _scene_action_result(
+                    ok=False,
+                    narrative=f"You cannot take {target.label}.",
+                    error_code="not_allowed",
+                    error_message=f"target is not portable: {target.id}",
+                ),
+            )
+        if target.loc.type == "actor" and target.loc.id == actor_id:
+            return _scene_action_applied(
+                call,
+                timestamp,
+                _scene_action_result(
+                    ok=False,
+                    narrative=f"{target.label} is already in your inventory.",
+                    error_code="not_allowed",
+                    error_message="target already in actor inventory",
+                ),
+            )
+        if _exceeds_carry_limit(campaign, actor_id, target):
+            return _scene_action_applied(
+                call,
+                timestamp,
+                _scene_action_result(
+                    ok=False,
+                    narrative=f"{target.label} is too heavy to carry.",
+                    error_code="carry_limit",
+                    error_message=f"carry limit exceeded by target: {target.id}",
+                ),
+            )
+        before = _entity_to_dict(target)
+        if target.kind == "object":
+            target.kind = "item"
+        target.loc = EntityLocation(type="actor", id=actor_id)
+        target.verbs = _verbs_for_inventory(target.verbs)
+        _append_entity_patch(entity_patches, target, before)
+        return _scene_action_applied(
+            call,
+            timestamp,
+            _scene_action_result(
+                ok=True,
+                narrative=f"You take {target.label}.",
+                entity_patches=entity_patches,
+                new_entities=new_entities,
+                removed_entities=removed_entities,
+            ),
+        )
+
+    if normalized_action == "drop":
+        if target is None:
+            return None
+        if not isinstance(current_area_id, str) or not current_area_id.strip():
+            return _scene_action_applied(
+                call,
+                timestamp,
+                _scene_action_result(
+                    ok=False,
+                    narrative="You cannot drop items without a valid area.",
+                    error_code="not_reachable",
+                    error_message="actor has no active area",
+                ),
+            )
+        if not (target.loc.type == "actor" and target.loc.id == actor_id):
+            return _scene_action_applied(
+                call,
+                timestamp,
+                _scene_action_result(
+                    ok=False,
+                    narrative=f"{target.label} is not in your inventory.",
+                    error_code="not_allowed",
+                    error_message=f"target not in actor inventory: {target.id}",
+                ),
+            )
+        before = _entity_to_dict(target)
+        target.loc = EntityLocation(type="area", id=current_area_id)
+        target.verbs = _verbs_for_ground(target.verbs, target.kind)
+        _append_entity_patch(entity_patches, target, before)
+        return _scene_action_applied(
+            call,
+            timestamp,
+            _scene_action_result(
+                ok=True,
+                narrative=f"You drop {target.label}.",
+                entity_patches=entity_patches,
+                new_entities=new_entities,
+                removed_entities=removed_entities,
+            ),
+        )
+
+    if normalized_action == "detach":
+        if target is None:
+            return None
+        if _exceeds_carry_limit(campaign, actor_id, target):
+            return _scene_action_applied(
+                call,
+                timestamp,
+                _scene_action_result(
+                    ok=False,
+                    narrative=f"{target.label} is too heavy to detach and carry.",
+                    error_code="carry_limit",
+                    error_message=f"carry limit exceeded by target: {target.id}",
+                ),
+            )
+        before = _entity_to_dict(target)
+        target.kind = "item"
+        target.state["detached"] = True
+        target.loc = EntityLocation(type="actor", id=actor_id)
+        target.verbs = _verbs_for_inventory(target.verbs)
+        _append_entity_patch(entity_patches, target, before)
+        return _scene_action_applied(
+            call,
+            timestamp,
+            _scene_action_result(
+                ok=True,
+                narrative=f"You detach {target.label}.",
+                entity_patches=entity_patches,
+                new_entities=new_entities,
+                removed_entities=removed_entities,
+            ),
+        )
+
+    if normalized_action == "use":
+        if target is None:
+            return None
+        item_id = params.get("item_id")
+        item_label = ""
+        if item_id is not None:
+            if not isinstance(item_id, str):
+                return _scene_action_applied(
+                    call,
+                    timestamp,
+                    _scene_action_result(
+                        ok=False,
+                        narrative="You fumble for the wrong item.",
+                        error_code="invalid_args",
+                        error_message="params.item_id must be string",
+                    ),
+                )
+            normalized_item_id = item_id.strip()
+            if not normalized_item_id:
+                return _scene_action_applied(
+                    call,
+                    timestamp,
+                    _scene_action_result(
+                        ok=False,
+                        narrative="You need a specific item to use here.",
+                        error_code="invalid_args",
+                        error_message="params.item_id must be non-empty",
+                    ),
+                )
+            item = campaign.entities.get(normalized_item_id)
+            if item is None or not (item.loc.type == "actor" and item.loc.id == actor_id):
+                return _scene_action_applied(
+                    call,
+                    timestamp,
+                    _scene_action_result(
+                        ok=False,
+                        narrative="That item is not in your inventory.",
+                        error_code="missing_item",
+                        error_message=f"item not in actor inventory: {normalized_item_id}",
+                    ),
+                )
+            item_label = item.label
+        before = _entity_to_dict(target)
+        target.state["used"] = not bool(target.state.get("used"))
+        _append_entity_patch(entity_patches, target, before)
+        use_narrative = (
+            f"You use {item_label} on {target.label}."
+            if item_label
+            else f"You use {target.label}."
+        )
+        return _scene_action_applied(
+            call,
+            timestamp,
+            _scene_action_result(
+                ok=True,
+                narrative=use_narrative,
+                entity_patches=entity_patches,
+                new_entities=new_entities,
+                removed_entities=removed_entities,
+            ),
+        )
+
+    if normalized_action == "wait":
+        return _scene_action_applied(
+            call,
+            timestamp,
+            _scene_action_result(
+                ok=True,
+                narrative="You wait and observe the surroundings.",
+                entity_patches=entity_patches,
+                new_entities=new_entities,
+                removed_entities=removed_entities,
+            ),
+        )
+
+    return None
+
+
+def _scene_action_applied(
+    call: ToolCall, timestamp: str, result: Dict[str, Any]
+) -> AppliedAction:
+    return AppliedAction(
+        tool="scene_action",
+        args=call.args,
+        result=result,
+        timestamp=timestamp,
+    )
+
+
+def _scene_action_result(
+    *,
+    ok: bool,
+    narrative: str,
+    entity_patches: Optional[List[Dict[str, Any]]] = None,
+    new_entities: Optional[List[Dict[str, Any]]] = None,
+    removed_entities: Optional[List[Dict[str, Any]]] = None,
+    error_code: Optional[str] = None,
+    error_message: Optional[str] = None,
+) -> Dict[str, Any]:
+    result: Dict[str, Any] = {
+        "ok": ok,
+        "narrative": narrative,
+        "patches": {
+            "entity_patches": entity_patches or [],
+            "new_entities": new_entities or [],
+            "removed_entities": removed_entities or [],
+        },
+    }
+    if not ok:
+        result["error"] = {
+            "code": error_code or "scene_action_failed",
+            "message": error_message or "scene action failed",
+        }
+    return result
+
+
+def _normalized_verbs(raw_verbs: object) -> List[str]:
+    if not isinstance(raw_verbs, list):
+        return []
+    seen: Set[str] = set()
+    verbs: List[str] = []
+    for raw in raw_verbs:
+        if not isinstance(raw, str):
+            continue
+        normalized = raw.strip().lower()
+        if not normalized or normalized in seen:
+            continue
+        verbs.append(normalized)
+        seen.add(normalized)
+    return verbs
+
+
+def _verbs_for_inventory(raw_verbs: object) -> List[str]:
+    verbs = [verb for verb in _normalized_verbs(raw_verbs) if verb not in {"take", "detach"}]
+    if "drop" not in verbs:
+        verbs.append("drop")
+    return verbs
+
+
+def _verbs_for_ground(raw_verbs: object, kind: str) -> List[str]:
+    verbs = [verb for verb in _normalized_verbs(raw_verbs) if verb != "drop"]
+    if kind in PORTABLE_ENTITY_KINDS and "take" not in verbs:
+        verbs.append("take")
+    return verbs
+
+
+def _is_scene_action_allowed(action: str, target: Entity) -> bool:
+    allowed_verbs = set(_normalized_verbs(target.verbs))
+    blocked_verbs = set(_normalized_verbs(target.state.get("blocked_verbs")))
+    if action == "inspect":
+        if target.state.get("inspect_blocked") is True:
+            return False
+        return "inspect" not in blocked_verbs
+    if action == "talk":
+        return target.kind == "npc" or "talk" in allowed_verbs
+    return action in allowed_verbs
+
+
+def _is_entity_reachable(
+    campaign: Campaign,
+    target: Entity,
+    *,
+    actor_id: str,
+    current_area_id: Optional[str],
+) -> bool:
+    root = _resolve_root_location(campaign, target, max_depth=3)
+    if root is None:
+        return False
+    root_type, root_id = root
+    if root_type == "area":
+        return isinstance(current_area_id, str) and root_id == current_area_id
+    if root_type == "actor":
+        return root_id == actor_id
+    return False
+
+
+def _resolve_root_location(
+    campaign: Campaign, target: Entity, *, max_depth: int
+) -> Optional[Tuple[str, str]]:
+    location = target.loc
+    visited: Set[str] = {target.id}
+    depth = 0
+    while True:
+        if location.type in {"area", "actor"}:
+            return location.type, location.id
+        if location.type != "entity":
+            return None
+        parent_id = location.id
+        if not parent_id or parent_id in visited:
+            return None
+        parent = campaign.entities.get(parent_id)
+        if parent is None:
+            return None
+        depth += 1
+        if depth > max_depth:
+            return None
+        visited.add(parent_id)
+        location = parent.loc
+
+
+def _next_spawn_entity_id(campaign: Campaign, target_id: str) -> str:
+    base = f"{target_id}_loot"
+    counter = 1
+    while True:
+        candidate = f"{base}_{counter:02d}"
+        if candidate not in campaign.entities:
+            return candidate
+        counter += 1
+
+
+def _entity_to_dict(entity: Entity) -> Dict[str, Any]:
+    if hasattr(entity, "model_dump"):
+        return entity.model_dump()
+    if hasattr(entity, "dict"):
+        return entity.dict()
+    return {}
+
+
+def _append_entity_patch(
+    entity_patches: List[Dict[str, Any]], entity: Entity, before: Dict[str, Any]
+) -> None:
+    after = _entity_to_dict(entity)
+    if before == after:
+        return
+    changes: Dict[str, Any] = {}
+    for key, value in after.items():
+        if before.get(key) != value:
+            changes[key] = value
+    entity_patches.append({"id": entity.id, "changes": changes})
+
+
+def _actor_inventory_mass(campaign: Campaign, actor_id: str) -> float:
+    total = 0.0
+    for entity in campaign.entities.values():
+        if entity.loc.type != "actor" or entity.loc.id != actor_id:
+            continue
+        if entity.kind not in PORTABLE_ENTITY_KINDS:
+            continue
+        total += _entity_mass(entity)
+    return total
+
+
+def _entity_mass(entity: Entity) -> float:
+    raw_mass = entity.props.get("mass")
+    if isinstance(raw_mass, (int, float)) and raw_mass > 0:
+        return float(raw_mass)
+    return DEFAULT_ENTITY_MASS
+
+
+def _carry_mass_limit(campaign: Campaign, actor_id: str) -> float:
+    actor = campaign.actors.get(actor_id)
+    if actor is None or not isinstance(actor.meta, dict):
+        return DEFAULT_CARRY_MASS_LIMIT
+    raw_limit = actor.meta.get("carry_mass_limit")
+    if isinstance(raw_limit, (int, float)) and raw_limit > 0:
+        return float(raw_limit)
+    return DEFAULT_CARRY_MASS_LIMIT
+
+
+def _exceeds_carry_limit(campaign: Campaign, actor_id: str, entity: Entity) -> bool:
+    current_mass = _actor_inventory_mass(campaign, actor_id)
+    limit = _carry_mass_limit(campaign, actor_id)
+    return current_mass + _entity_mass(entity) > limit
 
 
 def _is_connected(campaign: Campaign, from_area_id: str, to_area_id: str) -> bool:

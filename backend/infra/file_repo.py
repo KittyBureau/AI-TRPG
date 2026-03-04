@@ -489,6 +489,12 @@ class FileRepo:
         if "inventory_add" not in campaign.allowlist:
             campaign.allowlist.append("inventory_add")
             updated = True
+        if "scene_action" not in campaign.allowlist:
+            campaign.allowlist.append("scene_action")
+            updated = True
+        if not isinstance(campaign.entities, dict):
+            campaign.entities = {}
+            updated = True
         for actor_id in campaign.selected.party_character_ids:
             if actor_id not in campaign.actors:
                 ensure_actor(campaign, actor_id)

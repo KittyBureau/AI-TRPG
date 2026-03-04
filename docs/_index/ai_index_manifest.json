@@ -50,7 +50,9 @@
         "backend/domain/models.py",
         "docs/01_specs/tools.md",
         "backend/tests/test_map_generate.py",
-        "backend/tests/test_move_options.py"
+        "backend/tests/test_move_options.py",
+        "backend/tests/test_scene_action_tool.py",
+        "backend/tests/test_scene_action_turn_api.py"
       ]
     },
     {

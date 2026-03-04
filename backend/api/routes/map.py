@@ -21,12 +21,21 @@ class MapAreaView(BaseModel):
     name: str
 
 
+class SceneEntityView(BaseModel):
+    id: str
+    kind: str
+    label: str
+    tags: List[str]
+    verbs: List[str]
+
+
 class MapViewResponse(BaseModel):
     campaign_id: str
     active_actor_id: str
     current_area: MapAreaView
     current_area_actor_ids: List[str]
     reachable_areas: List[MapAreaView]
+    entities_in_area: List[SceneEntityView]
 
 
 @router.get("/view", response_model=MapViewResponse)
@@ -70,6 +79,17 @@ def view_map(
         for actor_id, actor_state in campaign.actors.items()
         if actor_state.position == area_id
     )
+    entities_in_area = [
+        SceneEntityView(
+            id=entity.id,
+            kind=entity.kind,
+            label=entity.label,
+            tags=list(entity.tags),
+            verbs=list(entity.verbs),
+        )
+        for entity in sorted(campaign.entities.values(), key=lambda item: item.id)
+        if entity.loc.type == "area" and entity.loc.id == area_id
+    ]
 
     return MapViewResponse(
         campaign_id=campaign.id,
@@ -80,4 +100,5 @@ def view_map(
         ),
         current_area_actor_ids=current_area_actor_ids,
         reachable_areas=reachable_areas,
+        entities_in_area=entities_in_area,
     )

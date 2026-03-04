@@ -64,6 +64,7 @@ Example 3 (no tool call required; MUST respond with non-empty assistant_text):
 - `map_generate`
 - `world_generate`
 - `actor_spawn`
+- `scene_action`
 
 Allowlist is stored in `campaign.json` as `allowlist`.
 
@@ -208,6 +209,37 @@ Notes:
 - If `selected.active_actor_id` is empty, the spawned actor becomes the active actor.
 - Initial state is fixed in MVP: `hp=10`, `character_state=alive`.
 
+### scene_action
+
+Required args:
+
+- `action` (one of: `inspect`, `talk`, `open`, `search`, `take`, `drop`, `detach`, `use`, `wait`)
+
+Optional args:
+
+- `actor_id` (defaults to effective actor id for this turn; if provided must match it)
+- `target_id` (required for all current actions except `wait`; `search` can target current area id)
+- `params` (object, default `{}`)
+
+Notes:
+
+- This is the single interaction tool for non-move scene actions.
+- `move` remains a separate tool.
+- Reachability is required: target must resolve to current area or actor inventory chain.
+- Verb checks use `entity.verbs` with fallbacks:
+  - `inspect` is allowed by default unless explicitly blocked.
+  - `talk` is allowed for `kind=npc` or when `talk` verb exists.
+- Weak carry rule applies to `take` / `detach`:
+  - total carried mass cannot exceed actor carry limit (default `60`).
+  - overflow returns `ok=false` with `error.code=carry_limit`.
+- Result payload:
+  - `ok` (bool)
+  - `narrative` (string)
+  - `patches.entity_patches[]`
+  - `patches.new_entities[]`
+  - `patches.removed_entities[]`
+  - `error` (`{code,message}` when `ok=false`)
+
 ## Applied Actions (System -> Log)
 
 ```json
@@ -310,3 +342,8 @@ Move options result payload:
 - `invalid_actor_state`
 - `world_id_missing`
 - `actor_context_mismatch`
+- `not_reachable` (`scene_action` logical failure; returned in `result.error.code`)
+- `not_allowed` (`scene_action` logical failure; returned in `result.error.code`)
+- `locked` (`scene_action` logical failure; returned in `result.error.code`)
+- `carry_limit` (`scene_action` logical failure; returned in `result.error.code`)
+- `missing_item` (`scene_action` logical failure; returned in `result.error.code`)

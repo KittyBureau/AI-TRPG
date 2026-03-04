@@ -7,6 +7,8 @@ const state = {
   campaignOptions: [],
   partyActors: [],
   initiativeOrder: [],
+  plannerActorId: null,
+  plannedActions: {},
   actionInputs: {},
   failurePolicy: "stop",
   roundState: "idle",
@@ -83,6 +85,15 @@ export function setPartyActors(actorIds) {
     : [];
   state.partyActors = [...new Set(normalized)];
   state.initiativeOrder = [...state.partyActors];
+  if (!state.plannerActorId || !state.partyActors.includes(state.plannerActorId)) {
+    state.plannerActorId = state.partyActors[0] || null;
+  }
+  const nextPlannedActions = {};
+  for (const actorId of state.initiativeOrder) {
+    const existing = state.plannedActions[actorId];
+    nextPlannedActions[actorId] = Array.isArray(existing) ? existing : [];
+  }
+  state.plannedActions = nextPlannedActions;
   const nextInputs = {};
   for (const actorId of state.initiativeOrder) {
     nextInputs[actorId] = state.actionInputs[actorId] || "";
@@ -98,6 +109,15 @@ export function setInitiativeOrder(order) {
   state.initiativeOrder = order
     .filter((value) => typeof value === "string" && value.trim())
     .map((value) => value.trim());
+  const nextPlannedActions = {};
+  for (const actorId of state.initiativeOrder) {
+    const existing = state.plannedActions[actorId];
+    nextPlannedActions[actorId] = Array.isArray(existing) ? existing : [];
+  }
+  state.plannedActions = nextPlannedActions;
+  if (!state.plannerActorId || !state.initiativeOrder.includes(state.plannerActorId)) {
+    state.plannerActorId = state.initiativeOrder[0] || null;
+  }
   const nextInputs = {};
   for (const actorId of state.initiativeOrder) {
     nextInputs[actorId] = state.actionInputs[actorId] || "";
@@ -112,6 +132,105 @@ export function setActionInput(actorId, value, options = {}) {
   }
   state.actionInputs[actorId] = typeof value === "string" ? value : "";
   withEmit(options.emit !== false);
+}
+
+export function setPlannerActorId(actorId) {
+  if (!actorId || !state.partyActors.includes(actorId)) {
+    state.plannerActorId = state.partyActors[0] || null;
+    emit();
+    return;
+  }
+  state.plannerActorId = actorId;
+  emit();
+}
+
+function normalizeActionEnvelope(envelope) {
+  if (!envelope || typeof envelope !== "object") {
+    return null;
+  }
+  if (typeof envelope.type !== "string") {
+    return null;
+  }
+  const type = envelope.type.trim();
+  if (!type) {
+    return null;
+  }
+  if (typeof envelope.actor_id !== "string" || !envelope.actor_id.trim()) {
+    return null;
+  }
+  const actorId = envelope.actor_id.trim();
+  if (type === "move") {
+    if (typeof envelope.to_area_id !== "string" || !envelope.to_area_id.trim()) {
+      return null;
+    }
+    return {
+      type: "move",
+      actor_id: actorId,
+      to_area_id: envelope.to_area_id.trim(),
+      to_area_name:
+        typeof envelope.to_area_name === "string" ? envelope.to_area_name.trim() : "",
+    };
+  }
+  if (type === "scene_action") {
+    if (typeof envelope.action !== "string" || !envelope.action.trim()) {
+      return null;
+    }
+    if (typeof envelope.target_id !== "string" || !envelope.target_id.trim()) {
+      return null;
+    }
+    const params =
+      envelope.params && typeof envelope.params === "object" && !Array.isArray(envelope.params)
+        ? envelope.params
+        : {};
+    return {
+      type: "scene_action",
+      actor_id: actorId,
+      action: envelope.action.trim(),
+      target_id: envelope.target_id.trim(),
+      target_label:
+        typeof envelope.target_label === "string" ? envelope.target_label.trim() : "",
+      params,
+    };
+  }
+  return null;
+}
+
+export function addPlannedAction(envelope) {
+  const normalized = normalizeActionEnvelope(envelope);
+  if (!normalized) {
+    return false;
+  }
+  const actorId = normalized.actor_id;
+  if (!state.plannedActions[actorId]) {
+    state.plannedActions[actorId] = [];
+  }
+  state.plannedActions[actorId].push(normalized);
+  emit();
+  return true;
+}
+
+export function removePlannedAction(actorId, index) {
+  const list = state.plannedActions[actorId];
+  if (!Array.isArray(list)) {
+    return;
+  }
+  if (!Number.isInteger(index) || index < 0 || index >= list.length) {
+    return;
+  }
+  list.splice(index, 1);
+  emit();
+}
+
+export function clearPlannedActions(actorId = null) {
+  if (actorId && state.plannedActions[actorId]) {
+    state.plannedActions[actorId] = [];
+    emit();
+    return;
+  }
+  for (const key of Object.keys(state.plannedActions)) {
+    state.plannedActions[key] = [];
+  }
+  emit();
 }
 
 export function setFailurePolicy(value) {
@@ -149,6 +268,15 @@ export function setStateSummary(summary) {
 
 export function setMapView(mapView) {
   state.mapView = mapView;
+  if (
+    !state.plannerActorId &&
+    mapView &&
+    typeof mapView === "object" &&
+    typeof mapView.active_actor_id === "string" &&
+    mapView.active_actor_id.trim()
+  ) {
+    state.plannerActorId = mapView.active_actor_id.trim();
+  }
   emit();
 }
 

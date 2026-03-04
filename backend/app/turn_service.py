@@ -23,6 +23,8 @@ from backend.domain.models import (
     Goal,
     FailedCall,
     ActorState,
+    Entity,
+    EntityLocation,
     MapArea,
     MapData,
     Milestone,
@@ -119,6 +121,7 @@ class TurnService:
                 character_state=DEFAULT_CHARACTER_STATE,
                 meta={},
             )
+        entities = _starter_entities()
         selected = Selected(
             world_id=world_id,
             map_id=map_id,
@@ -133,6 +136,7 @@ class TurnService:
             milestone=Milestone(current="intro", last_advanced_turn=0),
             map=starter_map,
             actors=actors,
+            entities=entities,
         )
         normalize_map(campaign.map)
         self.repo.create_campaign(campaign)
@@ -300,8 +304,46 @@ class TurnService:
             _CAMPAIGN_TURN_LOCKS.release(campaign_lock)
 
 
+def _starter_entities() -> Dict[str, Entity]:
+    return {
+        "door_01": Entity(
+            id="door_01",
+            kind="object",
+            label="Rusty Door",
+            tags=["door", "metal"],
+            loc=EntityLocation(type="area", id="area_001"),
+            verbs=["inspect", "open", "force", "detach"],
+            state={"locked": True, "opened": False},
+            props={"mass": 40, "size": "large"},
+        ),
+        "crate_01": Entity(
+            id="crate_01",
+            kind="container",
+            label="Old Crate",
+            tags=["container", "wood"],
+            loc=EntityLocation(type="area", id="area_001"),
+            verbs=["inspect", "open", "search", "take"],
+            state={"locked": False, "opened": False},
+            props={"mass": 12, "size": "medium"},
+        ),
+        "npc_guide_01": Entity(
+            id="npc_guide_01",
+            kind="npc",
+            label="Wary Guide",
+            tags=["npc", "guide"],
+            loc=EntityLocation(type="area", id="area_001"),
+            verbs=["inspect", "talk"],
+            state={},
+            props={"mass": 70, "size": "medium"},
+        ),
+    }
+
+
 def _ensure_minimum_state(campaign: Campaign) -> bool:
     updated = False
+    if not isinstance(campaign.entities, dict):
+        campaign.entities = {}
+        updated = True
     if not campaign.map.areas:
         campaign.map = MapData(
             areas={
@@ -389,6 +431,7 @@ def _snapshot_state(campaign: Campaign) -> Dict[str, object]:
     ) = _derive_character_state_maps(campaign)
     return {
         "actors": deepcopy(campaign.actors),
+        "entities": deepcopy(campaign.entities),
         "state": deepcopy(campaign.state),
         "campaign_positions": deepcopy(campaign.positions),
         "campaign_hp": deepcopy(campaign.hp),
@@ -404,6 +447,7 @@ def _snapshot_state(campaign: Campaign) -> Dict[str, object]:
 
 def _restore_state(campaign: Campaign, snapshot: Dict[str, object]) -> None:
     campaign.actors = snapshot["actors"]
+    campaign.entities = snapshot["entities"]
     campaign.state = snapshot["state"]
     campaign.positions = snapshot["campaign_positions"]
     campaign.hp = snapshot["campaign_hp"]
@@ -472,6 +516,30 @@ def _build_actor_prompt_payloads(
     return actors_payload, adopted_profiles_by_actor
 
 
+def _scene_prompt_payload(campaign: Campaign, actor_id: str) -> Dict[str, object]:
+    active_state = _CHARACTER_FACADE.get_state(campaign, actor_id)
+    area_id = active_state.position if isinstance(active_state.position, str) else None
+    entities_in_area: List[Dict[str, object]] = []
+    if area_id is not None:
+        for entity in sorted(campaign.entities.values(), key=lambda item: item.id):
+            if entity.loc.type != "area" or entity.loc.id != area_id:
+                continue
+            entities_in_area.append(
+                {
+                    "id": entity.id,
+                    "kind": entity.kind,
+                    "label": entity.label,
+                    "tags": list(entity.tags),
+                    "verbs": list(entity.verbs),
+                    "state": dict(entity.state),
+                }
+            )
+    return {
+        "active_area_id": area_id,
+        "entities_in_area": entities_in_area,
+    }
+
+
 def _build_system_prompt(campaign: Campaign, effective_actor_id: str) -> str:
     positions, _, _, hp, character_states = _derive_character_state_maps(campaign)
     actors_payload, adopted_profiles_by_actor = _build_actor_prompt_payloads(campaign)
@@ -510,6 +578,7 @@ def _build_system_prompt(campaign: Campaign, effective_actor_id: str) -> str:
             "active_actor_inventory": _active_actor_inventory(
                 campaign, effective_actor_id
             ),
+            "scene": _scene_prompt_payload(campaign, effective_actor_id),
             "adopted_profiles_by_actor": adopted_profiles_by_actor,
             "response_format": {
                 "assistant_text": "string narrative",
@@ -532,6 +601,7 @@ def _build_system_prompt(campaign: Campaign, effective_actor_id: str) -> str:
             "map": _model_to_dict(campaign.map),
             "state": _model_to_dict(campaign.state),
             "actors": actors_payload,
+            "scene": _scene_prompt_payload(campaign, effective_actor_id),
             "adopted_profiles_by_actor": adopted_profiles_by_actor,
             "positions": positions,
             "hp": hp,
@@ -551,6 +621,8 @@ def _build_system_prompt(campaign: Campaign, effective_actor_id: str) -> str:
         "you MUST include an 'inventory_add' tool_call in the same response. "
         "HP change is a state change. If you narrate injury/damage/healing/recovery, "
         "you MUST include an 'hp_delta' tool_call in the same response. "
+        "For non-move scene interactions (inspect/talk/open/search/take/drop/detach/use/wait), "
+        "prefer one 'scene_action' tool_call with args {actor_id, action, target_id, params}. "
         "For move tool_calls, args must include to_area_id and may include actor_id; do NOT include from_area_id. "
         "If you do not include a 'move' tool_call, do not narrate any completed movement or location change; "
         "you may describe the current scene or discuss options/intentions. "

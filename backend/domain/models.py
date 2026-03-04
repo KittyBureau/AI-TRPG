@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -95,6 +95,22 @@ class CampaignState(BaseModel):
     positions_child: Dict[str, Optional[str]] = Field(default_factory=dict)
 
 
+class EntityLocation(BaseModel):
+    type: Literal["area", "actor", "entity"]
+    id: str
+
+
+class Entity(BaseModel):
+    id: str
+    kind: str = "object"
+    label: str
+    tags: List[str] = Field(default_factory=list)
+    loc: EntityLocation
+    verbs: List[str] = Field(default_factory=list)
+    state: Dict[str, Any] = Field(default_factory=dict)
+    props: Dict[str, Any] = Field(default_factory=dict)
+
+
 class ActorState(BaseModel):
     position: Optional[str] = None
     hp: int = 10
@@ -117,11 +133,13 @@ class Campaign(BaseModel):
             "move_options",
             "world_generate",
             "actor_spawn",
+            "scene_action",
         ]
     )
     map: MapData = Field(default_factory=MapData)
     state: CampaignState = Field(default_factory=CampaignState)
     actors: Dict[str, ActorState] = Field(default_factory=dict)
+    entities: Dict[str, Entity] = Field(default_factory=dict)
     positions: Dict[str, str] = Field(default_factory=dict)
     hp: Dict[str, int] = Field(default_factory=dict)
     character_states: Dict[str, str] = Field(default_factory=dict)

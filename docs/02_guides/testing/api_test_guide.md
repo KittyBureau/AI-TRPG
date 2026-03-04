@@ -396,3 +396,34 @@ When validating current mainline behavior, include these checks:
 7. Same-campaign turn lock
    - trigger two concurrent `/api/v1/chat/turn` requests for the same `campaign_id`.
    - expect one request can fail with `409 Conflict` and detail containing "already running".
+
+## Scene Interaction v1 additions (2026-03-04)
+
+1. `campaign.json` entity authority
+   - confirm `campaign.json` contains top-level `entities` dictionary.
+   - confirm IDs are stable keys and each entity carries `loc`, `verbs`, `state`, `props`.
+
+2. map view contract
+   - call `GET /api/v1/map/view?campaign_id=...&actor_id=...`.
+   - verify response includes `entities_in_area[]`.
+   - verify each item includes: `id`, `kind`, `label`, `tags`, `verbs`.
+
+3. `scene_action` strict turn call
+   - call `/api/v1/chat/turn` with a strict `UI_FLOW_STEP` prompt that executes exactly one `scene_action`.
+   - include `execution.actor_id` in request payload.
+   - verify response:
+     - `effective_actor_id` equals `execution.actor_id`.
+     - `applied_actions[*].tool == "scene_action"`.
+     - `applied_actions[*].result.ok` exists.
+
+4. `scene_action` failure semantics
+   - verify logical failures return `result.ok=false` and `result.error.code`:
+     - `not_reachable`
+     - `not_allowed`
+     - `locked`
+     - `carry_limit`
+   - verify actor mismatch still uses `tool_feedback.failed_calls[*].reason=actor_context_mismatch`.
+
+5. persistence check for entity changes
+   - after `take` / `drop` / `detach`, verify `storage/campaigns/<campaign_id>/campaign.json`
+     reflects updated `entities.<entity_id>.loc` / `kind` / `state` values.

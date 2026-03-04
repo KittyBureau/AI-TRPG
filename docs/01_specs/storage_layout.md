@@ -59,7 +59,7 @@ World lazy-create migration (v1):
     "active_actor_id": "pc_001"
   },
   "settings_revision": 0,
-  "allowlist": ["move", "move_options", "hp_delta", "inventory_add", "map_generate", "world_generate", "actor_spawn"],
+  "allowlist": ["move", "move_options", "hp_delta", "inventory_add", "map_generate", "world_generate", "actor_spawn", "scene_action"],
   "map": {
     "areas": {
       "area_001": {
@@ -100,6 +100,27 @@ World lazy-create migration (v1):
       "character_state": "alive",
       "inventory": {},
       "meta": {}
+    }
+  },
+  "entities": {
+    "door_01": {
+      "id": "door_01",
+      "kind": "object",
+      "label": "Rusty Door",
+      "tags": ["door", "metal"],
+      "loc": {
+        "type": "area",
+        "id": "area_001"
+      },
+      "verbs": ["inspect", "open", "force", "detach"],
+      "state": {
+        "locked": true,
+        "opened": false
+      },
+      "props": {
+        "mass": 40,
+        "size": "large"
+      }
     }
   },
   "positions": {},
@@ -167,6 +188,10 @@ World lazy-create migration (v1):
 | state.positions_child | object | Legacy position mirrors (empty after migration). |
 | actors | object | Actor state keyed by actor id (`position` and `inventory` are authoritative). |
 | actors.*.inventory | object | Item quantities keyed by `item_id` (`Dict[str,int]`, positive ints only). |
+| entities | object | Scene entities keyed by stable entity id (authoritative for scene interaction state). |
+| entities.*.loc | object | Location union: `{type:area|actor|entity,id:string}`. |
+| entities.*.verbs | array | Allowed scene verbs for `scene_action` checks. |
+| entities.*.state / entities.*.props | object | Mutable interaction state and lightweight physical hints (`mass`, etc.). |
 | positions | object | Legacy positions (empty after migration; derived from actors when needed). |
 | hp | object | Legacy HP map (empty after migration; derived from actors when needed). |
 | character_states | object | Legacy character state map (empty after migration; derived from actors when needed). |
@@ -357,6 +382,8 @@ that includes `from_area_id` now fails with `invalid_args`. The backend still re
 `to_area_id` must exist and be reachable from the actor's current area; same-area move is rejected.
 When repeat-illegal-request suppression is triggered (same failed tool+args over the recent 3 turns),
 tool feedback may include reason `repeat_illegal_request`.
+`scene_action` writes entity mutations under `campaign.json.entities` and records structured
+`result.patches` in `applied_actions[*].result`.
 
 ## turn_log.jsonl fields
 

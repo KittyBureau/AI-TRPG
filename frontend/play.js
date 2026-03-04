@@ -1,5 +1,6 @@
 import { createCampaign, getMapView, listCampaigns } from "./api/api.js";
 import {
+  addPlannedAction,
   getState,
   initializeStore,
   setBaseUrl,
@@ -85,6 +86,17 @@ function setPartyFromSummary() {
   setStatus(`Party set from summary (${actorIds.length} actors).`);
 }
 
+function addSceneAction(envelope) {
+  const ok = addPlannedAction(envelope);
+  if (!ok) {
+    setStatus("Failed to add scene action.");
+    return;
+  }
+  const action = envelope?.action || "scene_action";
+  const target = envelope?.target_label || envelope?.target_id || "";
+  setStatus(`Queued ${action} -> ${target}`.trim());
+}
+
 function registerPlayPanels() {
   clearPanelRegistry();
   registerPanel({
@@ -147,6 +159,7 @@ function mountPlayPanels() {
     createCampaign: createCampaignAndRefresh,
     setPartyActors,
     setPartyFromSummary,
+    addSceneAction,
   };
 
   const render = () => {

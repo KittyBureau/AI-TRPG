@@ -31,7 +31,99 @@ function renderActorStateList(container, summary) {
   }
 }
 
-export function renderScenePanel(body, state) {
+function resolvePlannerActor(state) {
+  if (state?.plannerActorId) {
+    return state.plannerActorId;
+  }
+  if (state?.mapView?.active_actor_id) {
+    return state.mapView.active_actor_id;
+  }
+  if (Array.isArray(state?.initiativeOrder) && state.initiativeOrder.length) {
+    return state.initiativeOrder[0];
+  }
+  if (Array.isArray(state?.partyActors) && state.partyActors.length) {
+    return state.partyActors[0];
+  }
+  return null;
+}
+
+function sceneVerbLabel(verb) {
+  if (!verb || typeof verb !== "string") {
+    return "Action";
+  }
+  return `${verb.slice(0, 1).toUpperCase()}${verb.slice(1)}`;
+}
+
+function renderEntitiesSection(container, state, context) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "stack";
+  const title = document.createElement("strong");
+  title.textContent = "Entities In Area";
+  wrapper.appendChild(title);
+
+  const entities = Array.isArray(state.mapView?.entities_in_area) ? state.mapView.entities_in_area : [];
+  if (!entities.length) {
+    const note = document.createElement("div");
+    note.className = "note";
+    note.textContent = "No entities in current area.";
+    wrapper.appendChild(note);
+    container.appendChild(wrapper);
+    return;
+  }
+
+  for (const entity of entities) {
+    const card = document.createElement("div");
+    card.className = "state-card";
+
+    const heading = document.createElement("div");
+    heading.innerHTML = `<strong>${toText(entity.label)}</strong> <span class="note">(${toText(entity.id)})</span>`;
+    card.appendChild(heading);
+
+    const kindLine = document.createElement("div");
+    kindLine.className = "note";
+    const tags = Array.isArray(entity.tags) && entity.tags.length ? entity.tags.join(", ") : "none";
+    kindLine.textContent = `kind=${toText(entity.kind)} | tags=${tags}`;
+    card.appendChild(kindLine);
+
+    const verbs = Array.isArray(entity.verbs) ? entity.verbs.filter((verb) => typeof verb === "string" && verb.trim()) : [];
+    const controls = document.createElement("div");
+    controls.className = "inline";
+    if (!verbs.length) {
+      const empty = document.createElement("span");
+      empty.className = "note";
+      empty.textContent = "No available verbs.";
+      controls.appendChild(empty);
+    } else {
+      for (const verb of verbs) {
+        const button = document.createElement("button");
+        button.className = "ghost";
+        button.textContent = sceneVerbLabel(verb);
+        button.addEventListener("click", () => {
+          const actorId = resolvePlannerActor(state);
+          if (!actorId) {
+            context.setStatus("No actor available for action planning.");
+            return;
+          }
+          context.addSceneAction({
+            type: "scene_action",
+            actor_id: actorId,
+            action: verb.trim(),
+            target_id: entity.id,
+            target_label: entity.label,
+            params: {},
+          });
+        });
+        controls.appendChild(button);
+      }
+    }
+    card.appendChild(controls);
+    wrapper.appendChild(card);
+  }
+
+  container.appendChild(wrapper);
+}
+
+export function renderScenePanel(body, state, context) {
   const summary = state.stateSummary;
 
   const objective = document.createElement("div");
@@ -53,6 +145,7 @@ export function renderScenePanel(body, state) {
 
   body.appendChild(objective);
   body.appendChild(scene);
+  renderEntitiesSection(body, state, context);
   body.appendChild(actors);
 }
 

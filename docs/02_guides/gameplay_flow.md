@@ -9,14 +9,15 @@ This guide documents the complete MVP loop from campaign creation to at least on
 3. `map_generate`
 4. `actor_spawn`
 5. `move`
-6. `inventory_add`
+6. `scene_action`
+7. `inventory_add`
 7. `chat/turn`
 
 It covers both API-first usage and the minimal frontend flow controls.
 
 ## Important Constraint
 
-The backend currently exposes `world_generate`, `map_generate`, `actor_spawn`, `move`, and `inventory_add` as tool calls executed inside `POST /api/v1/chat/turn`. There are no dedicated HTTP endpoints for these tools.
+The backend currently exposes `world_generate`, `map_generate`, `actor_spawn`, `move`, `scene_action`, and `inventory_add` as tool calls executed inside `POST /api/v1/chat/turn`. There are no dedicated HTTP endpoints for these tools.
 
 Because of this, frontend flow buttons trigger tool execution through templated `user_input` in `/api/v1/chat/turn`.
 
@@ -135,6 +136,24 @@ Expected check:
 
 - `applied_actions[*].tool` contains `inventory_add`
 
+### Scene interaction (`scene_action`) via turn
+
+```bash
+curl -sS -X POST "$BASE/api/v1/chat/turn" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "campaign_id":"camp_0001",
+    "user_input":"[UI_FLOW_STEP] Return JSON with keys assistant_text, dialog_type, tool_calls. Keep assistant_text empty. Execute exactly one tool_call now: scene_action. Use args exactly: {\"actor_id\":\"pc_001\",\"action\":\"inspect\",\"target_id\":\"door_01\",\"params\":{}}. Do not call any additional tools.",
+    "execution":{"actor_id":"pc_001"}
+  }'
+```
+
+Expected check:
+
+- `applied_actions[*].tool` contains `scene_action`
+- `applied_actions[*].result.ok` exists
+- entity deltas are reflected in `campaign.json.entities`
+
 ### 7) Submit one regular turn
 
 ```bash
@@ -180,6 +199,7 @@ The page now includes these flow panels:
 - `Actor Spawn`
 - `Move`
 - `Flow Buttons`
+- `Scene` now includes `entities_in_area` with per-entity verb buttons.
 
 ### Manual step buttons
 
@@ -220,6 +240,12 @@ Each step calls `/api/v1/chat/turn` sequentially with:
   "execution": { "actor_id": "pc_001" }
 }
 ```
+
+When using Action Planner envelopes:
+
+- `move` action compiles to one strict `UI_FLOW_STEP` that calls `move`.
+- `scene_action` action compiles to one strict `UI_FLOW_STEP` that calls `scene_action`.
+- Each planner step sends `execution.actor_id` to pin effective actor context.
 
 The response `effective_actor_id` confirms execution identity. UI log stores a fixed
 delta object per actor step (derived from `state_summary`) with stable keys:

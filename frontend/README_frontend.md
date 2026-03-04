@@ -71,6 +71,12 @@ Key constraints implemented:
   - Center: Scene + Map Placeholder.
   - Right: Round Log.
   - Round Log renders narrative + delta lines only (no raw JSON).
+  - Scene panel reads `GET /api/v1/map/view` and renders `entities_in_area` with verb buttons.
+  - Clicking a verb queues a structured action envelope in Action Planner (no immediate execution).
+  - Action Planner supports envelope types:
+    - `{type:"move", actor_id, to_area_id}`
+    - `{type:"scene_action", actor_id, action, target_id, params}`
+  - Round Runner compiles each envelope into one strict `UI_FLOW_STEP` turn call with `execution.actor_id`.
 - `frontend/debug.html`:
   - Request Builder, Response Viewer, Trace Log.
   - Copy request/response and export reproduction bundle.
