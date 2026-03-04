@@ -97,16 +97,18 @@ def test_inventory_add_applies_and_updates_actor_inventory() -> None:
 
 
 @pytest.mark.parametrize(
-    "args",
+    ("args", "expected_reason"),
     [
-        {"item_id": "", "quantity": 1},
-        {"item_id": "rope", "quantity": 0},
-        {"item_id": "rope", "quantity": -1},
-        {"item_id": "rope", "quantity": "2"},
-        {"item_id": "rope", "actor_id": "pc_999"},
+        ({"item_id": "", "quantity": 1}, "invalid_args"),
+        ({"item_id": "rope", "quantity": 0}, "invalid_args"),
+        ({"item_id": "rope", "quantity": -1}, "invalid_args"),
+        ({"item_id": "rope", "quantity": "2"}, "invalid_args"),
+        ({"item_id": "rope", "actor_id": "pc_999"}, "actor_context_mismatch"),
     ],
 )
-def test_inventory_add_rejects_invalid_args(args: Dict[str, Any]) -> None:
+def test_inventory_add_rejects_invalid_args(
+    args: Dict[str, Any], expected_reason: str
+) -> None:
     campaign = _make_campaign()
     call = ToolCall(id="call_inventory_bad", tool="inventory_add", args=args)
 
@@ -114,7 +116,7 @@ def test_inventory_add_rejects_invalid_args(args: Dict[str, Any]) -> None:
 
     assert applied_actions == []
     assert tool_feedback is not None
-    assert tool_feedback.failed_calls[0].reason == "invalid_args"
+    assert tool_feedback.failed_calls[0].reason == expected_reason
     assert campaign.actors["pc_001"].inventory == {}
 
 

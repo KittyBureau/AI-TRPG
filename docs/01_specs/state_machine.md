@@ -16,6 +16,8 @@
 - `alive`: tools may execute if allowed by allowlist.
 - Movement position changes require tool execution (move); narration alone does not move characters.
 - Item gain requires tool execution (`inventory_add`); narration alone does not change inventory.
+- Permissions are evaluated against the turn effective actor id (`execution.actor_id` -> `actor_id` -> selected active actor).
+- If a tool call includes `args.actor_id`, it must equal the turn effective actor id; otherwise it is rejected (`actor_context_mismatch`).
 
 `rules.hp_zero_ends_game`:
 

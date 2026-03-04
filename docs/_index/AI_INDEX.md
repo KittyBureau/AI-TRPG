@@ -19,6 +19,8 @@ Use this as the default reference for every task.
 **Rules**
 - Request/response shapes follow `backend/api/routes/*.py` and `backend/domain/models.py`.
 - `/api/v1/chat/turn` responses include `narrative_text`, `dialog_type`, `tool_calls`, `applied_actions`, `tool_feedback`, `conflict_report`, and `state_summary`; optional top-level `debug` may appear when debug settings are enabled.
+- `/api/v1/chat/turn` actor context resolution uses `execution.actor_id` first, then top-level `actor_id`, then `campaign.selected.active_actor_id`; response includes `effective_actor_id`.
+- `/api/v1/chat/turn` runs under a per-campaign serial lock; concurrent same-campaign turns return `409`.
 - `/api/v1/campaigns/{campaign_id}/world` resolves `campaign.selected.world_id` and returns world data; returns `409` when world_id is empty.
 - Changes to `Campaign`, `TurnLogEntry`, or API payloads must update `docs/01_specs/storage_layout.md` and `docs/02_guides/testing/api_test_guide.md`.
 **Checks**
@@ -57,6 +59,8 @@ Use this as the default reference for every task.
 - Movement state changes require a `move` tool_call; narration alone does not change positions.
 - Inventory gain requires an `inventory_add` tool_call; narration alone does not change inventory.
 - Injury/healing narration requires an `hp_delta` tool_call.
+- Actor-bound tool checks use the turn effective actor id (not UI-selected active actor by default).
+- Tool `args.actor_id` must match effective actor id when provided; mismatch is rejected as `actor_context_mismatch`.
 - `world_generate` is metadata-only in v1 (no map generation chain); missing resolved world id returns tool reason `world_id_missing`.
 - `actor_spawn` creates runtime actors in `campaign.actors`; explicit invalid `spawn_position` returns `invalid_args`.
 **Checks**
@@ -118,6 +122,7 @@ Use this as the default reference for every task.
 - Tool/state/map changes require running `backend/tests/test_map_generate.py`, `backend/tests/test_move_options.py`, and reviewing the manual map_generate guide when map logic changes.
 - `world_generate` changes require running `backend/tests/test_world_generate_tool.py` and the local smoke script `scripts/smoke_world_generate.ps1` (guide: `docs/02_guides/testing/world_generate_smoke_test.md`).
 - Frontend gameplay flow UI/protocol changes require running `scripts/smoke_frontend_flow.ps1` and checking `frontend/README_frontend.md` + `docs/02_guides/gameplay_flow.md` for sync.
+- Round play delta contract is frontend-owned in `frontend/play.js` and must keep stable keys: `actor_id`, `changed`, `position`, `hp`, `character_state`, `inventory`, `error`.
 - Spec changes in `docs/01_specs/**` must be reflected in this AI_INDEX.
 **Checks**
 - Run targeted tests and document results in the task output.

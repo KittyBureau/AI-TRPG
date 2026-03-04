@@ -181,6 +181,7 @@ class StateSummary(BaseModel):
     positions_child: Dict[str, Optional[str]] = Field(default_factory=dict)
     hp: Dict[str, int] = Field(default_factory=dict)
     character_states: Dict[str, str] = Field(default_factory=dict)
+    inventories: Dict[str, Dict[str, int]] = Field(default_factory=dict)
     objective: str = ""
     active_area_id: Optional[str] = None
     active_area_name: str = ""

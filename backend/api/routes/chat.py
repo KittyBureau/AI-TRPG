@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from backend.app.turn_service import SemanticGuardError, TurnService
+from backend.app.turn_service import CampaignBusyError, SemanticGuardError, TurnService
 from backend.infra.file_repo import FileRepo
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -22,9 +22,11 @@ class TurnRequest(BaseModel):
     campaign_id: str
     user_input: str
     actor_id: Optional[str] = None
+    execution: Optional[Dict[str, Any]] = None
 
 
 class TurnResponse(BaseModel):
+    effective_actor_id: str
     narrative_text: str
     dialog_type: str
     tool_calls: List[Dict[str, Any]] = Field(default_factory=list)
@@ -38,14 +40,22 @@ class TurnResponse(BaseModel):
 @router.post("/turn", response_model=TurnResponse)
 def submit_turn(request: TurnRequest) -> TurnResponse:
     service = _service()
+    execution_actor_id: Optional[str] = None
+    if isinstance(request.execution, dict):
+        candidate = request.execution.get("actor_id")
+        if isinstance(candidate, str) and candidate.strip():
+            execution_actor_id = candidate.strip()
+    effective_actor_id = execution_actor_id or request.actor_id
     try:
         response = service.submit_turn(
-            request.campaign_id, request.user_input, actor_id=request.actor_id
+            request.campaign_id, request.user_input, actor_id=effective_actor_id
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except SemanticGuardError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except CampaignBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return TurnResponse(**response)

@@ -49,6 +49,20 @@ def execute_tool_calls(
             )
             continue
 
+        actor_context_ok, actor_context_reason = _check_actor_context_consistency(
+            actor_id, call
+        )
+        if not actor_context_ok:
+            failed_calls.append(
+                FailedCall(
+                    id=call.id,
+                    tool=call.tool,
+                    status="rejected",
+                    reason=actor_context_reason,
+                )
+            )
+            continue
+
         allowed, reason = _check_state_permission(
             campaign, actor_id, call, character_facade
         )
@@ -81,6 +95,25 @@ def execute_tool_calls(
 
     tool_feedback = ToolFeedback(failed_calls=failed_calls) if failed_calls else None
     return applied_actions, tool_feedback
+
+
+def _check_actor_context_consistency(
+    effective_actor_id: str,
+    call: ToolCall,
+) -> Tuple[bool, str]:
+    if "actor_id" not in call.args:
+        return True, ""
+    raw_actor_id = call.args.get("actor_id")
+    if not isinstance(raw_actor_id, str):
+        return False, "invalid_args"
+    actor_id = raw_actor_id.strip()
+    if not actor_id:
+        return False, "invalid_args"
+    if actor_id != effective_actor_id:
+        return False, "actor_context_mismatch"
+    if actor_id != raw_actor_id:
+        call.args["actor_id"] = actor_id
+    return True, ""
 
 
 def _check_state_permission(
@@ -143,7 +176,7 @@ def _apply_tool_call(
 
 def _apply_move(
     campaign: Campaign,
-    active_actor_id: str,
+    effective_actor_id: str,
     call: ToolCall,
     timestamp: str,
     character_facade: CharacterFacade,
@@ -151,12 +184,12 @@ def _apply_move(
     actor_id = call.args.get("actor_id")
     to_area_id = call.args.get("to_area_id")
     if actor_id is None:
-        actor_id = active_actor_id
+        actor_id = effective_actor_id
     if "from_area_id" in call.args:
         return None
     if not isinstance(actor_id, str) or not isinstance(to_area_id, str):
         return None
-    if actor_id != active_actor_id:
+    if actor_id != effective_actor_id:
         return None
     if actor_id not in campaign.actors:
         return None
@@ -232,7 +265,7 @@ def _apply_hp_delta(
 
 def _apply_inventory_add(
     campaign: Campaign,
-    active_actor_id: str,
+    effective_actor_id: str,
     call: ToolCall,
     timestamp: str,
     character_facade: CharacterFacade,
@@ -241,8 +274,8 @@ def _apply_inventory_add(
     item_id = call.args.get("item_id")
     quantity = call.args.get("quantity", 1)
     if actor_id is None:
-        actor_id = active_actor_id
-    if not isinstance(actor_id, str) or actor_id != active_actor_id:
+        actor_id = effective_actor_id
+    if not isinstance(actor_id, str) or actor_id != effective_actor_id:
         return None
     if not isinstance(item_id, str):
         return None
@@ -278,14 +311,14 @@ def _apply_inventory_add(
 
 def _apply_move_options(
     campaign: Campaign,
-    active_actor_id: str,
+    effective_actor_id: str,
     call: ToolCall,
     timestamp: str,
     character_facade: CharacterFacade,
 ) -> Optional[AppliedAction]:
     actor_id = call.args.get("actor_id")
     if actor_id is None:
-        actor_id = active_actor_id
+        actor_id = effective_actor_id
     if not isinstance(actor_id, str):
         return None
     if actor_id not in campaign.actors:
@@ -446,11 +479,13 @@ def _apply_world_generate(
 
 def _apply_actor_spawn(
     campaign: Campaign,
-    active_actor_id: str,
+    effective_actor_id: str,
     call: ToolCall,
     timestamp: str,
 ) -> Tuple[Optional[AppliedAction], Optional[str]]:
-    result, error = spawn_actor(call.args, campaign, active_actor_id=active_actor_id)
+    result, error = spawn_actor(
+        call.args, campaign, active_actor_id=effective_actor_id
+    )
     if result is None:
         return None, error or "invalid_args"
     return (

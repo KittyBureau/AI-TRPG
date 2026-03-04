@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import threading
 from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
@@ -44,6 +45,32 @@ _CHARACTER_FACADE = create_runtime_character_facade()
 
 class SemanticGuardError(ValueError):
     pass
+
+
+class CampaignBusyError(RuntimeError):
+    pass
+
+
+class CampaignTurnLockRegistry:
+    def __init__(self) -> None:
+        self._guard = threading.Lock()
+        self._locks: Dict[str, threading.Lock] = {}
+
+    def try_acquire(self, campaign_id: str) -> Optional[threading.Lock]:
+        with self._guard:
+            lock = self._locks.get(campaign_id)
+            if lock is None:
+                lock = threading.Lock()
+                self._locks[campaign_id] = lock
+        if not lock.acquire(blocking=False):
+            return None
+        return lock
+
+    def release(self, lock: threading.Lock) -> None:
+        lock.release()
+
+
+_CAMPAIGN_TURN_LOCKS = CampaignTurnLockRegistry()
 
 
 class TurnService:
@@ -123,142 +150,154 @@ class TurnService:
     def submit_turn(
         self, campaign_id: str, user_input: str, actor_id: Optional[str] = None
     ) -> Dict[str, object]:
-        campaign = self.repo.get_campaign(campaign_id)
-        state_updated = _ensure_minimum_state(campaign)
-        if state_updated:
-            self.repo.save_campaign(campaign)
-        active_actor_id = actor_id or campaign.selected.active_actor_id
-        if active_actor_id not in campaign.selected.party_character_ids:
-            raise ValueError("actor_id not in party_character_ids")
-        if _mark_ended_if_needed(campaign):
-            self.repo.save_campaign(campaign)
-        _assert_turn_writable(campaign, active_actor_id)
-        response_debug = (
-            _build_turn_debug_payload(campaign, active_actor_id)
-            if campaign.settings_snapshot.dialog.turn_profile_trace_enabled
-            else None
-        )
-        system_prompt = _build_system_prompt(campaign, active_actor_id)
-        retry_count = 0
-        last_conflicts = []
-        debug_append = None
-        max_retries = 2
-
-        while True:
-            llm_output = self.llm.generate(system_prompt, user_input, debug_append)
-            raw_dialog_type = llm_output.get("dialog_type")
-            _enforce_dialog_type_guard(
-                raw_dialog_type,
-                strict_mode=campaign.settings_snapshot.dialog.strict_semantic_guard,
+        campaign_lock = _CAMPAIGN_TURN_LOCKS.try_acquire(campaign_id)
+        if campaign_lock is None:
+            raise CampaignBusyError(
+                "campaign turn is already running; wait and retry."
             )
-            dialog_type, dialog_type_source = _resolve_dialog_type(raw_dialog_type)
-            tool_calls = _parse_tool_calls(llm_output.get("tool_calls", []))
-            tool_calls, suppressed_failed_calls = _suppress_repeated_illegal_requests(
-                self.repo,
-                campaign_id,
-                tool_calls,
-            )
-            state_before = _snapshot_state(campaign)
-            applied_actions, tool_feedback = execute_tool_calls(
-                campaign, active_actor_id, tool_calls, repo=self.repo
-            )
-            if suppressed_failed_calls:
-                failed_calls = list(suppressed_failed_calls)
-                if tool_feedback:
-                    failed_calls.extend(tool_feedback.failed_calls)
-                tool_feedback = ToolFeedback(failed_calls=failed_calls)
-            state_after = _state_summary_dict(campaign, active_actor_id=active_actor_id)
-            conflicts = detect_conflicts(
-                llm_output.get("assistant_text", ""),
-                dialog_type,
-                applied_actions,
-                tool_feedback,
-                state_before,
-                state_after,
-                enable_text_checks=(
-                    campaign.settings_snapshot.dialog.conflict_text_checks_enabled
-                ),
-            )
-
-            if conflicts:
-                _restore_state(campaign, state_before)
-                last_conflicts = conflicts
-                if retry_count < max_retries:
-                    retry_count += 1
-                    debug_append = _build_debug_append(conflicts, campaign)
-                    continue
-                conflict_report = ConflictReport(
-                    retries=retry_count, conflicts=conflicts
-                )
-                return _build_failure_response(
-                    conflict_report,
-                    campaign,
-                    active_actor_id,
-                    dialog_type,
-                    debug_payload=response_debug,
-                )
-
-            turn_id = self.repo.next_turn_id(campaign_id)
-            turn_number = _turn_id_to_number(turn_id)
-            milestone_changed = _advance_milestone(
-                campaign,
-                turn_number=turn_number,
-                retry_count=retry_count,
-            )
-            lifecycle_changed = _mark_ended_if_needed(campaign)
-
-            if applied_actions or milestone_changed or lifecycle_changed:
+        try:
+            campaign = self.repo.get_campaign(campaign_id)
+            state_updated = _ensure_minimum_state(campaign)
+            if state_updated:
                 self.repo.save_campaign(campaign)
-
-            conflict_report = (
-                ConflictReport(retries=retry_count, conflicts=last_conflicts)
-                if retry_count > 0
+            effective_actor_id = actor_id or campaign.selected.active_actor_id
+            if effective_actor_id not in campaign.selected.party_character_ids:
+                raise ValueError("actor_id not in party_character_ids")
+            if _mark_ended_if_needed(campaign):
+                self.repo.save_campaign(campaign)
+            _assert_turn_writable(campaign, effective_actor_id)
+            response_debug = (
+                _build_turn_debug_payload(campaign, effective_actor_id)
+                if campaign.settings_snapshot.dialog.turn_profile_trace_enabled
                 else None
             )
-            timestamp = datetime.now(timezone.utc).isoformat()
-            entry = TurnLogEntry(
-                turn_id=turn_id,
-                timestamp=timestamp,
-                user_input=user_input,
-                dialog_type=dialog_type,
-                dialog_type_source=dialog_type_source,
-                settings_revision=campaign.settings_revision,
-                assistant_text=llm_output.get("assistant_text", ""),
-                assistant_structured=AssistantStructured(tool_calls=tool_calls),
-                applied_actions=applied_actions,
-                tool_feedback=tool_feedback,
-                conflict_report=conflict_report,
-                state_summary=StateSummary(active_actor_id=active_actor_id),
-            )
-            (
-                positions,
-                positions_parent,
-                positions_child,
-                hp,
-                character_states,
-            ) = _derive_character_state_maps(campaign)
-            entry.state_summary.positions = positions
-            entry.state_summary.positions_parent = positions_parent
-            entry.state_summary.positions_child = positions_child
-            entry.state_summary.hp = hp
-            entry.state_summary.character_states = character_states
-            entry.state_summary.objective = campaign.goal.text.strip()
-            (
-                entry.state_summary.active_area_id,
-                entry.state_summary.active_area_name,
-                entry.state_summary.active_area_description,
-            ) = _active_area_context(campaign, active_actor_id)
-            entry.state_summary.active_actor_inventory = _active_actor_inventory(
-                campaign, active_actor_id
-            )
-            self.repo.append_turn_log(campaign_id, entry)
-            return _build_success_response(
-                entry,
-                tool_calls,
-                applied_actions,
-                tool_feedback,
-                debug_payload=response_debug,
-            )
+            system_prompt = _build_system_prompt(campaign, effective_actor_id)
+            retry_count = 0
+            last_conflicts = []
+            debug_append = None
+            max_retries = 2
+
+            while True:
+                llm_output = self.llm.generate(system_prompt, user_input, debug_append)
+                raw_dialog_type = llm_output.get("dialog_type")
+                _enforce_dialog_type_guard(
+                    raw_dialog_type,
+                    strict_mode=campaign.settings_snapshot.dialog.strict_semantic_guard,
+                )
+                dialog_type, dialog_type_source = _resolve_dialog_type(raw_dialog_type)
+                tool_calls = _parse_tool_calls(llm_output.get("tool_calls", []))
+                tool_calls, suppressed_failed_calls = _suppress_repeated_illegal_requests(
+                    self.repo,
+                    campaign_id,
+                    tool_calls,
+                )
+                state_before = _snapshot_state(campaign)
+                applied_actions, tool_feedback = execute_tool_calls(
+                    campaign, effective_actor_id, tool_calls, repo=self.repo
+                )
+                if suppressed_failed_calls:
+                    failed_calls = list(suppressed_failed_calls)
+                    if tool_feedback:
+                        failed_calls.extend(tool_feedback.failed_calls)
+                    tool_feedback = ToolFeedback(failed_calls=failed_calls)
+                state_after = _state_summary_dict(
+                    campaign, active_actor_id=effective_actor_id
+                )
+                conflicts = detect_conflicts(
+                    llm_output.get("assistant_text", ""),
+                    dialog_type,
+                    applied_actions,
+                    tool_feedback,
+                    state_before,
+                    state_after,
+                    enable_text_checks=(
+                        campaign.settings_snapshot.dialog.conflict_text_checks_enabled
+                    ),
+                )
+
+                if conflicts:
+                    _restore_state(campaign, state_before)
+                    last_conflicts = conflicts
+                    if retry_count < max_retries:
+                        retry_count += 1
+                        debug_append = _build_debug_append(conflicts, campaign)
+                        continue
+                    conflict_report = ConflictReport(
+                        retries=retry_count, conflicts=conflicts
+                    )
+                    return _build_failure_response(
+                        conflict_report,
+                        campaign,
+                        effective_actor_id,
+                        dialog_type,
+                        debug_payload=response_debug,
+                    )
+
+                turn_id = self.repo.next_turn_id(campaign_id)
+                turn_number = _turn_id_to_number(turn_id)
+                milestone_changed = _advance_milestone(
+                    campaign,
+                    turn_number=turn_number,
+                    retry_count=retry_count,
+                )
+                lifecycle_changed = _mark_ended_if_needed(campaign)
+
+                if applied_actions or milestone_changed or lifecycle_changed:
+                    self.repo.save_campaign(campaign)
+
+                conflict_report = (
+                    ConflictReport(retries=retry_count, conflicts=last_conflicts)
+                    if retry_count > 0
+                    else None
+                )
+                timestamp = datetime.now(timezone.utc).isoformat()
+                entry = TurnLogEntry(
+                    turn_id=turn_id,
+                    timestamp=timestamp,
+                    user_input=user_input,
+                    dialog_type=dialog_type,
+                    dialog_type_source=dialog_type_source,
+                    settings_revision=campaign.settings_revision,
+                    assistant_text=llm_output.get("assistant_text", ""),
+                    assistant_structured=AssistantStructured(tool_calls=tool_calls),
+                    applied_actions=applied_actions,
+                    tool_feedback=tool_feedback,
+                    conflict_report=conflict_report,
+                    state_summary=StateSummary(active_actor_id=effective_actor_id),
+                )
+                (
+                    positions,
+                    positions_parent,
+                    positions_child,
+                    hp,
+                    character_states,
+                ) = _derive_character_state_maps(campaign)
+                entry.state_summary.positions = positions
+                entry.state_summary.positions_parent = positions_parent
+                entry.state_summary.positions_child = positions_child
+                entry.state_summary.hp = hp
+                entry.state_summary.character_states = character_states
+                entry.state_summary.inventories = _all_actor_inventories(campaign)
+                entry.state_summary.objective = campaign.goal.text.strip()
+                (
+                    entry.state_summary.active_area_id,
+                    entry.state_summary.active_area_name,
+                    entry.state_summary.active_area_description,
+                ) = _active_area_context(campaign, effective_actor_id)
+                entry.state_summary.active_actor_inventory = _active_actor_inventory(
+                    campaign, effective_actor_id
+                )
+                self.repo.append_turn_log(campaign_id, entry)
+                return _build_success_response(
+                    entry,
+                    tool_calls,
+                    applied_actions,
+                    tool_feedback,
+                    effective_actor_id=effective_actor_id,
+                    debug_payload=response_debug,
+                )
+        finally:
+            _CAMPAIGN_TURN_LOCKS.release(campaign_lock)
 
 
 def _ensure_minimum_state(campaign: Campaign) -> bool:
@@ -392,6 +431,7 @@ def _state_summary_dict(
         "positions_child": positions_child,
         "hp": hp,
         "character_states": character_states,
+        "inventories": _all_actor_inventories(campaign),
         "objective": campaign.goal.text.strip(),
         "active_area_id": active_area_id,
         "active_area_name": active_area_name,
@@ -432,20 +472,21 @@ def _build_actor_prompt_payloads(
     return actors_payload, adopted_profiles_by_actor
 
 
-def _build_system_prompt(campaign: Campaign, active_actor_id: str) -> str:
+def _build_system_prompt(campaign: Campaign, effective_actor_id: str) -> str:
     positions, _, _, hp, character_states = _derive_character_state_maps(campaign)
     actors_payload, adopted_profiles_by_actor = _build_actor_prompt_payloads(campaign)
     compress_enabled = campaign.settings_snapshot.context.compress_enabled
     if compress_enabled:
-        active_state = _CHARACTER_FACADE.get_state(campaign, active_actor_id)
+        active_state = _CHARACTER_FACADE.get_state(campaign, effective_actor_id)
         _, active_area_name, active_area_description = _active_area_context(
-            campaign, active_actor_id
+            campaign, effective_actor_id
         )
         payload = {
             "context_mode": "compressed",
             "dialog_types": DIALOG_TYPES,
             "default_dialog_type": DEFAULT_DIALOG_TYPE,
             "allowlist": campaign.allowlist,
+            "effective_actor_id": effective_actor_id,
             "selected": _model_to_dict(campaign.selected),
             "settings_snapshot": _model_to_dict(campaign.settings_snapshot),
             "goal": _model_to_dict(campaign.goal),
@@ -466,7 +507,9 @@ def _build_system_prompt(campaign: Campaign, active_actor_id: str) -> str:
             "positions": positions,
             "hp": hp,
             "character_states": character_states,
-            "active_actor_inventory": _active_actor_inventory(campaign, active_actor_id),
+            "active_actor_inventory": _active_actor_inventory(
+                campaign, effective_actor_id
+            ),
             "adopted_profiles_by_actor": adopted_profiles_by_actor,
             "response_format": {
                 "assistant_text": "string narrative",
@@ -480,6 +523,7 @@ def _build_system_prompt(campaign: Campaign, active_actor_id: str) -> str:
             "dialog_types": DIALOG_TYPES,
             "default_dialog_type": DEFAULT_DIALOG_TYPE,
             "allowlist": campaign.allowlist,
+            "effective_actor_id": effective_actor_id,
             "selected": _model_to_dict(campaign.selected),
             "settings_snapshot": _model_to_dict(campaign.settings_snapshot),
             "goal": _model_to_dict(campaign.goal),
@@ -523,13 +567,13 @@ def _build_system_prompt(campaign: Campaign, active_actor_id: str) -> str:
         "Examples (JSON outputs, schema-accurate). "
         "Example 1 (move intent is explicit and IDs are known; assistant_text empty; "
         "to_area_id must come from the user's specified target; actor_id may be omitted "
-        "to use Context.selected.active_actor_id; from_area_id is derived by the backend "
+        "to use Context.effective_actor_id; from_area_id is derived by the backend "
         "from Context.actors[...].position and MUST NOT be included): "
         "{\"assistant_text\":\"\",\"dialog_type\":\"scene_description\","
         "\"tool_calls\":[{\"id\":\"call_move_1\",\"tool\":\"move\",\"args\":"
         "{\"actor_id\":\"pc_001\",\"to_area_id\":\"area_002\"}}]} "
         "Example 2 (target unclear or user asks where they can go; use move_options; no movement yet; "
-        "actor_id should come from Context.selected.active_actor_id): "
+        "actor_id should come from Context.effective_actor_id): "
         "{\"assistant_text\":\"No movement yet. I will fetch 1-hop options.\","
         "\"dialog_type\":\"scene_description\","
         "\"tool_calls\":[{\"id\":\"call_move_options_1\",\"tool\":\"move_options\",\"args\":"
@@ -603,6 +647,8 @@ def _build_success_response(
     tool_calls: List[ToolCall],
     applied_actions: List[object],
     tool_feedback: object,
+    *,
+    effective_actor_id: str,
     debug_payload: Optional[Dict[str, object]] = None,
 ) -> Dict[str, object]:
     if hasattr(entry.state_summary, "model_dump"):
@@ -620,6 +666,7 @@ def _build_success_response(
         else None
     )
     response = {
+        "effective_actor_id": effective_actor_id,
         "narrative_text": entry.assistant_text,
         "dialog_type": entry.dialog_type,
         "tool_calls": tool_calls_payload,
@@ -636,11 +683,11 @@ def _build_success_response(
 def _build_failure_response(
     conflict_report: ConflictReport,
     campaign: Campaign,
-    active_actor_id: str,
+    effective_actor_id: str,
     dialog_type: str,
     debug_payload: Optional[Dict[str, object]] = None,
 ) -> Dict[str, object]:
-    state_summary = StateSummary(active_actor_id=active_actor_id)
+    state_summary = StateSummary(active_actor_id=effective_actor_id)
     (
         positions,
         positions_parent,
@@ -653,16 +700,18 @@ def _build_failure_response(
     state_summary.positions_child = positions_child
     state_summary.hp = hp
     state_summary.character_states = character_states
+    state_summary.inventories = _all_actor_inventories(campaign)
     state_summary.objective = campaign.goal.text.strip()
     (
         state_summary.active_area_id,
         state_summary.active_area_name,
         state_summary.active_area_description,
-    ) = _active_area_context(campaign, active_actor_id)
+    ) = _active_area_context(campaign, effective_actor_id)
     state_summary.active_actor_inventory = _active_actor_inventory(
-        campaign, active_actor_id
+        campaign, effective_actor_id
     )
     response = {
+        "effective_actor_id": effective_actor_id,
         "narrative_text": "",
         "dialog_type": dialog_type,
         "tool_calls": [],
@@ -703,6 +752,13 @@ def _active_actor_inventory(campaign: Campaign, actor_id: str) -> Dict[str, int]
             continue
         inventory[normalized_id] = qty
     return inventory
+
+
+def _all_actor_inventories(campaign: Campaign) -> Dict[str, Dict[str, int]]:
+    inventories: Dict[str, Dict[str, int]] = {}
+    for actor_id in sorted(campaign.actors.keys()):
+        inventories[actor_id] = _active_actor_inventory(campaign, actor_id)
+    return inventories
 
 
 def _assert_turn_writable(campaign: Campaign, active_actor_id: str) -> None:

@@ -17,6 +17,11 @@ python -m http.server 5173
 Then open `http://127.0.0.1:5173` and set **Base URL** to `http://127.0.0.1:8000`.
 The map view page reads the same base URL from local storage.
 
+Main entry points:
+- `http://127.0.0.1:5173/play.html` (play mode)
+- `http://127.0.0.1:5173/debug.html` (debug mode; redirects to raw console)
+- `http://127.0.0.1:5173/index.html` (raw debug console)
+
 Notes:
 - CORS is enabled for `http://localhost:*` and `http://127.0.0.1:*` in `backend/api/main.py`.
 - Opening the HTML directly via `file://` is not recommended; use a static server.
@@ -28,6 +33,18 @@ Notes:
 - Shows gameplay snapshot fields from `state_summary`: objective, active area description, and active actor inventory.
 - Records each request/response in local history with export/copy tools.
 - Includes a V1.1 operations panel for quick verification of lifecycle/milestone/settings/adoption workflows.
+
+## Play vs Debug pages
+
+- `frontend/play.html`: lightweight playable round UI.
+  - Accepts actor list input (CSV/newline).
+  - Supports editable initiative order (up/down).
+  - Supports configurable failure strategy (`Stop Round` / `Continue Round`).
+  - Runs one round by sequentially calling `/api/v1/chat/turn` with `execution.actor_id`.
+  - Shows narrative + fixed delta object + current snapshot.
+- `frontend/index.html` (and `frontend/debug.html` entry): debug console UI.
+  - Full raw request/response.
+  - Tool calls, failures, conflict report, and copy helpers.
 
 ## V1.1 quick operations in UI
 
@@ -113,3 +130,4 @@ What it validates:
 5. `move` via templated `/api/v1/chat/turn`
 6. one narrative-only `chat/turn` shape check (`narrative_text`, `state_summary`)
 7. state snapshot visibility (`state_summary.active_actor_inventory`, area/objective fields)
+8. play delta contract visibility (`actor_id`, `changed`, `position`, `hp`, `character_state`, `inventory`, `error`)

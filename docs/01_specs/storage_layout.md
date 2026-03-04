@@ -332,6 +332,12 @@ Each line is a JSON object:
       "pc_001": "alive",
       "pc_002": "alive"
     },
+    "inventories": {
+      "pc_001": {
+        "torch": 1
+      },
+      "pc_002": {}
+    },
     "objective": "Explore the nearby areas and recover one useful item.",
     "active_area_id": "area_002",
     "active_area_name": "Side Room",
@@ -346,7 +352,8 @@ Each line is a JSON object:
 Breaking change: move tool_calls no longer accept `from_area_id` in args. Any tool_call
 that includes `from_area_id` now fails with `invalid_args`. The backend still records
 `from_area_id` in applied_actions for audit.
-`actor_id` may be omitted in move args and then defaults to `selected.active_actor_id`.
+`actor_id` may be omitted in move args and then defaults to turn effective actor
+(`execution.actor_id` -> top-level `actor_id` -> `selected.active_actor_id`).
 `to_area_id` must exist and be reachable from the actor's current area; same-area move is rejected.
 When repeat-illegal-request suppression is triggered (same failed tool+args over the recent 3 turns),
 tool feedback may include reason `repeat_illegal_request`.
@@ -366,4 +373,4 @@ tool feedback may include reason `repeat_illegal_request`.
 | applied_actions | array | Applied tool results. |
 | tool_feedback | object | Failed tool calls with reasons. |
 | conflict_report | object | Conflict info when retries occur. |
-| state_summary | object | Includes `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, `active_actor_inventory`. |
+| state_summary | object | Includes `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, `inventories`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, `active_actor_inventory`. |

@@ -36,14 +36,14 @@ Contract:
 Examples (schema-accurate):
 
 Example 1 (move intent is explicit and IDs are known; assistant_text empty; actor_id/to_area_id
-must come from Context.selected.active_actor_id and the user's target; from_area_id is derived by the backend):
+must come from Context.effective_actor_id and the user's target; from_area_id is derived by the backend):
 
 ```json
 {"assistant_text":"","dialog_type":"scene_description","tool_calls":[{"id":"call_move_1","tool":"move","args":{"actor_id":"pc_001","to_area_id":"area_002"}}]}
 ```
 
 Example 2 (target unclear or user asks where they can go; use move_options; no movement yet; actor_id should
-come from Context.selected.active_actor_id):
+come from Context.effective_actor_id):
 
 ```json
 {"assistant_text":"No movement yet. I will fetch 1-hop options.","dialog_type":"scene_description","tool_calls":[{"id":"call_move_options_1","tool":"move_options","args":{"actor_id":"pc_001"}}]}
@@ -67,6 +67,21 @@ Example 3 (no tool call required; MUST respond with non-empty assistant_text):
 
 Allowlist is stored in `campaign.json` as `allowlist`.
 
+## Turn Execution Actor Context
+
+- `POST /api/v1/chat/turn` accepts execution context via `execution.actor_id`.
+- Compatibility mode: top-level `actor_id` is still accepted.
+- Effective execution actor resolution:
+  1. `execution.actor_id`
+  2. top-level `actor_id`
+  3. `campaign.selected.active_actor_id`
+- Tool permission checks and actor-bound tool execution use this effective actor id.
+- If a tool call provides `args.actor_id`, it must exactly match the resolved effective actor id for that turn.
+  - mismatch is rejected with `reason=actor_context_mismatch`
+  - empty/non-string `actor_id` is rejected with `reason=invalid_args`
+- `selected.active_actor_id` remains UI/session focus, not the hard authority for every turn.
+- Turn execution is serialized per campaign. Concurrent turns on the same campaign return `409 Conflict`.
+
 ## Tool Parameters
 
 ### move
@@ -77,11 +92,11 @@ Required args:
 
 Optional args:
 
-- `actor_id` (defaults to active actor id)
+- `actor_id` (defaults to effective actor id for this turn)
 
 Notes:
 
-- If provided, `actor_id` must match the active actor for the turn.
+- If provided, `actor_id` must match the effective actor for the turn.
 - `from_area_id` is derived by the backend from the actor's current position and MUST NOT be provided.
 - `to_area_id` must exist in `map.areas` and be 1-hop reachable from the actor's current area.
 - If `to_area_id` equals the current area, the call is rejected as `invalid_args`.
@@ -95,12 +110,13 @@ Required args:
 
 Optional args:
 
-- `actor_id` (defaults to active actor id)
+- `actor_id` (defaults to effective actor id for this turn)
 
 Notes:
 
 - Read-only tool; does not change actor positions or other state.
 - Returns 1-hop reachable neighbors from the actor's current area.
+- If provided, `actor_id` must match the effective actor for the turn.
 - Use for questions like "Can I move?" or "Where can I go?" without committing to movement.
 
 ### hp_delta
@@ -120,7 +136,7 @@ Required args:
 Optional args:
 
 - `quantity` (int, default `1`, must be `> 0`)
-- `actor_id` (defaults to active actor id; if provided must match active actor id)
+- `actor_id` (defaults to effective actor id for this turn; if provided must match it)
 
 Notes:
 
@@ -293,3 +309,4 @@ Move options result payload:
 - `actor_state_restricted`
 - `invalid_actor_state`
 - `world_id_missing`
+- `actor_context_mismatch`

@@ -23,6 +23,14 @@ Because of this, frontend flow buttons trigger tool execution through templated 
 - This can be non-deterministic depending on model behavior.
 - The UI supports small retries for tool steps.
 
+Turn actor context:
+
+- Preferred: send `execution.actor_id` in turn request.
+- Compatibility: top-level `actor_id` is still accepted.
+- Response includes `effective_actor_id` so frontend can confirm who executed the turn.
+- If tool calls include `args.actor_id`, it must match `effective_actor_id`; mismatch is rejected with `actor_context_mismatch`.
+- Same-campaign turn execution is serialized; concurrent requests can return `409 Conflict`.
+
 ## Backend Endpoints Used In This Flow
 
 - `POST /api/v1/campaign/create`
@@ -146,6 +154,11 @@ Expected check:
 
 Open `frontend/index.html` through a static server and set Base URL.
 
+Page roles:
+
+- `play.html`: player-facing round execution (narrative + delta + snapshot).
+- `debug.html` / `index.html`: debug-facing raw console (raw request/response, tool details).
+
 The page now includes these flow panels:
 
 - `World Setup`
@@ -171,6 +184,32 @@ Use `Run Full Flow` in `Flow Buttons` to run:
 
 - create campaign -> world -> map -> spawn -> move -> turn
 - Inventory feedback is visible in turn `state_summary.active_actor_inventory`.
+
+## Play page Round MVP
+
+`play.html` provides a minimal multi-actor round loop:
+
+1. Select campaign.
+2. Input actor ids (CSV/newline) and apply.
+3. Adjust initiative order using Up/Down.
+4. Fill one action text per actor.
+5. Choose failure strategy: `Stop Round` or `Continue Round`.
+6. Click **Run Round**.
+
+Each step calls `/api/v1/chat/turn` sequentially with:
+
+```json
+{
+  "campaign_id": "camp_0001",
+  "user_input": "actor action input",
+  "execution": { "actor_id": "pc_001" }
+}
+```
+
+The response `effective_actor_id` confirms execution identity. UI log stores a fixed
+delta object per actor step (derived from `state_summary`) with stable keys:
+`actor_id`, `changed`, `position`, `hp`, `character_state`, `inventory`, `error`.
+`inventory.changes[*]` uses `{item_id,before,after,delta}`.
 
 The flow result is shown in the panel output.
 
@@ -199,6 +238,7 @@ Optional:
 ## What to inspect after running
 
 - turn response:
+  - `effective_actor_id`
   - `narrative_text`
   - `tool_calls`
   - `applied_actions`

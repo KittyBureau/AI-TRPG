@@ -376,3 +376,23 @@ When validating current mainline behavior, include these checks:
      - `world_description`
      - `objective`
      - `start_area`
+
+5. Turn actor_context / effective actor checks
+   - request with execution context:
+     ```json
+     {
+       "campaign_id": "camp_0001",
+       "user_input": "....",
+       "execution": { "actor_id": "pc_002" }
+     }
+     ```
+   - response must include top-level `effective_actor_id == "pc_002"`.
+   - compatibility request without `execution.actor_id` must still work (fallback to selected active actor).
+
+6. Actor context mismatch rejection
+   - send a turn with `execution.actor_id="pc_002"` and a tool call carrying `args.actor_id="pc_001"`.
+   - expect failed call reason `actor_context_mismatch` and no state mutation for the wrong actor.
+
+7. Same-campaign turn lock
+   - trigger two concurrent `/api/v1/chat/turn` requests for the same `campaign_id`.
+   - expect one request can fail with `409 Conflict` and detail containing "already running".
