@@ -59,3 +59,43 @@ export async function getMapView(baseUrl, campaignId, actorId = null) {
   }
   return request(baseUrl, `/api/v1/map/view?${params.toString()}`);
 }
+
+export async function listCharacters(baseUrl) {
+  return request(baseUrl, "/api/v1/characters/library");
+}
+
+export async function createCharacter(baseUrl, payload) {
+  return request(baseUrl, "/api/v1/characters/library", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  });
+}
+
+export async function loadCharacterToCampaign(baseUrl, campaignId, characterId) {
+  if (!campaignId) {
+    return {
+      ok: false,
+      status: 400,
+      data: null,
+      text: "campaign_id is required",
+    };
+  }
+  if (!characterId) {
+    return {
+      ok: false,
+      status: 400,
+      data: null,
+      text: "character_id is required",
+    };
+  }
+  return request(
+    baseUrl,
+    `/api/v1/campaigns/${encodeURIComponent(campaignId)}/party/load`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ character_id: characterId }),
+    }
+  );
+}

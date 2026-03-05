@@ -1,9 +1,30 @@
+import {
+  createCharacter as createCharacterApi,
+  listCharacters,
+  loadCharacterToCampaign as loadCharacterToCampaignApi,
+} from "../api/api.js";
+
 const BASE_URL_KEY = "raw-console-base-url";
 
 const state = {
   baseUrl: "",
   statusMessage: "Idle",
   campaignId: null,
+  campaign: {
+    party_character_ids: [],
+    active_actor_id: "",
+  },
+  character: {
+    library: [],
+    selected_character_id: null,
+    create_form: {
+      name: "",
+      summary: "",
+      tags: "",
+    },
+    status: "idle",
+    error: null,
+  },
   campaignOptions: [],
   partyActors: [],
   initiativeOrder: [],
@@ -33,6 +54,31 @@ function emit() {
 
 function normalizeBaseUrl(raw) {
   return (raw || "").trim().replace(/\/+$/, "");
+}
+
+function applyPartyActorsToState(actorIds) {
+  const normalized = Array.isArray(actorIds)
+    ? actorIds
+        .filter((value) => typeof value === "string" && value.trim())
+        .map((value) => value.trim())
+    : [];
+  state.partyActors = [...new Set(normalized)];
+  state.campaign.party_character_ids = [...state.partyActors];
+  state.initiativeOrder = [...state.partyActors];
+  if (!state.plannerActorId || !state.partyActors.includes(state.plannerActorId)) {
+    state.plannerActorId = state.partyActors[0] || null;
+  }
+  const nextPlannedActions = {};
+  for (const actorId of state.initiativeOrder) {
+    const existing = state.plannedActions[actorId];
+    nextPlannedActions[actorId] = Array.isArray(existing) ? existing : [];
+  }
+  state.plannedActions = nextPlannedActions;
+  const nextInputs = {};
+  for (const actorId of state.initiativeOrder) {
+    nextInputs[actorId] = state.actionInputs[actorId] || "";
+  }
+  state.actionInputs = nextInputs;
 }
 
 function withEmit(emitChange = true) {
@@ -71,35 +117,144 @@ export function setCampaignOptions(campaigns) {
   if (!state.campaignId && state.campaignOptions.length > 0) {
     state.campaignId = state.campaignOptions[0].id;
   }
+  const selectedCampaign = state.campaignOptions.find(
+    (campaign) => campaign.id === state.campaignId
+  );
+  if (
+    selectedCampaign &&
+    typeof selectedCampaign.active_actor_id === "string"
+  ) {
+    state.campaign.active_actor_id = selectedCampaign.active_actor_id;
+  }
   emit();
 }
 
 export function setCampaignId(campaignId) {
   state.campaignId = campaignId || null;
+  const selectedCampaign = state.campaignOptions.find(
+    (campaign) => campaign.id === state.campaignId
+  );
+  if (
+    selectedCampaign &&
+    typeof selectedCampaign.active_actor_id === "string"
+  ) {
+    state.campaign.active_actor_id = selectedCampaign.active_actor_id;
+  }
   emit();
 }
 
 export function setPartyActors(actorIds) {
-  const normalized = Array.isArray(actorIds)
-    ? actorIds.filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim())
-    : [];
-  state.partyActors = [...new Set(normalized)];
-  state.initiativeOrder = [...state.partyActors];
-  if (!state.plannerActorId || !state.partyActors.includes(state.plannerActorId)) {
-    state.plannerActorId = state.partyActors[0] || null;
-  }
-  const nextPlannedActions = {};
-  for (const actorId of state.initiativeOrder) {
-    const existing = state.plannedActions[actorId];
-    nextPlannedActions[actorId] = Array.isArray(existing) ? existing : [];
-  }
-  state.plannedActions = nextPlannedActions;
-  const nextInputs = {};
-  for (const actorId of state.initiativeOrder) {
-    nextInputs[actorId] = state.actionInputs[actorId] || "";
-  }
-  state.actionInputs = nextInputs;
+  applyPartyActorsToState(actorIds);
   emit();
+}
+
+export function setCharacterCreateForm(nextForm) {
+  const patch =
+    nextForm && typeof nextForm === "object" && !Array.isArray(nextForm)
+      ? nextForm
+      : {};
+  state.character.create_form = {
+    ...state.character.create_form,
+    ...patch,
+  };
+  emit();
+}
+
+export function setCharacterSelectedId(characterId) {
+  state.character.selected_character_id =
+    typeof characterId === "string" && characterId.trim()
+      ? characterId.trim()
+      : null;
+  emit();
+}
+
+function parseTagsInput(tags) {
+  if (!tags || typeof tags !== "string") {
+    return [];
+  }
+  return [...new Set(tags.split(/[\n,]/).map((item) => item.trim()).filter(Boolean))];
+}
+
+function parseApiError(result) {
+  if (result?.data && typeof result.data.detail === "string") {
+    return result.data.detail;
+  }
+  if (typeof result?.text === "string" && result.text.trim()) {
+    return result.text.trim();
+  }
+  return `HTTP ${result?.status ?? 500}`;
+}
+
+export async function loadCharacterLibrary(baseUrl = state.baseUrl) {
+  state.character.status = "loading";
+  state.character.error = null;
+  emit();
+  const result = await listCharacters(baseUrl);
+  if (!result.ok || !Array.isArray(result.data)) {
+    state.character.status = "error";
+    state.character.error = parseApiError(result);
+    emit();
+    return result;
+  }
+  state.character.library = result.data;
+  state.character.status = "idle";
+  state.character.error = null;
+  emit();
+  return result;
+}
+
+export async function createCharacter(baseUrl = state.baseUrl, payload = null) {
+  state.character.status = "creating";
+  state.character.error = null;
+  emit();
+  const fallbackPayload = {
+    name: state.character.create_form.name || "",
+    summary: state.character.create_form.summary || "",
+    tags: parseTagsInput(state.character.create_form.tags || ""),
+  };
+  const requestPayload = payload && typeof payload === "object" ? payload : fallbackPayload;
+  const result = await createCharacterApi(baseUrl, requestPayload);
+  if (!result.ok || !result.data || typeof result.data.character_id !== "string") {
+    state.character.status = "error";
+    state.character.error = parseApiError(result);
+    emit();
+    return result;
+  }
+  state.character.selected_character_id = result.data.character_id;
+  state.character.status = "idle";
+  state.character.error = null;
+  emit();
+  return result;
+}
+
+export async function loadCharacterToCampaign(
+  campaignId = state.campaignId,
+  characterId,
+  baseUrl = state.baseUrl
+) {
+  state.character.status = "loading_to_campaign";
+  state.character.error = null;
+  emit();
+  const result = await loadCharacterToCampaignApi(baseUrl, campaignId, characterId);
+  if (!result.ok || !result.data) {
+    state.character.status = "error";
+    state.character.error = parseApiError(result);
+    emit();
+    return result;
+  }
+  if (Array.isArray(result.data.party_character_ids)) {
+    applyPartyActorsToState(result.data.party_character_ids);
+  }
+  if (typeof result.data.active_actor_id === "string") {
+    state.campaign.active_actor_id = result.data.active_actor_id;
+  }
+  if (typeof result.data.character_id === "string") {
+    state.character.selected_character_id = result.data.character_id;
+  }
+  state.character.status = "idle";
+  state.character.error = null;
+  emit();
+  return result;
 }
 
 export function setInitiativeOrder(order) {

@@ -267,6 +267,34 @@ Use this section as the source of truth for current API behavior. Do not infer b
 
 ## Frontend click-test checklist (V1.1 quick path)
 
+## Character Library + Party Load regression (`/api/v1/characters/library`, `/api/v1/campaigns/.../party/load`)
+
+Minimal checks after backend changes:
+
+1. `POST /api/v1/characters/library`
+   - request body: `{id?, name, summary?, tags?, meta?}`
+   - response contains: `ok`, `character_id`, `fact`
+   - writes `storage/characters_library/{character_id}.json`
+
+2. `GET /api/v1/characters/library`
+   - returns summary list: `[{id,name,summary,tags}]`
+   - source is only `storage/characters_library/*.json`
+   - broken JSON files are skipped (list still `200`)
+
+3. `GET /api/v1/characters/library/{character_id}`
+   - returns normalized full payload
+   - missing id returns `404`
+
+4. `POST /api/v1/campaigns/{campaign_id}/party/load`
+   - request body: `{character_id, set_active_if_empty?}`
+   - ensures `actors[character_id]` exists
+   - writes `actors[character_id].meta.profile`
+   - appends `selected.party_character_ids` when absent
+   - sets `selected.active_actor_id` only when active is empty and `set_active_if_empty=true`
+
+5. routing regression
+   - `/api/v1/openapi.json` includes `/characters/library` and `/campaigns/{campaign_id}/party/load`
+
 Using `frontend/index.html`:
 
 1. Create/select campaign

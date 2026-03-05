@@ -4,6 +4,8 @@ All persistent data is stored under the workspace root:
 
 ```
 storage/
+  characters_library/
+    ch_xxxxxxxx.json
   worlds/
     world_001/
       world.json
@@ -213,10 +215,30 @@ World lazy-create migration (v1):
 - Runtime authority remains `actors.*` values in `campaign.json`.
 - `positions`, `hp`, and `character_states` remain compatibility mirrors and
   should not be accessed directly in turn/tool critical paths.
-- Future fact/state file split is planned behind the same facade:
+- Implemented global character library path:
   - `storage/characters_library/{id}.json`
+- Future per-campaign fact/state split remains planned behind the same facade:
   - `storage/campaigns/{campaign_id}/characters/{id}.fact.json`
   - `storage/campaigns/{campaign_id}/characters/{id}.state.json`
+
+Character library minimum schema (MVP):
+
+```json
+{
+  "id": "ch_a1b2c3d4",
+  "name": "Name",
+  "summary": "",
+  "tags": [],
+  "meta": {}
+}
+```
+
+Rules:
+
+- `id` must match filename stem (`{id}.json`).
+- `name` is required and non-empty.
+- `summary` and `tags` are optional on input; they normalize to `""` and `[]`.
+- Extra fields are allowed and preserved.
 
 ## CharacterFact generated artifacts (temporary, non-authoritative)
 

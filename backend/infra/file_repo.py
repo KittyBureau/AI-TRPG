@@ -138,8 +138,10 @@ class FileRepo:
     def __init__(self, storage_root: Path) -> None:
         self.storage_root = storage_root
         self.campaigns_root = storage_root / "campaigns"
+        self.characters_library_root = storage_root / "characters_library"
         self.worlds_root = storage_root / "worlds"
         self.campaigns_root.mkdir(parents=True, exist_ok=True)
+        self.characters_library_root.mkdir(parents=True, exist_ok=True)
         self.worlds_root.mkdir(parents=True, exist_ok=True)
 
     def _campaign_dir(self, campaign_id: str) -> Path:
@@ -160,6 +162,20 @@ class FileRepo:
     def world_path(self, world_id: str) -> Path:
         return self._world_dir(world_id) / "world.json"
 
+    def _normalize_storage_id(self, value: str, *, label: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError(f"{label} is required")
+        if re.fullmatch(r"[a-zA-Z0-9_-]+", normalized) is None:
+            raise ValueError(f"invalid {label}: {value}")
+        return normalized
+
+    def _character_library_path(self, character_id: str) -> Path:
+        normalized_character_id = self._normalize_storage_id(
+            character_id, label="character_id"
+        )
+        return self.characters_library_root / f"{normalized_character_id}.json"
+
     def _sanitize_request_id(self, request_id: str) -> str:
         cleaned = re.sub(r"[^a-zA-Z0-9_-]+", "_", request_id.strip())
         return cleaned or "req"
@@ -176,6 +192,36 @@ class FileRepo:
             return str(relative).replace("\\", "/")
         except ValueError:
             return str(path).replace("\\", "/")
+
+    def list_character_library_paths(self) -> List[Path]:
+        return sorted(
+            self.characters_library_root.glob("*.json"),
+            key=lambda item: item.stem,
+        )
+
+    def load_character_library_fact(self, character_id: str) -> Optional[Dict[str, Any]]:
+        path = self._character_library_path(character_id)
+        if not path.exists():
+            return None
+        return self.load_character_library_fact_by_path(path)
+
+    def load_character_library_fact_by_path(
+        self,
+        path: Path,
+    ) -> Optional[Dict[str, Any]]:
+        payload = self._read_json_file(path)
+        if isinstance(payload, dict):
+            return payload
+        return None
+
+    def save_character_library_fact(
+        self,
+        character_id: str,
+        payload: Dict[str, Any],
+    ) -> Path:
+        path = self._character_library_path(character_id)
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return path
 
     def _read_json_file(self, path: Path) -> Optional[Any]:
         try:

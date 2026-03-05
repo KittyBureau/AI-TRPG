@@ -23,6 +23,11 @@ Use this as the default reference for every task.
 - `/api/v1/chat/turn` actor context resolution uses `execution.actor_id` first, then top-level `actor_id`, then `campaign.selected.active_actor_id`; response includes `effective_actor_id`.
 - `/api/v1/chat/turn` runs under a per-campaign serial lock; concurrent same-campaign turns return `409`.
 - `/api/v1/campaigns/{campaign_id}/world` resolves `campaign.selected.world_id` and returns world data; returns `409` when world_id is empty.
+- Character Library REST is deterministic and separate from chat-turn tool flow:
+  - `GET /api/v1/characters/library`
+  - `GET /api/v1/characters/library/{character_id}`
+  - `POST /api/v1/characters/library`
+  - `POST /api/v1/campaigns/{campaign_id}/party/load`
 - Changes to `Campaign`, `TurnLogEntry`, or API payloads must update `docs/01_specs/storage_layout.md` and `docs/02_guides/testing/api_test_guide.md`.
 **Checks**
 - Run the API test guide for any changed endpoints.
@@ -75,6 +80,7 @@ Use this as the default reference for every task.
 ## 6. Storage Layout & Persistence
 **Rules**
 - Campaigns persist at `storage/campaigns/<campaign_id>/campaign.json`; turns append to `turn_log.jsonl` via `FileRepo`.
+- Character library persists at `storage/characters_library/<character_id>.json`.
 - Worlds persist at `storage/worlds/<world_id>/world.json`; v1 API may lazily create a deterministic stub world on first read.
 - LLM config lives at `storage/config/llm_config.json`; keyring at `storage/secrets/keyring.json` with no env fallback.
 - Storage fields match `docs/01_specs/storage_layout.md`.

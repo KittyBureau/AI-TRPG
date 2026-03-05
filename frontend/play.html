@@ -11,7 +11,7 @@
       <header class="page-header">
         <div>
           <h1 class="page-title">AI-TRPG Play</h1>
-          <p class="page-subtitle">Panel-based playable UI (Round MVP)</p>
+          <p class="page-subtitle">Minimal panel flow for campaign and actors</p>
         </div>
         <div class="inline">
           <span class="status-chip" id="statusLine">Idle</span>
@@ -20,11 +20,12 @@
         </div>
       </header>
 
-      <main class="play-grid">
-        <div id="campaignMount" class="campaign-mount"></div>
-        <div id="leftMount" class="left-mount"></div>
-        <div id="centerMount" class="center-mount"></div>
-        <div id="rightMount" class="right-mount"></div>
+      <main class="main-container">
+        <section id="campaignPanel" class="panel"></section>
+        <section id="characterLibraryPanel" class="panel"></section>
+        <section id="partyPanel" class="panel"></section>
+        <section id="actorControlPanel" class="panel"></section>
+        <section id="debugPanel" class="panel"></section>
       </main>
     </div>
 

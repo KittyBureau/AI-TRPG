@@ -28,6 +28,8 @@ Current implementation is in:
 - Legacy compatibility maps (`positions`, `hp`, `character_states`) are kept as
   mirrors for compatibility paths and prompt/state-summary payload assembly.
 - No API contract changes are introduced by this boundary.
+- Party runtime ids are actor ids; current Party Load contract pins
+  `actor_id == character_id` for library-loaded characters.
 
 ## Usage Rule
 
@@ -42,11 +44,27 @@ Current implementation is in:
 - Runtime creation should prefer `create_runtime_character_facade` so fact reads
   can include generated draft files with soft-fail fallback.
 
+## Character Library (Implemented)
+
+Global library storage is implemented at:
+
+- `storage/characters_library/{id}.json`
+
+REST ownership:
+
+- `GET /api/v1/characters/library`
+- `GET /api/v1/characters/library/{character_id}`
+- `POST /api/v1/characters/library`
+- `POST /api/v1/campaigns/{campaign_id}/party/load`
+
+`party/load` writes static profile to `campaign.actors[character_id].meta.profile`,
+ensures membership in `selected.party_character_ids`, and only sets
+`selected.active_actor_id` when active is empty and `set_active_if_empty=true`.
+
 ## Planned Storage Migration (Not Implemented Yet)
 
 `StubCharacterFactStore` intentionally keeps TODO hooks for:
 
-- `storage/characters_library/{id}.json`
 - `storage/campaigns/{campaign_id}/characters/{id}.fact.json`
 
 Future per-campaign mutable state target:
