@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -23,8 +24,11 @@ def _create_campaign(
     *,
     campaign_id: str = "camp_0001",
     active_actor_id: str = "pc_001",
+    trace_enabled: bool = False,
 ) -> str:
     repo = FileRepo(tmp_path / "storage")
+    settings = SettingsSnapshot()
+    settings.dialog.turn_profile_trace_enabled = trace_enabled
     campaign = Campaign(
         id=campaign_id,
         selected=Selected(
@@ -33,7 +37,7 @@ def _create_campaign(
             party_character_ids=["pc_001"],
             active_actor_id=active_actor_id,
         ),
-        settings_snapshot=SettingsSnapshot(),
+        settings_snapshot=settings,
         goal=Goal(text="Goal", status="active"),
         milestone=Milestone(current="intro", last_advanced_turn=0),
         actors={
@@ -47,6 +51,20 @@ def _create_campaign(
     )
     repo.create_campaign(campaign)
     return campaign_id
+
+
+def _write_character_fact_template_manifest(
+    tmp_path: Path,
+    *,
+    entries: object,
+) -> None:
+    resources_dir = tmp_path / "resources"
+    templates_dir = resources_dir / "templates"
+    templates_dir.mkdir(parents=True, exist_ok=True)
+    (resources_dir / "manifest.json").write_text(
+        json.dumps({"templates": {"character_fact_stub": entries}}),
+        encoding="utf-8",
+    )
 
 
 def test_character_library_create_list_get_and_skip_invalid_json(
@@ -150,3 +168,169 @@ def test_party_load_sets_active_actor_only_when_empty(
     profile = campaign.actors["ch_hero002"].meta.get("profile")
     assert isinstance(profile, dict)
     assert profile["id"] == "ch_hero002"
+
+
+def test_character_library_upsert_applies_template_defaults_when_missing_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_character_fact_template_manifest(
+        tmp_path,
+        entries={
+            "version": "v1",
+            "path": "resources/templates/character_fact_stub_v1.json",
+            "enabled": True,
+        },
+    )
+    (tmp_path / "resources" / "templates" / "character_fact_stub_v1.json").write_text(
+        json.dumps(
+            {"summary": "from-template", "tags": ["seed"], "meta": {"origin": "tmpl"}}
+        ),
+        encoding="utf-8",
+    )
+    client = _client(tmp_path, monkeypatch)
+
+    resp = client.post(
+        "/api/v1/characters/library",
+        json={"name": "Template User"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    fact = body["fact"]
+    assert fact["name"] == "Template User"
+    assert fact["summary"] == "from-template"
+    assert fact["tags"] == ["seed"]
+    assert fact["meta"] == {"origin": "tmpl"}
+    assert body.get("debug") is None
+
+
+def test_character_library_upsert_does_not_override_user_fields_with_template(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    campaign_id = _create_campaign(
+        tmp_path,
+        campaign_id="camp_trace_001",
+        trace_enabled=True,
+    )
+    _write_character_fact_template_manifest(
+        tmp_path,
+        entries={
+            "version": "v1",
+            "path": "resources/templates/character_fact_stub_v1.json",
+            "enabled": True,
+        },
+    )
+    (tmp_path / "resources" / "templates" / "character_fact_stub_v1.json").write_text(
+        json.dumps(
+            {
+                "summary": "template-summary",
+                "tags": ["template-tag"],
+                "meta": {"origin": "template"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = _client(tmp_path, monkeypatch)
+
+    resp = client.post(
+        "/api/v1/characters/library",
+        json={
+            "campaign_id": campaign_id,
+            "name": "Manual User",
+            "summary": "manual-summary",
+            "tags": ["manual-tag"],
+            "meta": {"origin": "manual"},
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    fact = body["fact"]
+    assert fact["summary"] == "manual-summary"
+    assert fact["tags"] == ["manual-tag"]
+    assert fact["meta"] == {"origin": "manual"}
+    debug = body.get("debug")
+    assert isinstance(debug, dict)
+    usage = debug.get("template_usage")
+    assert isinstance(usage, dict)
+    resources = debug.get("resources")
+    assert isinstance(resources, dict)
+    for key in ("prompts", "flows", "schemas", "templates", "template_usage"):
+        assert key in resources
+        assert isinstance(resources[key], list)
+    assert resources["prompts"] == []
+    assert resources["flows"] == []
+    assert resources["schemas"] == []
+    assert resources["templates"] == []
+    usage_events = resources.get("template_usage")
+    assert isinstance(usage_events, list)
+    assert usage_events and usage_events[0] == usage
+    assert usage["name"] == "character_fact_stub"
+    assert usage["version"] == "v1"
+    assert usage["fallback"] is False
+    assert usage["applied"] is False
+
+
+def test_character_library_upsert_template_fallback_keeps_legacy_behavior(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    campaign_id = _create_campaign(
+        tmp_path,
+        campaign_id="camp_trace_002",
+        trace_enabled=True,
+    )
+    _write_character_fact_template_manifest(
+        tmp_path,
+        entries=[
+            {
+                "version": "v1",
+                "path": "resources/templates/character_fact_stub_v1.json",
+                "enabled": True,
+            },
+            {
+                "version": "v2",
+                "path": "resources/templates/character_fact_stub_v2.json",
+                "enabled": True,
+            },
+        ],
+    )
+    (tmp_path / "resources" / "templates" / "character_fact_stub_v1.json").write_text(
+        json.dumps({"summary": "v1", "tags": ["v1"], "meta": {"v": 1}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "resources" / "templates" / "character_fact_stub_v2.json").write_text(
+        json.dumps({"summary": "v2", "tags": ["v2"], "meta": {"v": 2}}),
+        encoding="utf-8",
+    )
+    client = _client(tmp_path, monkeypatch)
+
+    resp = client.post(
+        "/api/v1/characters/library",
+        json={"campaign_id": campaign_id, "name": "Fallback User"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    fact = body["fact"]
+    assert fact["summary"] == ""
+    assert fact["tags"] == []
+    assert fact.get("meta") is None
+    debug = body.get("debug")
+    assert isinstance(debug, dict)
+    usage = debug.get("template_usage")
+    assert isinstance(usage, dict)
+    resources = debug.get("resources")
+    assert isinstance(resources, dict)
+    for key in ("prompts", "flows", "schemas", "templates", "template_usage"):
+        assert key in resources
+        assert isinstance(resources[key], list)
+    assert resources["prompts"] == []
+    assert resources["flows"] == []
+    assert resources["schemas"] == []
+    assert resources["templates"] == []
+    usage_events = resources.get("template_usage")
+    assert isinstance(usage_events, list)
+    assert usage_events and usage_events[0] == usage
+    assert usage["name"] == "character_fact_stub"
+    assert usage["fallback"] is True
+    assert usage["applied"] is False

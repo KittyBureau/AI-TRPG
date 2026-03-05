@@ -340,6 +340,13 @@ Frontend check entry (legacy note):
    - Assert `Context.actors[*].meta` does not duplicate full `profile`.
    - Do not assert natural-language output text.
 
+4. Debug resources contract (new standard)
+   - When trace is enabled, prefer `debug.resources` as the primary contract.
+   - Required keys: `prompts`, `flows`, `schemas`, `templates`, `template_usage` (arrays, may be empty).
+   - Legacy fields (`debug.prompt`, `debug.flow`, `debug.schemas`, `debug.templates`, `debug.used_*`) remain for compatibility.
+   - For template adoption endpoints (`campaign/create`, `characters/library`), `debug.resources.template_usage[0]`
+     should match legacy `debug.template_usage`.
+
 ---
 
 ## Frontend one-click Run Loop check

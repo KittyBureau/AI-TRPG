@@ -12,6 +12,11 @@ import {
   subscribe,
   clearDebugTrace,
 } from "./store/store.js";
+import {
+  extractDebugResourcesFromResponseText,
+  formatResourceEntry,
+  RESOURCE_CATEGORIES,
+} from "./utils/debug_resources.js";
 import { clearPanelRegistry, registerPanel, renderPanels } from "./panels/registry.js";
 
 const statusLine = document.getElementById("statusLine");
@@ -193,6 +198,51 @@ function renderRequestBuilderPanel(body, state, context) {
 }
 
 function renderResponseViewerPanel(body, state, context) {
+  const resourcesTitle = document.createElement("h3");
+  resourcesTitle.textContent = "Debug Resources";
+  body.appendChild(resourcesTitle);
+
+  const resourcesView = extractDebugResourcesFromResponseText(state.debug.responseText || "");
+  const resourcesNote = document.createElement("div");
+  resourcesNote.className = "note";
+  if (!resourcesView.available) {
+    resourcesNote.textContent = resourcesView.reason || "trace disabled / no debug";
+    body.appendChild(resourcesNote);
+  } else {
+    resourcesNote.textContent =
+      resourcesView.source === "resources"
+        ? "Source: debug.resources"
+        : "Source: legacy debug fields";
+    body.appendChild(resourcesNote);
+
+    for (const category of RESOURCE_CATEGORIES) {
+      const entries = Array.isArray(resourcesView.resources?.[category])
+        ? resourcesView.resources[category]
+        : [];
+      const sectionTitle = document.createElement("div");
+      sectionTitle.className = "note";
+      sectionTitle.textContent = `${category} (${entries.length})`;
+      body.appendChild(sectionTitle);
+      if (!entries.length) {
+        const empty = document.createElement("div");
+        empty.className = "row note";
+        empty.textContent = "(empty)";
+        body.appendChild(empty);
+        continue;
+      }
+      for (const entry of entries) {
+        const row = document.createElement("div");
+        row.className = "row";
+        row.textContent = formatResourceEntry(category, entry);
+        body.appendChild(row);
+      }
+    }
+  }
+
+  const rawTitle = document.createElement("h3");
+  rawTitle.textContent = "Raw Response";
+  body.appendChild(rawTitle);
+
   const response = document.createElement("pre");
   response.className = "raw";
   response.textContent = state.debug.responseText || "No response yet.";

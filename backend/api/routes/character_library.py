@@ -11,6 +11,7 @@ from backend.app.character_library_service import (
     CharacterLibraryService,
     CharacterLibraryValidationError,
 )
+from backend.app.debug_resources import build_template_usage_debug
 from backend.app.party_load_service import PartyLoadService
 from backend.infra.file_repo import FileRepo
 
@@ -40,6 +41,7 @@ class CharacterLibrarySummary(BaseModel):
 class CharacterLibraryUpsertRequest(BaseModel):
     model_config = ConfigDict(extra="allow")
 
+    campaign_id: str | None = None
     id: str | None = None
     name: str
     summary: str | None = None
@@ -47,15 +49,16 @@ class CharacterLibraryUpsertRequest(BaseModel):
     meta: Dict[str, Any] | None = None
 
     def to_payload(self) -> Dict[str, Any]:
-        if hasattr(self, "model_dump"):
-            return self.model_dump()
-        return self.dict()
+        data = self.model_dump() if hasattr(self, "model_dump") else self.dict()
+        data.pop("campaign_id", None)
+        return data
 
 
 class CharacterLibraryUpsertResponse(BaseModel):
     ok: bool
     character_id: str
     fact: Dict[str, Any]
+    debug: Dict[str, Any] | None = None
 
 
 class PartyLoadRequest(BaseModel):
@@ -100,10 +103,17 @@ def upsert_character_library_fact(
 ) -> CharacterLibraryUpsertResponse:
     service = _character_library_service()
     try:
-        fact = service.upsert_fact(request.to_payload())
+        fact, template_usage = service.upsert_fact_with_template_usage(request.to_payload())
     except CharacterLibraryValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return CharacterLibraryUpsertResponse(ok=True, character_id=fact["id"], fact=fact)
+    trace_enabled = _campaign_trace_enabled(request.campaign_id)
+    debug_payload = build_template_usage_debug(template_usage) if trace_enabled else None
+    return CharacterLibraryUpsertResponse(
+        ok=True,
+        character_id=fact["id"],
+        fact=fact,
+        debug=debug_payload,
+    )
 
 
 @router.post(
@@ -130,3 +140,14 @@ def load_character_to_party(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return PartyLoadResponse(**result)
+
+
+def _campaign_trace_enabled(campaign_id: str | None) -> bool:
+    if not isinstance(campaign_id, str) or not campaign_id.strip():
+        return False
+    repo = _repo()
+    try:
+        campaign = repo.get_campaign(campaign_id.strip())
+    except FileNotFoundError:
+        return False
+    return bool(campaign.settings_snapshot.dialog.turn_profile_trace_enabled)

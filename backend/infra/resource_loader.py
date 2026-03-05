@@ -64,6 +64,20 @@ class LoadedTemplate:
         return self.source_hash
 
 
+@dataclass(frozen=True)
+class LoadedPolicy:
+    name: str
+    version: str
+    content: Dict[str, Any]
+    source_hash: str
+    path: str
+    fallback: bool
+
+    @property
+    def hash(self) -> str:
+        return self.source_hash
+
+
 def load_enabled_prompt(name: str, *, repo_root: Path | None = None) -> LoadedPrompt:
     root = repo_root or Path.cwd()
     manifest_path = root / "resources" / "manifest.json"
@@ -236,6 +250,94 @@ def load_enabled_template(name: str, *, repo_root: Path | None = None) -> Loaded
         source_hash=hashlib.sha256(raw_json.encode("utf-8")).hexdigest(),
         path=str(template_path),
     )
+
+
+def load_enabled_policy(name: str, *, repo_root: Path | None = None) -> LoadedPolicy:
+    root = repo_root or Path.cwd()
+    try:
+        manifest = _load_manifest(root / "resources" / "manifest.json")
+    except ResourceLoaderError:
+        return _fallback_policy(name)
+
+    policies = manifest.get("policies")
+    if not isinstance(policies, dict):
+        return _fallback_policy(name)
+    policy_entry = policies.get(name)
+    if policy_entry is None:
+        return _fallback_policy(name)
+
+    try:
+        entries = _normalize_resource_entries("policy", name, policy_entry)
+        enabled_entries = [entry for entry in entries if entry.get("enabled") is True]
+        if len(enabled_entries) != 1:
+            return _fallback_policy(name)
+        entry = enabled_entries[0]
+        version = entry["version"]
+        path_value = entry["path"]
+        policy_path = _resolve_resource_path(path_value, root=root)
+        if not policy_path.exists():
+            return _fallback_policy(name)
+        content = json.loads(policy_path.read_text(encoding="utf-8"))
+        if not isinstance(content, dict):
+            return _fallback_policy(name)
+    except (ResourceLoaderError, json.JSONDecodeError):
+        return _fallback_policy(name)
+
+    raw_json = json.dumps(content, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
+    return LoadedPolicy(
+        name=name,
+        version=version,
+        content=content,
+        source_hash=hashlib.sha256(raw_json.encode("utf-8")).hexdigest(),
+        path=str(policy_path),
+        fallback=False,
+    )
+
+
+def _fallback_policy(name: str) -> LoadedPolicy:
+    content = _builtin_policy_content(name)
+    version = str(content.get("version", "builtin-v1"))
+    raw_json = json.dumps(content, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
+    return LoadedPolicy(
+        name=name,
+        version=version,
+        content=content,
+        source_hash=hashlib.sha256(raw_json.encode("utf-8")).hexdigest(),
+        path=f"builtin://policy/{name}",
+        fallback=True,
+    )
+
+
+def _builtin_policy_content(name: str) -> Dict[str, Any]:
+    if name == "turn_tool_policy":
+        return {
+            "id": "turn_tool_policy",
+            "version": "builtin-v1",
+            "tool_allowlist_default": [
+                "move",
+                "hp_delta",
+                "inventory_add",
+                "map_generate",
+                "move_options",
+                "world_generate",
+                "actor_spawn",
+                "scene_action",
+            ],
+            "retry_policy": {
+                "max_conflict_retries": 2,
+                "repeat_illegal_request_window": 3,
+            },
+            "conflict_policy": {
+                "detector": "detect_conflicts",
+                "text_checks_toggle_setting": "dialog.conflict_text_checks_enabled",
+            },
+            "notes": "metadata-only resource; runtime behavior still controlled by code.",
+        }
+    return {
+        "id": name,
+        "version": "builtin-v1",
+        "notes": "metadata-only fallback policy descriptor.",
+    }
 
 
 def render_prompt(

@@ -54,6 +54,19 @@
           }
         ]
       }
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "$ref": "#/$defs/policyEntry" },
+          {
+            "type": "array",
+            "items": { "$ref": "#/$defs/policyEntry" },
+            "minItems": 1
+          }
+        ]
+      }
     }
   },
   "required": ["prompts"],
@@ -98,6 +111,19 @@
       "additionalProperties": true
     },
     "templateEntry": {
+      "type": "object",
+      "properties": {
+        "version": { "type": "string", "minLength": 1 },
+        "path": {
+          "type": "string",
+          "pattern": "^resources\\/.+"
+        },
+        "enabled": { "type": "boolean" }
+      },
+      "required": ["version", "path", "enabled"],
+      "additionalProperties": true
+    },
+    "policyEntry": {
       "type": "object",
       "properties": {
         "version": { "type": "string", "minLength": 1 },

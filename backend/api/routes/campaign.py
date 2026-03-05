@@ -6,6 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from backend.app.debug_resources import build_template_usage_debug
 from backend.app.turn_service import TurnService
 from backend.infra.file_repo import FileRepo
 
@@ -27,6 +28,7 @@ class CreateCampaignRequest(BaseModel):
 
 class CreateCampaignResponse(BaseModel):
     campaign_id: str
+    debug: Optional[dict] = None
 
 
 class CampaignSummaryResponse(BaseModel):
@@ -91,19 +93,16 @@ class CampaignGetResponse(BaseModel):
 def create_campaign(request: CreateCampaignRequest) -> CreateCampaignResponse:
     world_id = request.world_id or "world_001"
     map_id = request.map_id or "map_001"
-    party_character_ids = request.party_character_ids or ["pc_001"]
-    active_actor_id = request.active_actor_id or party_character_ids[0]
-    if active_actor_id not in party_character_ids:
-        party_character_ids = [active_actor_id] + party_character_ids
 
     service = _service()
-    campaign_id = service.create_campaign(
+    campaign_id, template_usage, trace_enabled = service.create_campaign_with_template_usage(
         world_id=world_id,
         map_id=map_id,
-        party_character_ids=party_character_ids,
-        active_actor_id=active_actor_id,
+        party_character_ids=request.party_character_ids,
+        active_actor_id=request.active_actor_id,
     )
-    return CreateCampaignResponse(campaign_id=campaign_id)
+    debug_payload = build_template_usage_debug(template_usage) if trace_enabled else None
+    return CreateCampaignResponse(campaign_id=campaign_id, debug=debug_payload)
 
 
 @router.get("/list", response_model=CampaignListResponse)

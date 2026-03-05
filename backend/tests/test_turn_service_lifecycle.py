@@ -18,6 +18,7 @@ from backend.domain.models import (
     SettingsSnapshot,
 )
 from backend.infra.file_repo import FileRepo
+from backend.infra.resource_loader import load_enabled_policy, load_enabled_schema
 
 
 class _StubLLM:
@@ -362,6 +363,21 @@ def test_turn_profile_trace_uses_external_prompt_metadata_when_enabled(
     assert prompt_debug["variables"] == ["CONTEXT_JSON"]
     assert prompt_debug["fallback"] is False
     assert "used_prompt_fallback" not in debug
+    resources = debug.get("resources")
+    assert isinstance(resources, dict)
+    for key in ("prompts", "flows", "schemas", "templates", "template_usage"):
+        assert key in resources
+        assert isinstance(resources[key], list)
+    prompts_resources = resources.get("prompts")
+    assert isinstance(prompts_resources, list) and prompts_resources
+    prompt_resource = prompts_resources[0]
+    assert prompt_resource["name"] == prompt_debug["name"]
+    assert prompt_resource["version"] == prompt_debug["version"]
+    assert prompt_resource["source_hash"] == prompt_debug["source_hash"]
+    assert prompt_resource["rendered_hash"] == prompt_debug["rendered_hash"]
+    assert prompt_resource["source_hash"] == debug["used_prompt_hash"]
+    assert prompt_resource["rendered_hash"] == debug["used_prompt_rendered_hash"]
+    assert prompt_resource["fallback"] == prompt_debug["fallback"]
 
 
 def test_turn_profile_trace_falls_back_when_multiple_enabled_prompt_entries(
@@ -482,6 +498,18 @@ def test_turn_profile_trace_includes_flow_metadata_when_enabled(
     assert flow_debug["hash"] == expected_hash
     assert flow_debug["fallback"] is False
     assert "used_flow_fallback" not in debug
+    resources = debug.get("resources")
+    assert isinstance(resources, dict)
+    flows_resources = resources.get("flows")
+    assert isinstance(flows_resources, list) and flows_resources
+    flow_resource = flows_resources[0]
+    assert flow_resource["name"] == flow_debug["name"]
+    assert flow_resource["version"] == flow_debug["version"]
+    assert flow_resource["hash"] == flow_debug["hash"]
+    assert flow_resource["fallback"] == flow_debug["fallback"]
+    assert flow_resource["name"] == debug["used_flow_name"]
+    assert flow_resource["version"] == debug["used_flow_version"]
+    assert flow_resource["hash"] == debug["used_flow_hash"]
 
 
 def test_turn_profile_trace_flow_fallback_on_multiple_enabled_entries(
@@ -641,6 +669,111 @@ def test_turn_profile_trace_includes_schema_metadata_when_enabled(
     assert isinstance(by_name["character_fact"]["hash"], str)
     assert by_name["campaign_selected"]["hash"]
     assert by_name["character_fact"]["hash"]
+    resources = debug.get("resources")
+    assert isinstance(resources, dict)
+    resources_schemas = resources.get("schemas")
+    assert isinstance(resources_schemas, list)
+    assert resources_schemas == schemas_debug
+
+
+def test_turn_profile_trace_includes_debug_resources_schema_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_0013b")
+    campaign.settings_snapshot.dialog.turn_profile_trace_enabled = True
+    repo.save_campaign(campaign)
+
+    resources_dir = tmp_path / "resources"
+    prompts_dir = resources_dir / "prompts"
+    flows_dir = resources_dir / "flows"
+    schemas_dir = resources_dir / "schemas"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    flows_dir.mkdir(parents=True, exist_ok=True)
+    schemas_dir.mkdir(parents=True, exist_ok=True)
+
+    (prompts_dir / "turn_profile_default_v1.txt").write_text(
+        "Prompt trace with debug schema. Context: {{CONTEXT_JSON}}", encoding="utf-8"
+    )
+    (flows_dir / "play_turn_basic_v1.json").write_text(
+        json.dumps({"id": "play_turn_basic", "version": "v1", "steps": []}),
+        encoding="utf-8",
+    )
+    (schemas_dir / "campaign_selected_v1.schema.json").write_text(
+        json.dumps({"type": "object"}), encoding="utf-8"
+    )
+    (schemas_dir / "character_fact_v1.schema.json").write_text(
+        json.dumps({"type": "object"}), encoding="utf-8"
+    )
+    debug_schema = {
+        "type": "object",
+        "properties": {
+            "resources": {"type": "object"}
+        },
+    }
+    (schemas_dir / "debug_resources_v1.schema.json").write_text(
+        json.dumps(debug_schema), encoding="utf-8"
+    )
+    (resources_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "prompts": {
+                    "turn_profile_default": {
+                        "version": "v1",
+                        "path": "resources/prompts/turn_profile_default_v1.txt",
+                        "enabled": True,
+                    }
+                },
+                "flows": {
+                    "play_turn_basic": {
+                        "version": "v1",
+                        "path": "resources/flows/play_turn_basic_v1.json",
+                        "enabled": True,
+                    }
+                },
+                "schemas": {
+                    "campaign_selected": {
+                        "version": "v1",
+                        "path": "resources/schemas/campaign_selected_v1.schema.json",
+                        "enabled": True,
+                    },
+                    "character_fact": {
+                        "version": "v1",
+                        "path": "resources/schemas/character_fact_v1.schema.json",
+                        "enabled": True,
+                    },
+                    "debug_resources_v1": {
+                        "version": "v1",
+                        "path": "resources/schemas/debug_resources_v1.schema.json",
+                        "enabled": True,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = service.submit_turn("camp_0013b", "hello")
+    debug = result.get("debug")
+    assert isinstance(debug, dict)
+    resources = debug.get("resources")
+    assert isinstance(resources, dict)
+    schemas_debug = resources.get("schemas")
+    assert isinstance(schemas_debug, list)
+    by_name = {
+        item["name"]: item
+        for item in schemas_debug
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    }
+    assert "debug_resources_v1" in by_name
+    schema_meta = by_name["debug_resources_v1"]
+    assert schema_meta["version"] == "v1"
+    assert schema_meta["fallback"] is False
+
+    loaded = load_enabled_schema("debug_resources_v1", repo_root=tmp_path)
+    assert schema_meta["name"] == loaded.name
+    assert schema_meta["version"] == loaded.version
+    assert schema_meta["hash"] == loaded.source_hash
 
 
 def test_turn_profile_trace_schema_fallback_on_multiple_enabled_entries(
@@ -820,6 +953,14 @@ def test_turn_profile_trace_includes_template_metadata_when_enabled(
     result = service.submit_turn("camp_0015", "hello")
     debug = result.get("debug")
     assert isinstance(debug, dict)
+    resources = debug.get("resources")
+    assert isinstance(resources, dict)
+    assert isinstance(resources.get("prompts"), list)
+    assert isinstance(resources.get("flows"), list)
+    assert isinstance(resources.get("schemas"), list)
+    assert isinstance(resources.get("templates"), list)
+    assert isinstance(resources.get("template_usage"), list)
+    assert resources.get("template_usage") == []
     templates_debug = debug.get("templates")
     assert isinstance(templates_debug, list)
     by_name = {
@@ -837,6 +978,145 @@ def test_turn_profile_trace_includes_template_metadata_when_enabled(
     assert isinstance(by_name["character_fact_stub"]["hash"], str)
     assert by_name["campaign_stub"]["hash"]
     assert by_name["character_fact_stub"]["hash"]
+    resources_templates = resources.get("templates")
+    assert isinstance(resources_templates, list)
+    assert resources_templates == templates_debug
+
+
+def test_turn_profile_trace_includes_policy_metadata_when_enabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_0015b")
+    campaign.settings_snapshot.dialog.turn_profile_trace_enabled = True
+    repo.save_campaign(campaign)
+
+    resources_dir = tmp_path / "resources"
+    prompts_dir = resources_dir / "prompts"
+    flows_dir = resources_dir / "flows"
+    schemas_dir = resources_dir / "schemas"
+    templates_dir = resources_dir / "templates"
+    policies_dir = resources_dir / "policies"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    flows_dir.mkdir(parents=True, exist_ok=True)
+    schemas_dir.mkdir(parents=True, exist_ok=True)
+    templates_dir.mkdir(parents=True, exist_ok=True)
+    policies_dir.mkdir(parents=True, exist_ok=True)
+
+    (prompts_dir / "turn_profile_default_v1.txt").write_text(
+        "Prompt with policy trace. Context: {{CONTEXT_JSON}}", encoding="utf-8"
+    )
+    (flows_dir / "play_turn_basic_v1.json").write_text(
+        json.dumps({"id": "play_turn_basic", "version": "v1", "steps": []}),
+        encoding="utf-8",
+    )
+    (schemas_dir / "campaign_selected_v1.schema.json").write_text(
+        json.dumps({"type": "object"}), encoding="utf-8"
+    )
+    (schemas_dir / "character_fact_v1.schema.json").write_text(
+        json.dumps({"type": "object"}), encoding="utf-8"
+    )
+    (schemas_dir / "debug_resources_v1.schema.json").write_text(
+        json.dumps({"type": "object"}), encoding="utf-8"
+    )
+    (templates_dir / "campaign_stub_v1.json").write_text(
+        json.dumps({"selected": {"party_character_ids": [], "active_actor_id": ""}}),
+        encoding="utf-8",
+    )
+    (templates_dir / "character_fact_stub_v1.json").write_text(
+        json.dumps({"name": "", "summary": "", "tags": [], "meta": {}}),
+        encoding="utf-8",
+    )
+    (policies_dir / "tool_policy_v1.json").write_text(
+        json.dumps(
+            {
+                "id": "turn_tool_policy",
+                "version": "v1",
+                "retry_policy": {"max_conflict_retries": 2},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    (resources_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "prompts": {
+                    "turn_profile_default": {
+                        "version": "v1",
+                        "path": "resources/prompts/turn_profile_default_v1.txt",
+                        "enabled": True,
+                    }
+                },
+                "flows": {
+                    "play_turn_basic": {
+                        "version": "v1",
+                        "path": "resources/flows/play_turn_basic_v1.json",
+                        "enabled": True,
+                    }
+                },
+                "schemas": {
+                    "campaign_selected": {
+                        "version": "v1",
+                        "path": "resources/schemas/campaign_selected_v1.schema.json",
+                        "enabled": True,
+                    },
+                    "character_fact": {
+                        "version": "v1",
+                        "path": "resources/schemas/character_fact_v1.schema.json",
+                        "enabled": True,
+                    },
+                    "debug_resources_v1": {
+                        "version": "v1",
+                        "path": "resources/schemas/debug_resources_v1.schema.json",
+                        "enabled": True,
+                    },
+                },
+                "templates": {
+                    "campaign_stub": {
+                        "version": "v1",
+                        "path": "resources/templates/campaign_stub_v1.json",
+                        "enabled": True,
+                    },
+                    "character_fact_stub": {
+                        "version": "v1",
+                        "path": "resources/templates/character_fact_stub_v1.json",
+                        "enabled": True,
+                    },
+                },
+                "policies": {
+                    "turn_tool_policy": {
+                        "version": "v1",
+                        "path": "resources/policies/tool_policy_v1.json",
+                        "enabled": True,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = service.submit_turn("camp_0015b", "hello")
+    debug = result.get("debug")
+    assert isinstance(debug, dict)
+    resources = debug.get("resources")
+    assert isinstance(resources, dict)
+    policies_debug = resources.get("policies")
+    assert isinstance(policies_debug, list)
+    by_name = {
+        item["name"]: item
+        for item in policies_debug
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    }
+    assert "turn_tool_policy" in by_name
+    policy_meta = by_name["turn_tool_policy"]
+    assert policy_meta["version"] == "v1"
+    assert policy_meta["fallback"] is False
+
+    loaded = load_enabled_policy("turn_tool_policy", repo_root=tmp_path)
+    assert policy_meta["name"] == loaded.name
+    assert policy_meta["version"] == loaded.version
+    assert policy_meta["hash"] == loaded.source_hash
 
 
 def test_turn_profile_trace_template_fallback_on_multiple_enabled_entries(

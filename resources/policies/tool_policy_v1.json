@@ -1,0 +1,24 @@
+{
+  "id": "turn_tool_policy",
+  "version": "v1",
+  "scope": "turn",
+  "tool_allowlist_default": [
+    "move",
+    "hp_delta",
+    "inventory_add",
+    "map_generate",
+    "move_options",
+    "world_generate",
+    "actor_spawn",
+    "scene_action"
+  ],
+  "retry_policy": {
+    "max_conflict_retries": 2,
+    "repeat_illegal_request_window": 3
+  },
+  "conflict_policy": {
+    "detector": "detect_conflicts",
+    "text_checks_toggle_setting": "dialog.conflict_text_checks_enabled"
+  },
+  "notes": "metadata-only resource; runtime behavior still controlled by existing code paths."
+}

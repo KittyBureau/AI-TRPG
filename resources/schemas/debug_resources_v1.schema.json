@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Debug Resources v1",
+  "type": "object",
+  "properties": {
+    "resources": {
+      "type": "object",
+      "properties": {
+        "prompts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "version": { "type": "string" },
+              "source_hash": { "type": "string" },
+              "rendered_hash": { "type": "string" },
+              "hash": { "type": "string" },
+              "fallback": { "type": "boolean" }
+            },
+            "required": ["name", "version", "fallback"],
+            "additionalProperties": true
+          }
+        },
+        "flows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "version": { "type": "string" },
+              "hash": { "type": "string" },
+              "fallback": { "type": "boolean" }
+            },
+            "required": ["name", "version", "fallback"],
+            "additionalProperties": true
+          }
+        },
+        "schemas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "version": { "type": "string" },
+              "hash": { "type": "string" },
+              "fallback": { "type": "boolean" }
+            },
+            "required": ["name", "version", "fallback"],
+            "additionalProperties": true
+          }
+        },
+        "templates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "version": { "type": "string" },
+              "hash": { "type": "string" },
+              "fallback": { "type": "boolean" }
+            },
+            "required": ["name", "version", "fallback"],
+            "additionalProperties": true
+          }
+        },
+        "template_usage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "version": { "type": "string" },
+              "hash": { "type": "string" },
+              "fallback": { "type": "boolean" },
+              "applied": { "type": "boolean" }
+            },
+            "required": ["name", "version", "fallback"],
+            "additionalProperties": true
+          }
+        }
+      },
+      "required": ["prompts", "flows", "schemas", "templates", "template_usage"],
+      "additionalProperties": true
+    }
+  },
+  "required": ["resources"],
+  "additionalProperties": true
+}

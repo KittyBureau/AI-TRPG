@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 
 from backend.app.character_facade_factory import create_runtime_character_facade
 from backend.app.conflict_detector import detect_conflicts
+from backend.app.debug_resources import build_resources_payload
 from backend.app.tool_executor import execute_tool_calls
 from backend.domain.character_access import (
     CharacterState,
@@ -43,10 +44,12 @@ from backend.infra.file_repo import FileRepo
 from backend.infra.llm_client import LLMClient
 from backend.infra.resource_loader import (
     LoadedFlow,
+    LoadedPolicy,
     LoadedSchema,
     LoadedTemplate,
     ResourceLoaderError,
     load_enabled_flow,
+    load_enabled_policy,
     load_enabled_prompt,
     load_enabled_schema,
     load_enabled_template,
@@ -56,8 +59,10 @@ from backend.infra.resource_loader import (
 _CHARACTER_FACADE = create_runtime_character_facade()
 _TURN_PROMPT_NAME = "turn_profile_default"
 _TURN_FLOW_NAME = "play_turn_basic"
-_TURN_SCHEMA_NAMES = ("campaign_selected", "character_fact")
+_TURN_SCHEMA_NAMES = ("campaign_selected", "character_fact", "debug_resources_v1")
 _TURN_TEMPLATE_NAMES = ("campaign_stub", "character_fact_stub")
+_TURN_POLICY_NAMES = ("turn_tool_policy",)
+_CREATE_CAMPAIGN_TEMPLATE_NAME = "campaign_stub"
 
 
 class SemanticGuardError(ValueError):
@@ -251,6 +256,90 @@ def _load_turn_templates(repo: FileRepo) -> List[Dict[str, object]]:
     return [_load_turn_template(repo, name) for name in _TURN_TEMPLATE_NAMES]
 
 
+def _load_turn_policy(repo: FileRepo, policy_name: str) -> Dict[str, object]:
+    repo_root = repo.storage_root.parent
+    loaded: LoadedPolicy = load_enabled_policy(policy_name, repo_root=repo_root)
+    return {
+        "name": loaded.name,
+        "version": loaded.version,
+        "source_hash": loaded.source_hash,
+        "content": loaded.content,
+        "fallback": loaded.fallback,
+    }
+
+
+def _load_turn_policies(repo: FileRepo) -> List[Dict[str, object]]:
+    return [_load_turn_policy(repo, name) for name in _TURN_POLICY_NAMES]
+
+
+def _load_campaign_selected_template(
+    repo: FileRepo,
+) -> tuple[Dict[str, object], Dict[str, object]]:
+    repo_root = repo.storage_root.parent
+    try:
+        loaded: LoadedTemplate = load_enabled_template(
+            _CREATE_CAMPAIGN_TEMPLATE_NAME, repo_root=repo_root
+        )
+        content = loaded.content if isinstance(loaded.content, dict) else {}
+        selected = content.get("selected") if isinstance(content.get("selected"), dict) else {}
+        defaults: Dict[str, object] = {}
+        party = selected.get("party_character_ids")
+        if isinstance(party, list) and all(isinstance(item, str) for item in party):
+            defaults["party_character_ids"] = list(party)
+        active = selected.get("active_actor_id")
+        if isinstance(active, str):
+            defaults["active_actor_id"] = active
+        return (
+            defaults,
+            {
+                "name": loaded.name,
+                "version": loaded.version,
+                "hash": loaded.source_hash,
+                "fallback": False,
+            },
+        )
+    except ResourceLoaderError:
+        return (
+            {},
+            {
+                "name": _CREATE_CAMPAIGN_TEMPLATE_NAME,
+                "version": "builtin-v1",
+                "hash": "",
+                "fallback": True,
+            },
+        )
+
+
+def _resolve_selected_defaults(
+    *,
+    party_character_ids: Optional[List[str]],
+    active_actor_id: Optional[str],
+    template_defaults: Dict[str, object],
+) -> tuple[List[str], str, bool]:
+    applied = False
+
+    party_candidate = party_character_ids
+    if party_candidate is None and "party_character_ids" in template_defaults:
+        raw_party = template_defaults.get("party_character_ids")
+        if isinstance(raw_party, list) and all(isinstance(item, str) for item in raw_party):
+            party_candidate = list(raw_party)
+            applied = True
+
+    active_candidate = active_actor_id
+    if active_candidate is None and "active_actor_id" in template_defaults:
+        raw_active = template_defaults.get("active_actor_id")
+        if isinstance(raw_active, str):
+            active_candidate = raw_active
+            applied = True
+
+    resolved_party = party_candidate or ["pc_001"]
+    resolved_active = active_candidate or resolved_party[0]
+    if resolved_active not in resolved_party:
+        resolved_party = [resolved_active] + resolved_party
+
+    return list(resolved_party), resolved_active, applied
+
+
 class CampaignTurnLockRegistry:
     def __init__(self) -> None:
         self._guard = threading.Lock()
@@ -282,10 +371,32 @@ class TurnService:
         self,
         world_id: str,
         map_id: str,
-        party_character_ids: List[str],
-        active_actor_id: str,
+        party_character_ids: Optional[List[str]],
+        active_actor_id: Optional[str],
     ) -> str:
+        campaign_id, _, _ = self.create_campaign_with_template_usage(
+            world_id=world_id,
+            map_id=map_id,
+            party_character_ids=party_character_ids,
+            active_actor_id=active_actor_id,
+        )
+        return campaign_id
+
+    def create_campaign_with_template_usage(
+        self,
+        world_id: str,
+        map_id: str,
+        party_character_ids: Optional[List[str]],
+        active_actor_id: Optional[str],
+    ) -> tuple[str, Dict[str, object], bool]:
         campaign_id = self.repo.next_campaign_id()
+        selected_defaults, template_usage = _load_campaign_selected_template(self.repo)
+        resolved_party, resolved_active, applied = _resolve_selected_defaults(
+            party_character_ids=party_character_ids,
+            active_actor_id=active_actor_id,
+            template_defaults=selected_defaults,
+        )
+        template_usage["applied"] = applied
         starter_map = MapData(
             areas={
                 "area_001": MapArea(
@@ -310,10 +421,10 @@ class TurnService:
                 character_state=DEFAULT_CHARACTER_STATE,
                 meta={},
             )
-            for character_id in party_character_ids
+            for character_id in resolved_party
         }
-        if active_actor_id not in actors:
-            actors[active_actor_id] = ActorState(
+        if resolved_active not in actors:
+            actors[resolved_active] = ActorState(
                 position="area_001",
                 hp=DEFAULT_HP,
                 character_state=DEFAULT_CHARACTER_STATE,
@@ -323,8 +434,8 @@ class TurnService:
         selected = Selected(
             world_id=world_id,
             map_id=map_id,
-            party_character_ids=party_character_ids,
-            active_actor_id=active_actor_id,
+            party_character_ids=resolved_party,
+            active_actor_id=resolved_active,
         )
         campaign = Campaign(
             id=campaign_id,
@@ -338,7 +449,10 @@ class TurnService:
         )
         normalize_map(campaign.map)
         self.repo.create_campaign(campaign)
-        return campaign_id
+        trace_enabled = bool(
+            campaign.settings_snapshot.dialog.turn_profile_trace_enabled
+        )
+        return campaign_id, template_usage, trace_enabled
 
     def list_campaigns(self) -> List[CampaignSummary]:
         return self.repo.list_campaigns()
@@ -394,6 +508,11 @@ class TurnService:
                 if campaign.settings_snapshot.dialog.turn_profile_trace_enabled
                 else []
             )
+            turn_policies = (
+                _load_turn_policies(self.repo)
+                if campaign.settings_snapshot.dialog.turn_profile_trace_enabled
+                else []
+            )
             response_debug = (
                 _build_turn_debug_payload(
                     campaign,
@@ -402,6 +521,7 @@ class TurnService:
                     turn_flow,
                     turn_schemas,
                     turn_templates,
+                    turn_policies,
                 )
                 if campaign.settings_snapshot.dialog.turn_profile_trace_enabled
                 else None
@@ -868,6 +988,7 @@ def _build_turn_debug_payload(
     flow_resource: Dict[str, object],
     schema_resources: List[Dict[str, object]],
     template_resources: List[Dict[str, object]],
+    policy_resources: List[Dict[str, object]],
 ) -> Dict[str, object]:
     _, adopted_profiles_by_actor = _build_actor_prompt_payloads(campaign)
     encoded = json.dumps(
@@ -882,39 +1003,20 @@ def _build_turn_debug_payload(
         if isinstance(prompt_variables_obj, list)
         else []
     )
-    payload: Dict[str, object] = {
-        "used_profile_hash": hashlib.sha256(encoded.encode("utf-8")).hexdigest(),
-        "used_prompt_name": str(prompt_resource.get("name", _TURN_PROMPT_NAME)),
-        "used_prompt_version": str(prompt_resource.get("version", "builtin-v1")),
-        "used_prompt_hash": str(prompt_resource.get("source_hash", "")),
-        "used_prompt_source_hash": str(prompt_resource.get("source_hash", "")),
-        "used_prompt_rendered_hash": str(prompt_resource.get("rendered_hash", "")),
-        "used_prompt_variables": prompt_variables,
-        "used_flow_name": str(flow_resource.get("name", _TURN_FLOW_NAME)),
-        "used_flow_version": str(flow_resource.get("version", "builtin-v1")),
-        "used_flow_hash": str(flow_resource.get("source_hash", "")),
-    }
-    fallback = bool(prompt_resource.get("fallback"))
-    if fallback:
-        payload["used_prompt_fallback"] = True
-    flow_fallback = bool(flow_resource.get("fallback"))
-    if flow_fallback:
-        payload["used_flow_fallback"] = True
-    payload["prompt"] = {
+    prompt_entry = {
         "name": str(prompt_resource.get("name", _TURN_PROMPT_NAME)),
         "version": str(prompt_resource.get("version", "builtin-v1")),
         "source_hash": str(prompt_resource.get("source_hash", "")),
         "rendered_hash": str(prompt_resource.get("rendered_hash", "")),
-        "variables": prompt_variables,
-        "fallback": fallback,
+        "fallback": bool(prompt_resource.get("fallback")),
     }
-    payload["flow"] = {
+    flow_entry = {
         "name": str(flow_resource.get("name", _TURN_FLOW_NAME)),
         "version": str(flow_resource.get("version", "builtin-v1")),
         "hash": str(flow_resource.get("source_hash", "")),
-        "fallback": flow_fallback,
+        "fallback": bool(flow_resource.get("fallback")),
     }
-    payload["schemas"] = [
+    schema_entries = [
         {
             "name": str(item.get("name", "")),
             "version": str(item.get("version", "builtin-v1")),
@@ -924,7 +1026,7 @@ def _build_turn_debug_payload(
         for item in schema_resources
         if isinstance(item, dict)
     ]
-    payload["templates"] = [
+    template_entries = [
         {
             "name": str(item.get("name", "")),
             "version": str(item.get("version", "builtin-v1")),
@@ -934,6 +1036,53 @@ def _build_turn_debug_payload(
         for item in template_resources
         if isinstance(item, dict)
     ]
+    policy_entries = [
+        {
+            "name": str(item.get("name", "")),
+            "version": str(item.get("version", "builtin-v1")),
+            "hash": str(item.get("source_hash", "")),
+            "fallback": bool(item.get("fallback")),
+        }
+        for item in policy_resources
+        if isinstance(item, dict)
+    ]
+    resources_payload = build_resources_payload(
+        prompts=[prompt_entry],
+        flows=[flow_entry],
+        schemas=schema_entries,
+        templates=template_entries,
+        policies=policy_entries,
+        template_usage=[],
+    )
+
+    payload: Dict[str, object] = {
+        "used_profile_hash": hashlib.sha256(encoded.encode("utf-8")).hexdigest(),
+        # legacy flat fields (kept for compatibility)
+        "used_prompt_name": prompt_entry["name"],
+        "used_prompt_version": prompt_entry["version"],
+        "used_prompt_hash": prompt_entry["source_hash"],
+        "used_prompt_source_hash": prompt_entry["source_hash"],
+        "used_prompt_rendered_hash": prompt_entry.get("rendered_hash", ""),
+        "used_prompt_variables": prompt_variables,
+        "used_flow_name": flow_entry["name"],
+        "used_flow_version": flow_entry["version"],
+        "used_flow_hash": flow_entry["hash"],
+        # unified structure
+        "resources": resources_payload,
+    }
+    if bool(prompt_entry.get("fallback")):
+        payload["used_prompt_fallback"] = True
+    if bool(flow_entry.get("fallback")):
+        payload["used_flow_fallback"] = True
+
+    # legacy nested fields (kept for compatibility), generated from resources
+    payload["prompt"] = {
+        **prompt_entry,
+        "variables": prompt_variables,
+    }
+    payload["flow"] = dict(flow_entry)
+    payload["schemas"] = resources_payload["schemas"]
+    payload["templates"] = resources_payload["templates"]
     active_profile = adopted_profiles_by_actor.get(active_actor_id)
     if isinstance(active_profile, dict):
         version = active_profile.get("schema_version")
