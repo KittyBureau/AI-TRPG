@@ -1,0 +1,85 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+pytest.importorskip("fastapi")
+from fastapi.testclient import TestClient
+
+from backend.api.main import create_app
+from backend.domain.models import ActorState, Campaign, Goal, Milestone, Selected, SettingsSnapshot
+from backend.infra.file_repo import FileRepo
+
+
+class _DummyLLMClient:
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+
+def _client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    monkeypatch.setattr("backend.app.turn_service.LLMClient", _DummyLLMClient)
+    monkeypatch.chdir(tmp_path)
+    app = create_app()
+    return TestClient(app)
+
+
+def _create_campaign(tmp_path: Path, campaign_id: str = "camp_get_001") -> str:
+    repo = FileRepo(tmp_path / "storage")
+    campaign = Campaign(
+        id=campaign_id,
+        selected=Selected(
+            world_id="world_001",
+            map_id="map_001",
+            party_character_ids=["pc_001"],
+            active_actor_id="pc_001",
+        ),
+        settings_snapshot=SettingsSnapshot(),
+        goal=Goal(text="Goal", status="active"),
+        milestone=Milestone(current="intro", last_advanced_turn=0),
+        actors={
+            "pc_001": ActorState(
+                position="area_001",
+                hp=10,
+                character_state="alive",
+                meta={},
+            )
+        },
+    )
+    repo.create_campaign(campaign)
+    return campaign_id
+
+
+def test_campaign_get_reflects_party_load_and_select_actor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    campaign_id = _create_campaign(tmp_path)
+
+    create_character_resp = client.post(
+        "/api/v1/characters/library",
+        json={"id": "ch_smoke_001", "name": "Smoke Hero", "summary": "test profile"},
+    )
+    assert create_character_resp.status_code == 200
+
+    load_resp = client.post(
+        f"/api/v1/campaigns/{campaign_id}/party/load",
+        json={"character_id": "ch_smoke_001"},
+    )
+    assert load_resp.status_code == 200
+    assert "ch_smoke_001" in load_resp.json()["party_character_ids"]
+
+    select_resp = client.post(
+        "/api/v1/campaign/select_actor",
+        json={"campaign_id": campaign_id, "active_actor_id": "ch_smoke_001"},
+    )
+    assert select_resp.status_code == 200
+    assert select_resp.json()["active_actor_id"] == "ch_smoke_001"
+
+    get_resp = client.get("/api/v1/campaign/get", params={"campaign_id": campaign_id})
+    assert get_resp.status_code == 200
+    body = get_resp.json()
+    assert body["campaign_id"] == campaign_id
+    assert "ch_smoke_001" in body["selected"]["party_character_ids"]
+    assert body["selected"]["active_actor_id"] == "ch_smoke_001"
+    assert "ch_smoke_001" in body["actors"]

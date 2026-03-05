@@ -28,9 +28,7 @@ const state = {
     error: null,
   },
   campaignOptions: [],
-  partyActors: [],
   initiativeOrder: [],
-  plannerActorId: null,
   plannedActions: {},
   actionInputs: {},
   failurePolicy: "stop",
@@ -64,12 +62,8 @@ function applyPartyActorsToState(actorIds) {
         .filter((value) => typeof value === "string" && value.trim())
         .map((value) => value.trim())
     : [];
-  state.partyActors = [...new Set(normalized)];
-  state.campaign.party_character_ids = [...state.partyActors];
-  state.initiativeOrder = [...state.partyActors];
-  if (!state.plannerActorId || !state.partyActors.includes(state.plannerActorId)) {
-    state.plannerActorId = state.partyActors[0] || null;
-  }
+  state.campaign.party_character_ids = [...new Set(normalized)];
+  state.initiativeOrder = [...state.campaign.party_character_ids];
   const nextPlannedActions = {};
   for (const actorId of state.initiativeOrder) {
     const existing = state.plannedActions[actorId];
@@ -256,6 +250,11 @@ export async function loadCharacterToCampaign(
   state.character.status = "idle";
   state.character.error = null;
   emit();
+  const refreshResult = await refreshCampaign(campaignId, baseUrl);
+  if (!refreshResult.ok) {
+    state.statusMessage = `Loaded character, but refresh failed: ${parseApiError(refreshResult)}`;
+    emit();
+  }
   return result;
 }
 
@@ -299,6 +298,11 @@ export async function selectActiveActor(
   state.campaign.active_actor_id = normalizedActorId;
   state.statusMessage = `Active actor set to ${normalizedActorId}.`;
   emit();
+  const refreshResult = await refreshCampaign(campaignId, baseUrl);
+  if (!refreshResult.ok) {
+    state.statusMessage = `Active actor set, but refresh failed: ${parseApiError(refreshResult)}`;
+    emit();
+  }
   return result;
 }
 
@@ -365,9 +369,6 @@ export function setInitiativeOrder(order) {
     nextPlannedActions[actorId] = Array.isArray(existing) ? existing : [];
   }
   state.plannedActions = nextPlannedActions;
-  if (!state.plannerActorId || !state.initiativeOrder.includes(state.plannerActorId)) {
-    state.plannerActorId = state.initiativeOrder[0] || null;
-  }
   const nextInputs = {};
   for (const actorId of state.initiativeOrder) {
     nextInputs[actorId] = state.actionInputs[actorId] || "";
@@ -382,16 +383,6 @@ export function setActionInput(actorId, value, options = {}) {
   }
   state.actionInputs[actorId] = typeof value === "string" ? value : "";
   withEmit(options.emit !== false);
-}
-
-export function setPlannerActorId(actorId) {
-  if (!actorId || !state.partyActors.includes(actorId)) {
-    state.plannerActorId = state.partyActors[0] || null;
-    emit();
-    return;
-  }
-  state.plannerActorId = actorId;
-  emit();
 }
 
 function normalizeActionEnvelope(envelope) {
@@ -518,15 +509,6 @@ export function setStateSummary(summary) {
 
 export function setMapView(mapView) {
   state.mapView = mapView;
-  if (
-    !state.plannerActorId &&
-    mapView &&
-    typeof mapView === "object" &&
-    typeof mapView.active_actor_id === "string" &&
-    mapView.active_actor_id.trim()
-  ) {
-    state.plannerActorId = mapView.active_actor_id.trim();
-  }
   emit();
 }
 

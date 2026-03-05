@@ -45,9 +45,7 @@ export function initPanel(store) {
     const state = store.getState();
     const party = Array.isArray(state.campaign?.party_character_ids)
       ? state.campaign.party_character_ids
-      : Array.isArray(state.partyActors)
-        ? state.partyActors
-        : [];
+      : [];
     const activeActorId = state.campaign?.active_actor_id || "";
     if (!uiState.selectedActorId || !party.includes(uiState.selectedActorId)) {
       uiState.selectedActorId = activeActorId && party.includes(activeActorId)

@@ -43,6 +43,19 @@ export function initPanel(store) {
     }
   }
 
+  async function refreshCampaignState(campaignId) {
+    if (!campaignId || typeof store.refreshCampaign !== "function") {
+      return true;
+    }
+    const state = store.getState();
+    const refreshResult = await store.refreshCampaign(campaignId, state.baseUrl);
+    if (!refreshResult.ok) {
+      store.setStatusMessage(`Refresh campaign failed: ${parseApiError(refreshResult)}`);
+      return false;
+    }
+    return true;
+  }
+
   async function runTurn() {
     const state = store.getState();
     if (!state.campaignId) {
@@ -75,6 +88,10 @@ export function initPanel(store) {
     }
     store.setDebugResponseText(JSON.stringify(result.data, null, 2));
     await refreshMap(state.campaignId, actorId);
+    const refreshed = await refreshCampaignState(state.campaignId);
+    if (!refreshed) {
+      return;
+    }
     store.setStatusMessage(`Turn completed as ${actorId}.`);
   }
 
@@ -110,6 +127,10 @@ export function initPanel(store) {
     }
     store.setDebugResponseText(JSON.stringify(result.data, null, 2));
     await refreshMap(state.campaignId, actorId);
+    const refreshed = await refreshCampaignState(state.campaignId);
+    if (!refreshed) {
+      return;
+    }
     store.setStatusMessage(`Move completed as ${actorId}.`);
   }
 

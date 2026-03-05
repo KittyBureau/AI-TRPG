@@ -242,6 +242,10 @@ Use the following buttons in order:
 4. In `Actor Control Panel`, submit `Turn` or `Move`
 5. In `Campaign Panel`, click `Refresh Campaign` to re-sync party/active from backend
 
+State consistency verification:
+
+- Run `docs/02_guides/testing/state_consistency_check.md` after Play state/store changes.
+
 ## Play page Round MVP
 
 `play.html` provides a deterministic panel flow:

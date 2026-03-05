@@ -79,6 +79,8 @@ Key constraints implemented:
   - `Campaign Panel` includes **Refresh Campaign**:
     - Calls `GET /api/v1/campaign/get?campaign_id=...`
     - Syncs `selected.party_character_ids` and `selected.active_actor_id` from backend authoritative state
+  - For manual verification of refresh + active consistency, run:
+    - `docs/02_guides/testing/state_consistency_check.md`
 - `frontend/debug.html`:
   - Request Builder, Response Viewer, Trace Log.
   - Copy request/response and export reproduction bundle.

@@ -132,6 +132,7 @@ Use this as the default reference for every task.
 - `world_generate` changes require running `backend/tests/test_world_generate_tool.py` and the local smoke script `scripts/smoke_world_generate.ps1` (guide: `docs/02_guides/testing/world_generate_smoke_test.md`).
 - Frontend gameplay flow UI/protocol changes require running `scripts/smoke_frontend_flow.ps1` and checking `frontend/README_frontend.md` + `docs/02_guides/gameplay_flow.md` for sync.
 - For play-panel actor selection consistency changes, also run the manual guide `docs/02_guides/testing/active_actor_integration_smoke.md`.
+- For Play state convergence or refresh behavior changes, run `docs/02_guides/testing/state_consistency_check.md`.
 - Play Action Planner supports structured envelopes (`move` / `scene_action`) and compiles one strict `UI_FLOW_STEP` per step.
 - Round play delta contract is frontend-owned in `frontend/play.js` and must keep stable keys: `actor_id`, `changed`, `position`, `hp`, `character_state`, `inventory`, `error`.
 - Spec changes in `docs/01_specs/**` must be reflected in this AI_INDEX.
