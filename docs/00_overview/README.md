@@ -27,6 +27,12 @@
 - `docs/02_guides/api_v1_route_migration.md` - API route prefix migration note (`/api/v1`).
 - `frontend/README_frontend.md` - Lightweight frontend console usage and V1.1 operations panel guide.
 
+## Frontend Entry
+
+- Primary UI: `frontend/play.html`
+- Debug UI: `frontend/debug.html`
+- `frontend/index.html` is a deprecated landing/redirect page to Play UI.
+
 ## Reference Inputs (codex-start)
 
 - `docs/03_reference/codex-start/AI_TRPG_PRD-lite_V1.1_SYNC.md`

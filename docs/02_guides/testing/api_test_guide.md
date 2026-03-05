@@ -295,44 +295,12 @@ Minimal checks after backend changes:
 5. routing regression
    - `/api/v1/openapi.json` includes `/characters/library` and `/campaigns/{campaign_id}/party/load`
 
-Using `frontend/index.html`:
+Frontend check entry (legacy note):
 
-1. Create/select campaign
-   - Use **Connection & Session** panel to create a campaign and set current campaign id.
-
-2. Read campaign status
-   - Click **Fetch Campaign Status**.
-   - Verify lifecycle and milestone fields render in UI.
-
-3. Toggle V1.1 settings
-   - In **Campaign Status & V1.1 Ops**, set:
-     - `strict_semantic_guard`
-     - `conflict_text_checks_enabled`
-     - `context.compress_enabled`
-   - Click **Apply Focus Toggles** and verify response.
-
-4. Send turn and inspect guard output
-   - Send turn from **Turn Panel**.
-   - Check:
-     - `state_summary`
-     - `Turn Guard Insight`
-     - `Latest API Error` when request is rejected.
-
-5. Manual milestone advance
-   - Enter summary and click **Advance Milestone**.
-   - Re-fetch status and verify milestone changes.
-
-6. CharacterFact adopt
-   - Provide `character_id` and click **Adopt Fact**.
-   - Verify response includes `accepted_path`, `profile_changed`, `acceptance_changed`.
-   - Re-run with same inputs to confirm idempotent behavior indicators.
-
-7. Error visualization checks
-   - Ensure UI displays HTTP status + backend detail + suggested action for:
-     - ended campaign write rejection
-     - strict guard `422`
-     - unconscious active actor rejection
-     - repeat illegal suppression hints when present
+- `frontend/index.html` is deprecated and redirects to `play.html`.
+- Use `frontend/play.html` for campaign/party/actor flow checks.
+- Use `frontend/debug.html` for raw request/response inspection.
+- For endpoint-level lifecycle and settings checks, prefer direct API calls in this guide.
 
 ---
 
@@ -366,17 +334,12 @@ Using `frontend/index.html`:
 
 ## Frontend one-click Run Loop check
 
-In `frontend/index.html`:
+Legacy Run Loop UI in `frontend/index.html` is soft-deprecated.
 
-1. Select campaign.
-2. Click **Run Loop** in **Campaign Status & V1.1 Ops**.
-3. Verify chained calls complete in order:
-   - generate -> adopt -> turn -> status
-4. Verify **Character Loop** result panel includes:
-   - `generate` refs payload
-   - `adopt` result payload
-   - `turn` payload (and `turn_debug` when trace is enabled)
-   - latest `status` payload
+Use one of:
+
+1. API-first chain checks in this document.
+2. Play flow checks in `docs/02_guides/testing/active_actor_integration_smoke.md`.
 
 ---
 

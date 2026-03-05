@@ -1,500 +1,54 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Raw Request Console</title>
-    <link rel="stylesheet" href="app.css" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Legacy UI Deprecated</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <style>
+      .cta-link {
+        display: inline-block;
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: #fff;
+        text-decoration: none;
+        padding: 8px 12px;
+      }
+    </style>
   </head>
   <body>
-    <header class="hero">
-      <div class="hero__content">
-        <p class="eyebrow">AI TRPG Raw Console</p>
-        <h1>Raw Request Console</h1>
-        <p class="lead">
-          Construct and send raw JSON to the FastAPI backend. No validation, no
-          guardrails.
-        </p>
-        <div class="inline" style="margin-top: 0.75rem">
-          <a href="./play.html">Open Play Page</a>
-          <a href="./debug.html">Debug Landing</a>
-        </div>
-      </div>
-      <div class="status" id="statusLine">Idle.</div>
-    </header>
-
-    <main class="layout">
-      <section class="panel" id="connectionPanel">
-        <div class="panel__header">
-          <h2>Connection & Session</h2>
-          <p class="panel__hint">Base URL empty = same origin.</p>
-        </div>
-
-        <div class="grid grid--two">
-          <label class="field">
-            <span>Base URL</span>
-            <input
-              type="text"
-              id="baseUrl"
-              placeholder="http://127.0.0.1:8000"
-              autocomplete="off"
-            />
-          </label>
-
-          <div class="field">
-            <span>Campaign</span>
-            <div class="inline">
-              <select id="campaignSelect">
-                <option value="">Select campaign...</option>
-              </select>
-              <button class="ghost" id="refreshCampaigns">Refresh</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="inline inline--end">
-          <button class="ghost" id="saveSettings">Save Settings</button>
-        </div>
-
-        <div class="grid grid--two">
-          <div class="field">
-            <span>Create Campaign Raw JSON</span>
-            <textarea id="createCampaignRaw" rows="8"></textarea>
-            <div class="inline inline--end">
-              <button id="createCampaignBtn">Create Campaign</button>
-            </div>
-          </div>
-
-          <div class="field">
-            <span>Active Actor</span>
-            <div class="inline">
-              <input
-                type="text"
-                id="activeActorInput"
-                placeholder="actor_id"
-                autocomplete="off"
-              />
-              <button class="ghost" id="applyActorToRaw">Apply to Raw</button>
-              <button id="selectActorBtn">Select Actor</button>
-            </div>
-            <span class="subtle">Select Actor Raw JSON</span>
-            <textarea id="selectActorRaw" rows="6"></textarea>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel" id="turnPanel">
-        <div class="panel__header">
-          <h2>Turn Panel</h2>
-          <p class="panel__hint">Raw request is the source of truth.</p>
-        </div>
-
-        <div class="grid grid--two">
-          <div class="field">
-            <span>Raw Request JSON</span>
-            <textarea id="turnRaw" rows="12"></textarea>
-            <div class="inline inline--end">
-              <button id="sendTurn">Send Turn</button>
-            </div>
-          </div>
-          <div class="field">
-            <span>Quick Input</span>
-            <textarea id="turnUserInput" rows="6"></textarea>
-            <div class="inline">
-              <button class="ghost" id="applyUserInput">Apply to Raw</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="grid grid--two">
-          <div class="field">
-            <span>Turn Guard Insight</span>
-            <pre id="turnGuardInsight"></pre>
-          </div>
-          <div class="field">
-            <span>Latest API Error</span>
-            <pre id="errorInspector"></pre>
-          </div>
-        </div>
-
-        <div class="stack">
-          <details open>
-            <summary>narrative_text</summary>
-            <pre id="turnNarrative"></pre>
-          </details>
-          <details>
-            <summary>dialog_type</summary>
-            <pre id="turnDialogType"></pre>
-          </details>
-          <details>
-            <summary>tool_calls</summary>
-            <pre id="turnToolCalls"></pre>
-          </details>
-          <details>
-            <summary>applied_actions</summary>
-            <pre id="turnAppliedActions"></pre>
-          </details>
-          <details>
-            <summary>tool_feedback</summary>
-            <pre id="turnToolFeedback"></pre>
-          </details>
-          <details>
-            <summary>conflict_report</summary>
-            <pre id="turnConflictReport"></pre>
-          </details>
-          <details>
-            <summary>state_summary</summary>
-            <pre id="turnStateSummary"></pre>
-          </details>
-          <details>
-            <summary>Raw Response JSON</summary>
-            <pre id="turnRawResponse"></pre>
-          </details>
-        </div>
-      </section>
-
-      <section class="panel" id="worldSetupPanel">
-        <div class="panel__header">
-          <h2>World Setup</h2>
-          <p class="panel__hint">Trigger world/map tools via chat turn with templated user_input.</p>
-        </div>
-
-        <div class="grid grid--two">
-          <div class="field">
-            <span>World Generate</span>
-            <div class="inline">
-              <input
-                type="text"
-                id="worldIdInput"
-                placeholder="world_id"
-                autocomplete="off"
-              />
-              <label class="subtle">
-                <input type="checkbox" id="worldBindToCampaign" checked />
-                bind_to_campaign
-              </label>
-              <button id="runWorldGenerate">Generate World</button>
-            </div>
-            <pre id="worldGenerateResult"></pre>
-          </div>
-          <div class="field">
-            <span>Map Generate</span>
-            <div class="inline">
-              <input
-                type="text"
-                id="mapParentAreaInput"
-                placeholder="parent_area_id (e.g. area_001)"
-                autocomplete="off"
-              />
-              <input
-                type="text"
-                id="mapThemeInput"
-                placeholder="theme"
-                autocomplete="off"
-              />
-            </div>
-            <div class="inline">
-              <input
-                type="number"
-                id="mapSizeInput"
-                min="1"
-                max="30"
-                placeholder="size"
-              />
-              <input
-                type="text"
-                id="mapSeedInput"
-                placeholder="seed"
-                autocomplete="off"
-              />
-              <button id="runMapGenerate">Generate Map</button>
-            </div>
-            <pre id="mapGenerateResult"></pre>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel" id="actorSpawnPanel">
-        <div class="panel__header">
-          <h2>Actor Spawn</h2>
-          <p class="panel__hint">character_id required; spawn_position optional.</p>
-        </div>
-
-        <div class="inline">
-          <input
-            type="text"
-            id="spawnCharacterIdInput"
-            placeholder="character_id (required)"
-            autocomplete="off"
-          />
-          <input
-            type="text"
-            id="spawnPositionInput"
-            placeholder="spawn_position (optional)"
-            autocomplete="off"
-          />
-          <label class="subtle">
-            <input type="checkbox" id="spawnBindToParty" checked />
-            bind_to_party
-          </label>
-          <button id="runActorSpawn">Spawn Actor</button>
-        </div>
-        <pre id="actorSpawnResult"></pre>
-      </section>
-
-      <section class="panel" id="movePanel">
-        <div class="panel__header">
-          <h2>Move</h2>
-          <p class="panel__hint">Minimal move input: to_area_id.</p>
-        </div>
-
-        <div class="inline">
-          <input
-            type="text"
-            id="moveActorIdInput"
-            placeholder="actor_id (optional, defaults to active)"
-            autocomplete="off"
-          />
-          <input
-            type="text"
-            id="moveToAreaInput"
-            placeholder="to_area_id (required)"
-            autocomplete="off"
-          />
-          <button id="runMove">Move</button>
-        </div>
-        <pre id="moveResult"></pre>
-
-        <div class="grid grid--three">
-          <div class="field field--compact">
-            <span>Current Actor</span>
-            <pre id="flowCurrentActor"></pre>
-          </div>
-          <div class="field field--compact">
-            <span>Current Area</span>
-            <pre id="flowCurrentPosition"></pre>
-          </div>
-          <div class="field field--compact">
-            <span>Narrative Text</span>
-            <pre id="flowNarrative"></pre>
-          </div>
-          <div class="field field--compact">
-            <span>Objective</span>
-            <pre id="flowObjective"></pre>
-          </div>
-          <div class="field field--compact">
-            <span>Area Description</span>
-            <pre id="flowAreaDescription"></pre>
-          </div>
-          <div class="field field--compact">
-            <span>Inventory</span>
-            <pre id="flowInventory"></pre>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel" id="flowButtonsPanel">
-        <div class="panel__header">
-          <h2>Flow Buttons</h2>
-          <p class="panel__hint">Create campaign and run gameplay chain with retry for tool turns.</p>
-        </div>
-
-        <div class="inline">
-          <label class="field field--compact">
-            <span>Tool Retry Attempts</span>
-            <input type="number" id="flowRetryCount" min="1" max="5" />
-          </label>
-        </div>
-
-        <div class="inline">
-          <button class="ghost" id="runFlowCreateCampaign">Create Campaign</button>
-          <button class="ghost" id="runFlowWorld">Generate World</button>
-          <button class="ghost" id="runFlowMap">Generate Map</button>
-          <button class="ghost" id="runFlowSpawn">Spawn Actor</button>
-          <button class="ghost" id="runFlowMove">Move</button>
-          <button class="ghost" id="runFlowTurn">Submit Turn</button>
-          <button id="runFullFlow">Run Full Flow</button>
-        </div>
-
-        <div class="field">
-          <span>Turn Input (final chat/turn)</span>
-          <textarea id="narrativeTurnInput" rows="4"></textarea>
-          <pre id="narrativeTurnResult"></pre>
-        </div>
-
-        <pre id="flowResult"></pre>
-      </section>
-
-      <section class="panel" id="campaignOpsPanel">
-        <div class="panel__header">
-          <h2>Campaign Status & V1.1 Ops</h2>
-          <p class="panel__hint">Lifecycle, milestone, adoption, and guard-related operations.</p>
-        </div>
-
-        <div class="inline">
-          <button id="fetchCampaignStatus">Fetch Campaign Status</button>
-          <button class="ghost" id="refreshAfterTurn">Auto Refresh After Turn: OFF</button>
-        </div>
-
-        <div class="grid grid--two">
-          <div class="field">
-            <span>Lifecycle</span>
-            <pre id="campaignLifecycle"></pre>
-          </div>
-          <div class="field">
-            <span>Milestone</span>
-            <pre id="campaignMilestone"></pre>
-          </div>
-        </div>
-
-        <div class="grid grid--two">
-          <div class="field">
-            <span>Active Actor State (from latest turn)</span>
-            <pre id="activeActorState"></pre>
-          </div>
-          <div class="field">
-            <span>Settings Snapshot (focus keys)</span>
-            <pre id="settingsFocusView"></pre>
-          </div>
-        </div>
-
-        <div class="grid grid--two">
-          <div class="field">
-            <span>Manual Milestone Advance</span>
-            <div class="inline">
-              <input
-                type="text"
-                id="milestoneSummaryInput"
-                placeholder="summary"
-                autocomplete="off"
-              />
-              <button id="advanceMilestoneBtn">Advance Milestone</button>
-            </div>
-            <pre id="advanceMilestoneResult"></pre>
-          </div>
-          <div class="field">
-            <span>CharacterFact Adoption</span>
-            <div class="inline">
-              <input
-                type="text"
-                id="adoptCharacterId"
-                placeholder="character_id"
-                autocomplete="off"
-              />
-              <input
-                type="text"
-                id="acceptedByInput"
-                placeholder="accepted_by (default: system)"
-                autocomplete="off"
-              />
-              <button id="adoptFactBtn">Adopt Fact</button>
-            </div>
-            <pre id="adoptFactResult"></pre>
-          </div>
-        </div>
-
-        <div class="field">
-          <span>CharacterFact Generate Raw JSON</span>
-          <textarea id="generateCharacterRaw" rows="10"></textarea>
-          <div class="inline inline--end">
-            <button id="generateCharacterBtn">Generate Facts</button>
-          </div>
-          <pre id="generateCharacterResult"></pre>
-        </div>
-
-        <div class="field">
-          <span>Character Loop</span>
+    <div class="page">
+      <main class="main-container">
+        <section class="panel">
+          <h1 class="page-title">Legacy UI Deprecated</h1>
+          <p class="note">
+            The old single-page console is deprecated. Please use the Play UI for
+            current gameplay flow.
+          </p>
           <div class="inline">
-            <button id="runLoopBtn">Run Loop</button>
+            <a id="playLink" class="cta-link" href="./play.html">Open Play UI</a>
+            <a href="./debug.html">Open Debug UI</a>
           </div>
-          <pre id="runLoopResult"></pre>
-        </div>
-
-        <div class="grid grid--three">
-          <label class="field field--compact">
-            <span>strict_semantic_guard</span>
-            <select id="toggleStrictGuard">
-              <option value="unchanged">unchanged</option>
-              <option value="true">true</option>
-              <option value="false">false</option>
-            </select>
-          </label>
-          <label class="field field--compact">
-            <span>conflict_text_checks_enabled</span>
-            <select id="toggleConflictTextChecks">
-              <option value="unchanged">unchanged</option>
-              <option value="true">true</option>
-              <option value="false">false</option>
-            </select>
-          </label>
-          <label class="field field--compact">
-            <span>context.compress_enabled</span>
-            <select id="toggleCompressEnabled">
-              <option value="unchanged">unchanged</option>
-              <option value="true">true</option>
-              <option value="false">false</option>
-            </select>
-          </label>
-        </div>
-        <div class="inline inline--end">
-          <button id="applyFocusToggles">Apply Focus Toggles</button>
-        </div>
-        <pre id="toggleApplyResult"></pre>
-      </section>
-
-      <section class="panel" id="settingsPanel">
-        <div class="panel__header">
-          <h2>Settings Panel</h2>
-          <p class="panel__hint">Load schema, edit patch, apply.</p>
-        </div>
-
-        <div class="inline inline--end">
-          <button class="ghost" id="loadSchema">Load Schema</button>
-        </div>
-
-        <div class="grid grid--two">
-          <div class="field">
-            <span>definitions</span>
-            <pre id="settingsDefinitions"></pre>
-          </div>
-          <div class="field">
-            <span>snapshot</span>
-            <pre id="settingsSnapshot"></pre>
-          </div>
-        </div>
-
-        <div class="grid grid--two">
-          <div class="field">
-            <span>Raw Patch JSON</span>
-            <textarea id="settingsPatchRaw" rows="8"></textarea>
-            <div class="inline inline--end">
-              <button id="applySettings">Apply Settings</button>
-            </div>
-          </div>
-          <div class="field">
-            <span>Apply Response (snapshot)</span>
-            <pre id="settingsApplySnapshot"></pre>
-            <span>Apply Response (change_summary)</span>
-            <pre id="settingsApplySummary"></pre>
-            <span>Apply Response (raw)</span>
-            <pre id="settingsApplyRaw"></pre>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel" id="historyPanel">
-        <div class="panel__header">
-          <h2>History</h2>
-          <p class="panel__hint">Newest first. Local only.</p>
-        </div>
-        <div class="inline">
-          <button class="ghost" id="exportHistory">Export All</button>
-          <button class="ghost" id="clearHistory">Clear History</button>
-        </div>
-        <div id="historyList" class="stack"></div>
-      </section>
-    </main>
-
-    <script src="app.js" defer></script>
+          <p class="note" id="redirectNote">
+            Redirecting to Play UI in 3 seconds...
+          </p>
+        </section>
+      </main>
+    </div>
+    <script>
+      (function () {
+        const target = new URL("./play.html", window.location.href);
+        if (window.location.search) {
+          target.search = window.location.search;
+        }
+        const link = document.getElementById("playLink");
+        if (link) {
+          link.href = target.toString();
+        }
+        window.setTimeout(() => {
+          window.location.assign(target.toString());
+        }, 3000);
+      })();
+    </script>
   </body>
 </html>

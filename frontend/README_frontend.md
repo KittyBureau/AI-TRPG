@@ -20,7 +20,7 @@ The map view page reads the same base URL from local storage.
 Main entry points:
 - `http://127.0.0.1:5173/play.html` (play mode, panel architecture)
 - `http://127.0.0.1:5173/debug.html` (debug mode, raw request/response)
-- `http://127.0.0.1:5173/index.html` (legacy raw console)
+- `http://127.0.0.1:5173/index.html` (deprecated landing page, auto-redirects to Play)
 
 Notes:
 - CORS is enabled for `http://localhost:*` and `http://127.0.0.1:*` in `backend/api/main.py`.
@@ -85,64 +85,17 @@ Key constraints implemented:
   - Request Builder, Response Viewer, Trace Log.
   - Copy request/response and export reproduction bundle.
 - `frontend/index.html`:
-  - Legacy raw console remains available for backward compatibility.
+  - Deprecated landing page only.
+  - No longer loads `app.js` legacy flow logic.
+  - Provides link + auto redirect to `play.html`.
 
-## V1.1 quick operations in legacy UI
+## Legacy flow note
 
-The frontend now provides a **Campaign Status & V1.1 Ops** panel:
+Legacy raw-console operations are soft-deprecated. For reproducible checks:
 
-- `Fetch Campaign Status`
-  - Calls `GET /api/v1/campaign/status?campaign_id=...`
-  - Shows:
-    - lifecycle: `ended`, `reason`, `ended_at`
-    - milestone: `current`, `last_advanced_turn`, `turn_trigger_interval`, `pressure`, `pressure_threshold`, `summary`
-- `Advance Milestone`
-  - Calls `POST /api/v1/campaign/milestone/advance`
-  - Request body:
-    ```json
-    {
-      "campaign_id": "camp_0001",
-      "summary": "manual checkpoint"
-    }
-    ```
-- `Adopt Fact`
-  - Calls `POST /api/v1/campaigns/{campaign_id}/characters/facts/{character_id}/adopt`
-  - Request body:
-    ```json
-    { "accepted_by": "system" }
-    ```
-- `Generate Facts`
-  - Calls `POST /api/v1/campaigns/{campaign_id}/characters/generate`
-  - Uses a raw JSON textarea so `party_context` can be pasted directly.
-- `Run Loop`
-  - Chains:
-    1. `POST /api/v1/campaigns/{campaign_id}/characters/generate`
-    2. `POST /api/v1/campaigns/{campaign_id}/characters/facts/{character_id}/adopt`
-    3. `POST /api/v1/chat/turn` (fixed short input: `Introduce yourself briefly.`)
-    4. `GET /api/v1/campaign/status?campaign_id=...`
-  - Shows compact combined output in **Character Loop** result panel.
-
-### Settings focus toggles
-
-The panel can patch key V1.1 switches through `POST /api/v1/settings/apply`:
-
-- `dialog.strict_semantic_guard`
-- `dialog.conflict_text_checks_enabled`
-- `context.compress_enabled`
-- `dialog.turn_profile_trace_enabled` (set via raw settings patch panel)
-
-When toggling `context.compress_enabled`, the UI also patches
-`context.full_context_enabled` inversely to satisfy backend mutual exclusion.
-
-### Error and guard visibility
-
-- `Latest API Error` shows:
-  - HTTP status
-  - backend `detail`
-  - suggested action
-- `Turn Guard Insight` highlights:
-  - conflict/retry related hints
-  - `repeat_illegal_request` suppression signals from `tool_feedback`
+- Use `frontend/play.html` for gameplay flow.
+- Use `frontend/debug.html` for raw request/response checks.
+- Use `docs/02_guides/testing/api_test_guide.md` for endpoint-level verification.
 
 ## Map view (V0)
 

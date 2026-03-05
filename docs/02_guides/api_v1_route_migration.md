@@ -40,8 +40,13 @@ OpenAPI/docs are aligned to the same base path:
 
 ## Frontend verification entry
 
-For quick manual verification, use the static frontend console (`frontend/index.html`).
-The V1.1 operations panel maps directly to these endpoints:
+For quick manual verification, use Play/Debug pages:
+
+- `frontend/play.html` for gameplay actions
+- `frontend/debug.html` for raw request/response checks
+
+`frontend/index.html` is now a deprecated landing/redirect page.
+The debug checks map directly to these endpoints:
 
 - Campaign status -> `GET /api/v1/campaign/status`
 - Manual milestone advance -> `POST /api/v1/campaign/milestone/advance`

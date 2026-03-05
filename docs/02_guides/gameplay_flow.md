@@ -208,7 +208,7 @@ Page roles:
 
 - `play.html`: player-facing round execution (panel architecture, no raw JSON).
 - `debug.html`: debug-facing request builder + raw response + trace export.
-- `index.html`: legacy raw console and flow buttons (world/map/spawn/move chain).
+- `index.html`: deprecated landing/redirect page to `play.html` (no legacy app logic execution).
 
 Play architecture (module-based):
 
