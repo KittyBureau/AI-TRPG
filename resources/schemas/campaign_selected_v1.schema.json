@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Campaign Selected v1",
+  "type": "object",
+  "properties": {
+    "selected": {
+      "type": "object",
+      "properties": {
+        "party_character_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "active_actor_id": { "type": "string" }
+      },
+      "required": ["party_character_ids", "active_actor_id"],
+      "additionalProperties": true
+    }
+  },
+  "required": ["selected"],
+  "additionalProperties": true
+}

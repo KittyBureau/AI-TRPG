@@ -324,6 +324,16 @@ Frontend check entry (legacy note):
    - Verify response contains top-level:
      - `debug.used_profile_hash` (stable hash string).
      - `debug.used_profile_version` only when profile payload provides it.
+     - `debug.used_prompt_name`
+     - `debug.used_prompt_version`
+     - `debug.used_prompt_hash`
+     - `debug.used_prompt_source_hash`
+     - `debug.used_prompt_rendered_hash`
+     - `debug.prompt` object (`name`, `version`, `source_hash`, `rendered_hash`, `variables`, `fallback`)
+     - `debug.used_flow_name`
+     - `debug.used_flow_version`
+     - `debug.used_flow_hash`
+     - `debug.flow` object (`name`, `version`, `hash`, `fallback`)
 
 3. Prompt context assembly verification (mock/spy LLM in tests)
    - Assert turn context includes `adopted_profiles_by_actor`.

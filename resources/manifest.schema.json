@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AI-TRPG Resource Manifest",
+  "type": "object",
+  "properties": {
+    "prompts": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "$ref": "#/$defs/promptEntry" },
+          {
+            "type": "array",
+            "items": { "$ref": "#/$defs/promptEntry" },
+            "minItems": 1
+          }
+        ]
+      }
+    },
+    "flows": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "$ref": "#/$defs/flowEntry" },
+          {
+            "type": "array",
+            "items": { "$ref": "#/$defs/flowEntry" },
+            "minItems": 1
+          }
+        ]
+      }
+    },
+    "schemas": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "$ref": "#/$defs/schemaEntry" },
+          {
+            "type": "array",
+            "items": { "$ref": "#/$defs/schemaEntry" },
+            "minItems": 1
+          }
+        ]
+      }
+    },
+    "templates": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "$ref": "#/$defs/templateEntry" },
+          {
+            "type": "array",
+            "items": { "$ref": "#/$defs/templateEntry" },
+            "minItems": 1
+          }
+        ]
+      }
+    }
+  },
+  "required": ["prompts"],
+  "$defs": {
+    "promptEntry": {
+      "type": "object",
+      "properties": {
+        "version": { "type": "string", "minLength": 1 },
+        "path": {
+          "type": "string",
+          "pattern": "^resources\\/.+"
+        },
+        "enabled": { "type": "boolean" }
+      },
+      "required": ["version", "path", "enabled"],
+      "additionalProperties": true
+    },
+    "flowEntry": {
+      "type": "object",
+      "properties": {
+        "version": { "type": "string", "minLength": 1 },
+        "path": {
+          "type": "string",
+          "pattern": "^resources\\/.+"
+        },
+        "enabled": { "type": "boolean" }
+      },
+      "required": ["version", "path", "enabled"],
+      "additionalProperties": true
+    },
+    "schemaEntry": {
+      "type": "object",
+      "properties": {
+        "version": { "type": "string", "minLength": 1 },
+        "path": {
+          "type": "string",
+          "pattern": "^resources\\/.+"
+        },
+        "enabled": { "type": "boolean" }
+      },
+      "required": ["version", "path", "enabled"],
+      "additionalProperties": true
+    },
+    "templateEntry": {
+      "type": "object",
+      "properties": {
+        "version": { "type": "string", "minLength": 1 },
+        "path": {
+          "type": "string",
+          "pattern": "^resources\\/.+"
+        },
+        "enabled": { "type": "boolean" }
+      },
+      "required": ["version", "path", "enabled"],
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

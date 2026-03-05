@@ -41,8 +41,23 @@ from backend.domain.state_utils import (
 )
 from backend.infra.file_repo import FileRepo
 from backend.infra.llm_client import LLMClient
+from backend.infra.resource_loader import (
+    LoadedFlow,
+    LoadedSchema,
+    LoadedTemplate,
+    ResourceLoaderError,
+    load_enabled_flow,
+    load_enabled_prompt,
+    load_enabled_schema,
+    load_enabled_template,
+    render_prompt,
+)
 
 _CHARACTER_FACADE = create_runtime_character_facade()
+_TURN_PROMPT_NAME = "turn_profile_default"
+_TURN_FLOW_NAME = "play_turn_basic"
+_TURN_SCHEMA_NAMES = ("campaign_selected", "character_fact")
+_TURN_TEMPLATE_NAMES = ("campaign_stub", "character_fact_stub")
 
 
 class SemanticGuardError(ValueError):
@@ -51,6 +66,189 @@ class SemanticGuardError(ValueError):
 
 class CampaignBusyError(RuntimeError):
     pass
+
+
+def _builtin_turn_prompt_template() -> str:
+    return (
+        "You are the AI GM. Output JSON with keys 'assistant_text', 'dialog_type', and 'tool_calls'. "
+        "The world state is authoritative and can change only via tool_calls. "
+        "Movement is a state change. If you narrate that an actor moved/entered/arrived/left/changed location, "
+        "you MUST include a 'move' tool_call in the same response. "
+        "Inventory gain is a state change. If you narrate gaining/obtaining/receiving/picking up an item, "
+        "you MUST include an 'inventory_add' tool_call in the same response. "
+        "HP change is a state change. If you narrate injury/damage/healing/recovery, "
+        "you MUST include an 'hp_delta' tool_call in the same response. "
+        "For non-move scene interactions (inspect/talk/open/search/take/drop/detach/use/wait), "
+        "prefer one 'scene_action' tool_call with args {actor_id, action, target_id, params}. "
+        "For move tool_calls, args must include to_area_id and may include actor_id; do NOT include from_area_id. "
+        "If you do not include a 'move' tool_call, do not narrate any completed movement or location change; "
+        "you may describe the current scene or discuss options/intentions. "
+        "Priority and fallback for movement intent: If the user expresses intent to move (go/move/enter a place), "
+        "you MUST output a 'move' tool_call first. When you output a move or move_options tool_call, "
+        "assistant_text must be empty ('') or a single very short plan_note; do not narrate completed movement. "
+        "If the target is unclear, do not narrate movement; "
+        "call 'move_options' to fetch 1-hop options and state that no movement happened yet. "
+        "If tool_calls is empty, assistant_text must not describe any completed movement or location change. "
+        "If tool_calls is empty, assistant_text MUST be a non-empty GM response (answer, description, or guidance). "
+        "assistant_text may be empty ONLY when you are making a tool call. "
+        "For questions like 'Can I move?' or 'Where can I go?', call 'move_options' and list the returned "
+        "1-hop options; explicitly state that no movement has happened yet. "
+        "Examples (JSON outputs, schema-accurate). "
+        "Example 1 (move intent is explicit and IDs are known; assistant_text empty; "
+        "to_area_id must come from the user's specified target; actor_id may be omitted "
+        "to use Context.effective_actor_id; from_area_id is derived by the backend "
+        "from Context.actors[...].position and MUST NOT be included): "
+        "{\"assistant_text\":\"\",\"dialog_type\":\"scene_description\","
+        "\"tool_calls\":[{\"id\":\"call_move_1\",\"tool\":\"move\",\"args\":"
+        "{\"actor_id\":\"pc_001\",\"to_area_id\":\"area_002\"}}]} "
+        "Example 2 (target unclear or user asks where they can go; use move_options; no movement yet; "
+        "actor_id should come from Context.effective_actor_id): "
+        "{\"assistant_text\":\"No movement yet. I will fetch 1-hop options.\","
+        "\"dialog_type\":\"scene_description\","
+        "\"tool_calls\":[{\"id\":\"call_move_options_1\",\"tool\":\"move_options\",\"args\":"
+        "{\"actor_id\":\"pc_001\"}}]} "
+        "Example 3 (no tool call required; MUST respond with non-empty assistant_text): "
+        "{\"assistant_text\":\"You are currently in area_002. The corridor is quiet. What do you do next?\","
+        "\"dialog_type\":\"scene_description\",\"tool_calls\":[]} "
+        "For descriptive character facts, prioritize Context.adopted_profiles_by_actor[actor_id] "
+        "when present; otherwise fallback to Context.actors[actor_id].meta. "
+        "Do not modify rules, maps, or character sheets. "
+        "Context: {{CONTEXT_JSON}}"
+    )
+
+
+def _load_turn_prompt(repo: FileRepo) -> Dict[str, object]:
+    repo_root = repo.storage_root.parent
+    try:
+        loaded = load_enabled_prompt(_TURN_PROMPT_NAME, repo_root=repo_root)
+        return {
+            "name": loaded.name,
+            "version": loaded.version,
+            "source_hash": loaded.source_hash,
+            "text": loaded.text,
+            "fallback": False,
+        }
+    except ResourceLoaderError:
+        fallback_text = _builtin_turn_prompt_template()
+        return {
+            "name": _TURN_PROMPT_NAME,
+            "version": "builtin-v1",
+            "source_hash": hashlib.sha256(fallback_text.encode("utf-8")).hexdigest(),
+            "text": fallback_text,
+            "fallback": True,
+        }
+
+
+def _builtin_turn_flow_descriptor() -> Dict[str, object]:
+    return {
+        "id": _TURN_FLOW_NAME,
+        "version": "builtin-v1",
+        "steps": [
+            {"id": "prompt_render", "kind": "prompt_render"},
+            {"id": "chat_turn", "kind": "chat_turn"},
+            {"id": "apply_tools", "kind": "apply_tools"},
+            {"id": "state_refresh", "kind": "state_refresh"},
+        ],
+        "notes": "Built-in descriptor for fallback/debug only.",
+    }
+
+
+def _load_turn_flow(repo: FileRepo) -> Dict[str, object]:
+    repo_root = repo.storage_root.parent
+    try:
+        loaded: LoadedFlow = load_enabled_flow(_TURN_FLOW_NAME, repo_root=repo_root)
+        return {
+            "name": loaded.name,
+            "version": loaded.version,
+            "source_hash": loaded.source_hash,
+            "content": loaded.content,
+            "fallback": False,
+        }
+    except ResourceLoaderError:
+        fallback_content = _builtin_turn_flow_descriptor()
+        raw_json = json.dumps(
+            fallback_content, sort_keys=True, ensure_ascii=True, separators=(",", ":")
+        )
+        return {
+            "name": _TURN_FLOW_NAME,
+            "version": "builtin-v1",
+            "source_hash": hashlib.sha256(raw_json.encode("utf-8")).hexdigest(),
+            "content": fallback_content,
+            "fallback": True,
+        }
+
+
+def _builtin_turn_schema_descriptor(name: str) -> Dict[str, object]:
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": f"{name} fallback trace schema",
+        "type": "object",
+    }
+
+
+def _load_turn_schema(repo: FileRepo, schema_name: str) -> Dict[str, object]:
+    repo_root = repo.storage_root.parent
+    try:
+        loaded: LoadedSchema = load_enabled_schema(schema_name, repo_root=repo_root)
+        return {
+            "name": loaded.name,
+            "version": loaded.version,
+            "source_hash": loaded.source_hash,
+            "content": loaded.content,
+            "fallback": False,
+        }
+    except ResourceLoaderError:
+        fallback_content = _builtin_turn_schema_descriptor(schema_name)
+        raw_json = json.dumps(
+            fallback_content, sort_keys=True, ensure_ascii=True, separators=(",", ":")
+        )
+        return {
+            "name": schema_name,
+            "version": "builtin-v1",
+            "source_hash": hashlib.sha256(raw_json.encode("utf-8")).hexdigest(),
+            "content": fallback_content,
+            "fallback": True,
+        }
+
+
+def _load_turn_schemas(repo: FileRepo) -> List[Dict[str, object]]:
+    return [_load_turn_schema(repo, name) for name in _TURN_SCHEMA_NAMES]
+
+
+def _builtin_turn_template_descriptor(name: str) -> Dict[str, object]:
+    return {
+        "_comment": f"{name} fallback template for trace only",
+        "name": name,
+    }
+
+
+def _load_turn_template(repo: FileRepo, template_name: str) -> Dict[str, object]:
+    repo_root = repo.storage_root.parent
+    try:
+        loaded: LoadedTemplate = load_enabled_template(template_name, repo_root=repo_root)
+        return {
+            "name": loaded.name,
+            "version": loaded.version,
+            "source_hash": loaded.source_hash,
+            "content": loaded.content,
+            "fallback": False,
+        }
+    except ResourceLoaderError:
+        fallback_content = _builtin_turn_template_descriptor(template_name)
+        raw_json = json.dumps(
+            fallback_content, sort_keys=True, ensure_ascii=True, separators=(",", ":")
+        )
+        return {
+            "name": template_name,
+            "version": "builtin-v1",
+            "source_hash": hashlib.sha256(raw_json.encode("utf-8")).hexdigest(),
+            "content": fallback_content,
+            "fallback": True,
+        }
+
+
+def _load_turn_templates(repo: FileRepo) -> List[Dict[str, object]]:
+    return [_load_turn_template(repo, name) for name in _TURN_TEMPLATE_NAMES]
 
 
 class CampaignTurnLockRegistry:
@@ -170,12 +368,44 @@ class TurnService:
             if _mark_ended_if_needed(campaign):
                 self.repo.save_campaign(campaign)
             _assert_turn_writable(campaign, effective_actor_id)
+            turn_prompt = _load_turn_prompt(self.repo)
+            turn_flow = _load_turn_flow(self.repo)
+            system_prompt = _build_system_prompt(
+                campaign, effective_actor_id, prompt_template=str(turn_prompt["text"])
+            )
+            turn_prompt["rendered_hash"] = hashlib.sha256(
+                system_prompt.encode("utf-8")
+            ).hexdigest()
+            turn_prompt["variables"] = ["CONTEXT_JSON"]
+            flow_json = json.dumps(
+                turn_flow.get("content", {}),
+                sort_keys=True,
+                ensure_ascii=True,
+                separators=(",", ":"),
+            )
+            turn_flow["rendered_hash"] = hashlib.sha256(flow_json.encode("utf-8")).hexdigest()
+            turn_schemas = (
+                _load_turn_schemas(self.repo)
+                if campaign.settings_snapshot.dialog.turn_profile_trace_enabled
+                else []
+            )
+            turn_templates = (
+                _load_turn_templates(self.repo)
+                if campaign.settings_snapshot.dialog.turn_profile_trace_enabled
+                else []
+            )
             response_debug = (
-                _build_turn_debug_payload(campaign, effective_actor_id)
+                _build_turn_debug_payload(
+                    campaign,
+                    effective_actor_id,
+                    turn_prompt,
+                    turn_flow,
+                    turn_schemas,
+                    turn_templates,
+                )
                 if campaign.settings_snapshot.dialog.turn_profile_trace_enabled
                 else None
             )
-            system_prompt = _build_system_prompt(campaign, effective_actor_id)
             retry_count = 0
             last_conflicts = []
             debug_append = None
@@ -540,7 +770,9 @@ def _scene_prompt_payload(campaign: Campaign, actor_id: str) -> Dict[str, object
     }
 
 
-def _build_system_prompt(campaign: Campaign, effective_actor_id: str) -> str:
+def _build_system_prompt(
+    campaign: Campaign, effective_actor_id: str, *, prompt_template: str
+) -> str:
     positions, _, _, hp, character_states = _derive_character_state_maps(campaign)
     actors_payload, adopted_profiles_by_actor = _build_actor_prompt_payloads(campaign)
     compress_enabled = campaign.settings_snapshot.context.compress_enabled
@@ -612,56 +844,30 @@ def _build_system_prompt(campaign: Campaign, effective_actor_id: str) -> str:
                 "tool_calls": "array of tool calls",
             },
         }
-    return (
-        "You are the AI GM. Output JSON with keys 'assistant_text', 'dialog_type', and 'tool_calls'. "
-        "The world state is authoritative and can change only via tool_calls. "
-        "Movement is a state change. If you narrate that an actor moved/entered/arrived/left/changed location, "
-        "you MUST include a 'move' tool_call in the same response. "
-        "Inventory gain is a state change. If you narrate gaining/obtaining/receiving/picking up an item, "
-        "you MUST include an 'inventory_add' tool_call in the same response. "
-        "HP change is a state change. If you narrate injury/damage/healing/recovery, "
-        "you MUST include an 'hp_delta' tool_call in the same response. "
-        "For non-move scene interactions (inspect/talk/open/search/take/drop/detach/use/wait), "
-        "prefer one 'scene_action' tool_call with args {actor_id, action, target_id, params}. "
-        "For move tool_calls, args must include to_area_id and may include actor_id; do NOT include from_area_id. "
-        "If you do not include a 'move' tool_call, do not narrate any completed movement or location change; "
-        "you may describe the current scene or discuss options/intentions. "
-        "Priority and fallback for movement intent: If the user expresses intent to move (go/move/enter a place), "
-        "you MUST output a 'move' tool_call first. When you output a move or move_options tool_call, "
-        "assistant_text must be empty ('') or a single very short plan_note; do not narrate completed movement. "
-        "If the target is unclear, do not narrate movement; "
-        "call 'move_options' to fetch 1-hop options and state that no movement happened yet. "
-        "If tool_calls is empty, assistant_text must not describe any completed movement or location change. "
-        "If tool_calls is empty, assistant_text MUST be a non-empty GM response (answer, description, or guidance). "
-        "assistant_text may be empty ONLY when you are making a tool call. "
-        "For questions like 'Can I move?' or 'Where can I go?', call 'move_options' and list the returned "
-        "1-hop options; explicitly state that no movement has happened yet. "
-        "Examples (JSON outputs, schema-accurate). "
-        "Example 1 (move intent is explicit and IDs are known; assistant_text empty; "
-        "to_area_id must come from the user's specified target; actor_id may be omitted "
-        "to use Context.effective_actor_id; from_area_id is derived by the backend "
-        "from Context.actors[...].position and MUST NOT be included): "
-        "{\"assistant_text\":\"\",\"dialog_type\":\"scene_description\","
-        "\"tool_calls\":[{\"id\":\"call_move_1\",\"tool\":\"move\",\"args\":"
-        "{\"actor_id\":\"pc_001\",\"to_area_id\":\"area_002\"}}]} "
-        "Example 2 (target unclear or user asks where they can go; use move_options; no movement yet; "
-        "actor_id should come from Context.effective_actor_id): "
-        "{\"assistant_text\":\"No movement yet. I will fetch 1-hop options.\","
-        "\"dialog_type\":\"scene_description\","
-        "\"tool_calls\":[{\"id\":\"call_move_options_1\",\"tool\":\"move_options\",\"args\":"
-        "{\"actor_id\":\"pc_001\"}}]} "
-        "Example 3 (no tool call required; MUST respond with non-empty assistant_text): "
-        "{\"assistant_text\":\"You are currently in area_002. The corridor is quiet. What do you do next?\","
-        "\"dialog_type\":\"scene_description\",\"tool_calls\":[]} "
-        "For descriptive character facts, prioritize Context.adopted_profiles_by_actor[actor_id] "
-        "when present; otherwise fallback to Context.actors[actor_id].meta. "
-        "Do not modify rules, maps, or character sheets. "
-        f"Context: {json.dumps(payload, ensure_ascii=False)}"
-    )
+    context_json = json.dumps(payload, ensure_ascii=False)
+    try:
+        return render_prompt(
+            prompt_template,
+            {"CONTEXT_JSON": context_json},
+            allowlist={"CONTEXT_JSON"},
+        )
+    except ResourceLoaderError:
+        # Keep runtime behavior stable: malformed external prompt falls back inline.
+        builtin = _builtin_turn_prompt_template()
+        return render_prompt(
+            builtin,
+            {"CONTEXT_JSON": context_json},
+            allowlist={"CONTEXT_JSON"},
+        )
 
 
 def _build_turn_debug_payload(
-    campaign: Campaign, active_actor_id: str
+    campaign: Campaign,
+    active_actor_id: str,
+    prompt_resource: Dict[str, object],
+    flow_resource: Dict[str, object],
+    schema_resources: List[Dict[str, object]],
+    template_resources: List[Dict[str, object]],
 ) -> Dict[str, object]:
     _, adopted_profiles_by_actor = _build_actor_prompt_payloads(campaign)
     encoded = json.dumps(
@@ -670,9 +876,64 @@ def _build_turn_debug_payload(
         ensure_ascii=True,
         separators=(",", ":"),
     )
+    prompt_variables_obj = prompt_resource.get("variables", [])
+    prompt_variables = (
+        [item for item in prompt_variables_obj if isinstance(item, str)]
+        if isinstance(prompt_variables_obj, list)
+        else []
+    )
     payload: Dict[str, object] = {
-        "used_profile_hash": hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+        "used_profile_hash": hashlib.sha256(encoded.encode("utf-8")).hexdigest(),
+        "used_prompt_name": str(prompt_resource.get("name", _TURN_PROMPT_NAME)),
+        "used_prompt_version": str(prompt_resource.get("version", "builtin-v1")),
+        "used_prompt_hash": str(prompt_resource.get("source_hash", "")),
+        "used_prompt_source_hash": str(prompt_resource.get("source_hash", "")),
+        "used_prompt_rendered_hash": str(prompt_resource.get("rendered_hash", "")),
+        "used_prompt_variables": prompt_variables,
+        "used_flow_name": str(flow_resource.get("name", _TURN_FLOW_NAME)),
+        "used_flow_version": str(flow_resource.get("version", "builtin-v1")),
+        "used_flow_hash": str(flow_resource.get("source_hash", "")),
     }
+    fallback = bool(prompt_resource.get("fallback"))
+    if fallback:
+        payload["used_prompt_fallback"] = True
+    flow_fallback = bool(flow_resource.get("fallback"))
+    if flow_fallback:
+        payload["used_flow_fallback"] = True
+    payload["prompt"] = {
+        "name": str(prompt_resource.get("name", _TURN_PROMPT_NAME)),
+        "version": str(prompt_resource.get("version", "builtin-v1")),
+        "source_hash": str(prompt_resource.get("source_hash", "")),
+        "rendered_hash": str(prompt_resource.get("rendered_hash", "")),
+        "variables": prompt_variables,
+        "fallback": fallback,
+    }
+    payload["flow"] = {
+        "name": str(flow_resource.get("name", _TURN_FLOW_NAME)),
+        "version": str(flow_resource.get("version", "builtin-v1")),
+        "hash": str(flow_resource.get("source_hash", "")),
+        "fallback": flow_fallback,
+    }
+    payload["schemas"] = [
+        {
+            "name": str(item.get("name", "")),
+            "version": str(item.get("version", "builtin-v1")),
+            "hash": str(item.get("source_hash", "")),
+            "fallback": bool(item.get("fallback")),
+        }
+        for item in schema_resources
+        if isinstance(item, dict)
+    ]
+    payload["templates"] = [
+        {
+            "name": str(item.get("name", "")),
+            "version": str(item.get("version", "builtin-v1")),
+            "hash": str(item.get("source_hash", "")),
+            "fallback": bool(item.get("fallback")),
+        }
+        for item in template_resources
+        if isinstance(item, dict)
+    ]
     active_profile = adopted_profiles_by_actor.get(active_actor_id)
     if isinstance(active_profile, dict):
         version = active_profile.get("schema_version")

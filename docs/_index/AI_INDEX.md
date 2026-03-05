@@ -2,6 +2,7 @@
 
 Purpose: a stable, sectioned index of code constraints and verification points.
 Use this as the default reference for every task.
+External Resources Roadmap -> `docs/03_architecture/external_resources_todo.md`
 
 ## 1. Repository Structure & Layer Boundaries
 **Rules**

@@ -1,0 +1,17 @@
+{
+  "_comment": "Template stub for campaign-like payloads. Trace/metadata only in current phase.",
+  "selected": {
+    "world_id": "world_001",
+    "map_id": "map_001",
+    "party_character_ids": [],
+    "active_actor_id": ""
+  },
+  "goal": {
+    "text": "",
+    "status": "active"
+  },
+  "milestone": {
+    "current": "intro",
+    "last_advanced_turn": 0
+  }
+}

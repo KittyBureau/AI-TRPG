@@ -301,3 +301,651 @@ def test_turn_profile_trace_debug_gated_by_setting(
         ).encode("utf-8")
     ).hexdigest()
     assert debug["used_profile_hash"] == expected_hash
+
+
+def test_turn_profile_trace_uses_external_prompt_metadata_when_enabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_0009")
+    campaign.settings_snapshot.dialog.turn_profile_trace_enabled = True
+    repo.save_campaign(campaign)
+
+    prompt_text = "You are test prompt. Context: {{CONTEXT_JSON}}"
+    prompts_dir = tmp_path / "resources" / "prompts"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    (prompts_dir / "turn_profile_default_v1.txt").write_text(
+        prompt_text, encoding="utf-8"
+    )
+    (tmp_path / "resources" / "manifest.json").write_text(
+        json.dumps(
+            {
+                "prompts": {
+                    "turn_profile_default": {
+                        "version": "v1",
+                        "path": "resources/prompts/turn_profile_default_v1.txt",
+                        "enabled": True,
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    llm = _StubLLM(
+        {
+            "assistant_text": "ok",
+            "dialog_type": "scene_description",
+            "tool_calls": [],
+        }
+    )
+    service.llm = llm
+
+    result = service.submit_turn("camp_0009", "hello")
+    assert "debug" in result
+    debug = result["debug"]
+    assert debug["used_prompt_name"] == "turn_profile_default"
+    assert debug["used_prompt_version"] == "v1"
+    source_hash = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()
+    assert debug["used_prompt_hash"] == source_hash
+    assert debug["used_prompt_source_hash"] == source_hash
+    assert isinstance(debug["used_prompt_rendered_hash"], str)
+    assert debug["used_prompt_rendered_hash"]
+    assert debug["used_prompt_rendered_hash"] != source_hash
+    assert debug["used_prompt_variables"] == ["CONTEXT_JSON"]
+    prompt_debug = debug.get("prompt")
+    assert isinstance(prompt_debug, dict)
+    assert prompt_debug["name"] == "turn_profile_default"
+    assert prompt_debug["version"] == "v1"
+    assert prompt_debug["source_hash"] == source_hash
+    assert prompt_debug["rendered_hash"] == debug["used_prompt_rendered_hash"]
+    assert prompt_debug["variables"] == ["CONTEXT_JSON"]
+    assert prompt_debug["fallback"] is False
+    assert "used_prompt_fallback" not in debug
+
+
+def test_turn_profile_trace_falls_back_when_multiple_enabled_prompt_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_0010")
+    campaign.settings_snapshot.dialog.turn_profile_trace_enabled = True
+    repo.save_campaign(campaign)
+
+    prompts_dir = tmp_path / "resources" / "prompts"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    (prompts_dir / "turn_profile_default_v1.txt").write_text(
+        "Prompt v1. Context: {{CONTEXT_JSON}}", encoding="utf-8"
+    )
+    (prompts_dir / "turn_profile_default_v2.txt").write_text(
+        "Prompt v2. Context: {{CONTEXT_JSON}}", encoding="utf-8"
+    )
+    (tmp_path / "resources" / "manifest.json").write_text(
+        json.dumps(
+            {
+                "prompts": {
+                    "turn_profile_default": [
+                        {
+                            "version": "v1",
+                            "path": "resources/prompts/turn_profile_default_v1.txt",
+                            "enabled": True,
+                        },
+                        {
+                            "version": "v2",
+                            "path": "resources/prompts/turn_profile_default_v2.txt",
+                            "enabled": True,
+                        },
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = service.submit_turn("camp_0010", "hello")
+    debug = result.get("debug")
+    assert isinstance(debug, dict)
+    assert debug.get("used_prompt_fallback") is True
+    assert debug.get("used_prompt_version") == "builtin-v1"
+    prompt_debug = debug.get("prompt")
+    assert isinstance(prompt_debug, dict)
+    assert prompt_debug.get("fallback") is True
+
+
+def test_turn_profile_trace_includes_flow_metadata_when_enabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_0011")
+    campaign.settings_snapshot.dialog.turn_profile_trace_enabled = True
+    repo.save_campaign(campaign)
+
+    resources_dir = tmp_path / "resources"
+    prompts_dir = resources_dir / "prompts"
+    flows_dir = resources_dir / "flows"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    flows_dir.mkdir(parents=True, exist_ok=True)
+
+    (prompts_dir / "turn_profile_default_v1.txt").write_text(
+        "Prompt for flow trace. Context: {{CONTEXT_JSON}}", encoding="utf-8"
+    )
+    flow_content = {
+        "id": "play_turn_basic",
+        "version": "v1",
+        "steps": [
+            {"id": "prompt_render", "kind": "prompt_render"},
+            {"id": "chat_turn", "kind": "chat_turn"},
+        ],
+    }
+    (flows_dir / "play_turn_basic_v1.json").write_text(
+        json.dumps(flow_content), encoding="utf-8"
+    )
+    (resources_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "prompts": {
+                    "turn_profile_default": {
+                        "version": "v1",
+                        "path": "resources/prompts/turn_profile_default_v1.txt",
+                        "enabled": True,
+                    }
+                },
+                "flows": {
+                    "play_turn_basic": [
+                        {
+                            "version": "v1",
+                            "path": "resources/flows/play_turn_basic_v1.json",
+                            "enabled": True,
+                        }
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = service.submit_turn("camp_0011", "hello")
+    debug = result.get("debug")
+    assert isinstance(debug, dict)
+    assert debug["used_flow_name"] == "play_turn_basic"
+    assert debug["used_flow_version"] == "v1"
+    expected_hash = hashlib.sha256(
+        json.dumps(
+            flow_content, sort_keys=True, ensure_ascii=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    assert debug["used_flow_hash"] == expected_hash
+    flow_debug = debug.get("flow")
+    assert isinstance(flow_debug, dict)
+    assert flow_debug["name"] == "play_turn_basic"
+    assert flow_debug["version"] == "v1"
+    assert flow_debug["hash"] == expected_hash
+    assert flow_debug["fallback"] is False
+    assert "used_flow_fallback" not in debug
+
+
+def test_turn_profile_trace_flow_fallback_on_multiple_enabled_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_0012")
+    campaign.settings_snapshot.dialog.turn_profile_trace_enabled = True
+    repo.save_campaign(campaign)
+
+    resources_dir = tmp_path / "resources"
+    prompts_dir = resources_dir / "prompts"
+    flows_dir = resources_dir / "flows"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    flows_dir.mkdir(parents=True, exist_ok=True)
+    (prompts_dir / "turn_profile_default_v1.txt").write_text(
+        "Prompt v1. Context: {{CONTEXT_JSON}}", encoding="utf-8"
+    )
+    (flows_dir / "play_turn_basic_v1.json").write_text(
+        json.dumps({"id": "play_turn_basic", "version": "v1", "steps": []}),
+        encoding="utf-8",
+    )
+    (flows_dir / "play_turn_basic_v2.json").write_text(
+        json.dumps({"id": "play_turn_basic", "version": "v2", "steps": []}),
+        encoding="utf-8",
+    )
+    (resources_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "prompts": {
+                    "turn_profile_default": {
+                        "version": "v1",
+                        "path": "resources/prompts/turn_profile_default_v1.txt",
+                        "enabled": True,
+                    }
+                },
+                "flows": {
+                    "play_turn_basic": [
+                        {
+                            "version": "v1",
+                            "path": "resources/flows/play_turn_basic_v1.json",
+                            "enabled": True,
+                        },
+                        {
+                            "version": "v2",
+                            "path": "resources/flows/play_turn_basic_v2.json",
+                            "enabled": True,
+                        },
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = service.submit_turn("camp_0012", "hello")
+    assert result["narrative_text"] == "Stub response."
+    debug = result.get("debug")
+    assert isinstance(debug, dict)
+    assert debug["used_flow_version"] == "builtin-v1"
+    assert debug["used_flow_fallback"] is True
+    flow_debug = debug.get("flow")
+    assert isinstance(flow_debug, dict)
+    assert flow_debug["fallback"] is True
+
+
+def test_turn_profile_trace_includes_schema_metadata_when_enabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_0013")
+    campaign.settings_snapshot.dialog.turn_profile_trace_enabled = True
+    repo.save_campaign(campaign)
+
+    resources_dir = tmp_path / "resources"
+    prompts_dir = resources_dir / "prompts"
+    flows_dir = resources_dir / "flows"
+    schemas_dir = resources_dir / "schemas"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    flows_dir.mkdir(parents=True, exist_ok=True)
+    schemas_dir.mkdir(parents=True, exist_ok=True)
+
+    (prompts_dir / "turn_profile_default_v1.txt").write_text(
+        "Prompt trace with schemas. Context: {{CONTEXT_JSON}}", encoding="utf-8"
+    )
+    (flows_dir / "play_turn_basic_v1.json").write_text(
+        json.dumps({"id": "play_turn_basic", "version": "v1", "steps": []}),
+        encoding="utf-8",
+    )
+    campaign_schema = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {"selected": {"type": "object"}},
+    }
+    character_schema = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {"id": {"type": "string"}, "name": {"type": "string"}},
+    }
+    (schemas_dir / "campaign_selected_v1.schema.json").write_text(
+        json.dumps(campaign_schema), encoding="utf-8"
+    )
+    (schemas_dir / "character_fact_v1.schema.json").write_text(
+        json.dumps(character_schema), encoding="utf-8"
+    )
+    (resources_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "prompts": {
+                    "turn_profile_default": {
+                        "version": "v1",
+                        "path": "resources/prompts/turn_profile_default_v1.txt",
+                        "enabled": True,
+                    }
+                },
+                "flows": {
+                    "play_turn_basic": {
+                        "version": "v1",
+                        "path": "resources/flows/play_turn_basic_v1.json",
+                        "enabled": True,
+                    }
+                },
+                "schemas": {
+                    "campaign_selected": {
+                        "version": "v1",
+                        "path": "resources/schemas/campaign_selected_v1.schema.json",
+                        "enabled": True,
+                    },
+                    "character_fact": {
+                        "version": "v1",
+                        "path": "resources/schemas/character_fact_v1.schema.json",
+                        "enabled": True,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = service.submit_turn("camp_0013", "hello")
+    debug = result.get("debug")
+    assert isinstance(debug, dict)
+    schemas_debug = debug.get("schemas")
+    assert isinstance(schemas_debug, list)
+    by_name = {
+        item["name"]: item
+        for item in schemas_debug
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    }
+    assert "campaign_selected" in by_name
+    assert "character_fact" in by_name
+    assert by_name["campaign_selected"]["version"] == "v1"
+    assert by_name["character_fact"]["version"] == "v1"
+    assert by_name["campaign_selected"]["fallback"] is False
+    assert by_name["character_fact"]["fallback"] is False
+    assert isinstance(by_name["campaign_selected"]["hash"], str)
+    assert isinstance(by_name["character_fact"]["hash"], str)
+    assert by_name["campaign_selected"]["hash"]
+    assert by_name["character_fact"]["hash"]
+
+
+def test_turn_profile_trace_schema_fallback_on_multiple_enabled_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_0014")
+    campaign.settings_snapshot.dialog.turn_profile_trace_enabled = True
+    repo.save_campaign(campaign)
+
+    resources_dir = tmp_path / "resources"
+    prompts_dir = resources_dir / "prompts"
+    flows_dir = resources_dir / "flows"
+    schemas_dir = resources_dir / "schemas"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    flows_dir.mkdir(parents=True, exist_ok=True)
+    schemas_dir.mkdir(parents=True, exist_ok=True)
+
+    (prompts_dir / "turn_profile_default_v1.txt").write_text(
+        "Prompt v1. Context: {{CONTEXT_JSON}}", encoding="utf-8"
+    )
+    (flows_dir / "play_turn_basic_v1.json").write_text(
+        json.dumps({"id": "play_turn_basic", "version": "v1", "steps": []}),
+        encoding="utf-8",
+    )
+    (schemas_dir / "campaign_selected_v1.schema.json").write_text(
+        json.dumps({"type": "object"}), encoding="utf-8"
+    )
+    (schemas_dir / "character_fact_v1.schema.json").write_text(
+        json.dumps({"type": "object"}), encoding="utf-8"
+    )
+    (schemas_dir / "character_fact_v2.schema.json").write_text(
+        json.dumps({"type": "object", "title": "v2"}), encoding="utf-8"
+    )
+    (resources_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "prompts": {
+                    "turn_profile_default": {
+                        "version": "v1",
+                        "path": "resources/prompts/turn_profile_default_v1.txt",
+                        "enabled": True,
+                    }
+                },
+                "flows": {
+                    "play_turn_basic": {
+                        "version": "v1",
+                        "path": "resources/flows/play_turn_basic_v1.json",
+                        "enabled": True,
+                    }
+                },
+                "schemas": {
+                    "campaign_selected": {
+                        "version": "v1",
+                        "path": "resources/schemas/campaign_selected_v1.schema.json",
+                        "enabled": True,
+                    },
+                    "character_fact": [
+                        {
+                            "version": "v1",
+                            "path": "resources/schemas/character_fact_v1.schema.json",
+                            "enabled": True,
+                        },
+                        {
+                            "version": "v2",
+                            "path": "resources/schemas/character_fact_v2.schema.json",
+                            "enabled": True,
+                        },
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = service.submit_turn("camp_0014", "hello")
+    assert result["narrative_text"] == "Stub response."
+    debug = result.get("debug")
+    assert isinstance(debug, dict)
+    schemas_debug = debug.get("schemas")
+    assert isinstance(schemas_debug, list)
+    by_name = {
+        item["name"]: item
+        for item in schemas_debug
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    }
+    assert by_name["campaign_selected"]["fallback"] is False
+    assert by_name["character_fact"]["fallback"] is True
+    assert by_name["character_fact"]["version"] == "builtin-v1"
+
+
+def test_turn_profile_trace_includes_template_metadata_when_enabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_0015")
+    campaign.settings_snapshot.dialog.turn_profile_trace_enabled = True
+    repo.save_campaign(campaign)
+
+    resources_dir = tmp_path / "resources"
+    prompts_dir = resources_dir / "prompts"
+    flows_dir = resources_dir / "flows"
+    schemas_dir = resources_dir / "schemas"
+    templates_dir = resources_dir / "templates"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    flows_dir.mkdir(parents=True, exist_ok=True)
+    schemas_dir.mkdir(parents=True, exist_ok=True)
+    templates_dir.mkdir(parents=True, exist_ok=True)
+
+    (prompts_dir / "turn_profile_default_v1.txt").write_text(
+        "Prompt with templates trace. Context: {{CONTEXT_JSON}}", encoding="utf-8"
+    )
+    (flows_dir / "play_turn_basic_v1.json").write_text(
+        json.dumps({"id": "play_turn_basic", "version": "v1", "steps": []}),
+        encoding="utf-8",
+    )
+    (schemas_dir / "campaign_selected_v1.schema.json").write_text(
+        json.dumps({"type": "object"}), encoding="utf-8"
+    )
+    (schemas_dir / "character_fact_v1.schema.json").write_text(
+        json.dumps({"type": "object"}), encoding="utf-8"
+    )
+    (templates_dir / "campaign_stub_v1.json").write_text(
+        json.dumps({"selected": {"party_character_ids": [], "active_actor_id": ""}}),
+        encoding="utf-8",
+    )
+    (templates_dir / "character_fact_stub_v1.json").write_text(
+        json.dumps({"name": "", "summary": "", "tags": [], "meta": {}}),
+        encoding="utf-8",
+    )
+    (resources_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "prompts": {
+                    "turn_profile_default": {
+                        "version": "v1",
+                        "path": "resources/prompts/turn_profile_default_v1.txt",
+                        "enabled": True,
+                    }
+                },
+                "flows": {
+                    "play_turn_basic": {
+                        "version": "v1",
+                        "path": "resources/flows/play_turn_basic_v1.json",
+                        "enabled": True,
+                    }
+                },
+                "schemas": {
+                    "campaign_selected": {
+                        "version": "v1",
+                        "path": "resources/schemas/campaign_selected_v1.schema.json",
+                        "enabled": True,
+                    },
+                    "character_fact": {
+                        "version": "v1",
+                        "path": "resources/schemas/character_fact_v1.schema.json",
+                        "enabled": True,
+                    },
+                },
+                "templates": {
+                    "campaign_stub": {
+                        "version": "v1",
+                        "path": "resources/templates/campaign_stub_v1.json",
+                        "enabled": True,
+                    },
+                    "character_fact_stub": {
+                        "version": "v1",
+                        "path": "resources/templates/character_fact_stub_v1.json",
+                        "enabled": True,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = service.submit_turn("camp_0015", "hello")
+    debug = result.get("debug")
+    assert isinstance(debug, dict)
+    templates_debug = debug.get("templates")
+    assert isinstance(templates_debug, list)
+    by_name = {
+        item["name"]: item
+        for item in templates_debug
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    }
+    assert "campaign_stub" in by_name
+    assert "character_fact_stub" in by_name
+    assert by_name["campaign_stub"]["version"] == "v1"
+    assert by_name["character_fact_stub"]["version"] == "v1"
+    assert by_name["campaign_stub"]["fallback"] is False
+    assert by_name["character_fact_stub"]["fallback"] is False
+    assert isinstance(by_name["campaign_stub"]["hash"], str)
+    assert isinstance(by_name["character_fact_stub"]["hash"], str)
+    assert by_name["campaign_stub"]["hash"]
+    assert by_name["character_fact_stub"]["hash"]
+
+
+def test_turn_profile_trace_template_fallback_on_multiple_enabled_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_0016")
+    campaign.settings_snapshot.dialog.turn_profile_trace_enabled = True
+    repo.save_campaign(campaign)
+
+    resources_dir = tmp_path / "resources"
+    prompts_dir = resources_dir / "prompts"
+    flows_dir = resources_dir / "flows"
+    schemas_dir = resources_dir / "schemas"
+    templates_dir = resources_dir / "templates"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    flows_dir.mkdir(parents=True, exist_ok=True)
+    schemas_dir.mkdir(parents=True, exist_ok=True)
+    templates_dir.mkdir(parents=True, exist_ok=True)
+
+    (prompts_dir / "turn_profile_default_v1.txt").write_text(
+        "Prompt v1. Context: {{CONTEXT_JSON}}", encoding="utf-8"
+    )
+    (flows_dir / "play_turn_basic_v1.json").write_text(
+        json.dumps({"id": "play_turn_basic", "version": "v1", "steps": []}),
+        encoding="utf-8",
+    )
+    (schemas_dir / "campaign_selected_v1.schema.json").write_text(
+        json.dumps({"type": "object"}), encoding="utf-8"
+    )
+    (schemas_dir / "character_fact_v1.schema.json").write_text(
+        json.dumps({"type": "object"}), encoding="utf-8"
+    )
+    (templates_dir / "campaign_stub_v1.json").write_text(
+        json.dumps({"selected": {"party_character_ids": [], "active_actor_id": ""}}),
+        encoding="utf-8",
+    )
+    (templates_dir / "character_fact_stub_v1.json").write_text(
+        json.dumps({"name": "", "summary": "", "tags": [], "meta": {}}),
+        encoding="utf-8",
+    )
+    (templates_dir / "character_fact_stub_v2.json").write_text(
+        json.dumps({"name": "v2", "summary": "", "tags": [], "meta": {}}),
+        encoding="utf-8",
+    )
+    (resources_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "prompts": {
+                    "turn_profile_default": {
+                        "version": "v1",
+                        "path": "resources/prompts/turn_profile_default_v1.txt",
+                        "enabled": True,
+                    }
+                },
+                "flows": {
+                    "play_turn_basic": {
+                        "version": "v1",
+                        "path": "resources/flows/play_turn_basic_v1.json",
+                        "enabled": True,
+                    }
+                },
+                "schemas": {
+                    "campaign_selected": {
+                        "version": "v1",
+                        "path": "resources/schemas/campaign_selected_v1.schema.json",
+                        "enabled": True,
+                    },
+                    "character_fact": {
+                        "version": "v1",
+                        "path": "resources/schemas/character_fact_v1.schema.json",
+                        "enabled": True,
+                    },
+                },
+                "templates": {
+                    "campaign_stub": {
+                        "version": "v1",
+                        "path": "resources/templates/campaign_stub_v1.json",
+                        "enabled": True,
+                    },
+                    "character_fact_stub": [
+                        {
+                            "version": "v1",
+                            "path": "resources/templates/character_fact_stub_v1.json",
+                            "enabled": True,
+                        },
+                        {
+                            "version": "v2",
+                            "path": "resources/templates/character_fact_stub_v2.json",
+                            "enabled": True,
+                        },
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = service.submit_turn("camp_0016", "hello")
+    assert result["narrative_text"] == "Stub response."
+    debug = result.get("debug")
+    assert isinstance(debug, dict)
+    templates_debug = debug.get("templates")
+    assert isinstance(templates_debug, list)
+    by_name = {
+        item["name"]: item
+        for item in templates_debug
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    }
+    assert by_name["campaign_stub"]["fallback"] is False
+    assert by_name["character_fact_stub"]["fallback"] is True
+    assert by_name["character_fact_stub"]["version"] == "builtin-v1"

@@ -1,0 +1,30 @@
+{
+  "id": "play_turn_basic",
+  "version": "v1",
+  "steps": [
+    {
+      "id": "prompt_render",
+      "kind": "prompt_render",
+      "notes": "Render turn prompt with runtime context payload.",
+      "expects": ["debug.prompt.source_hash", "debug.prompt.rendered_hash"]
+    },
+    {
+      "id": "chat_turn",
+      "kind": "chat_turn",
+      "notes": "Send rendered system prompt and user_input to LLM.",
+      "expects": ["dialog_type", "tool_calls"]
+    },
+    {
+      "id": "apply_tools",
+      "kind": "apply_tools",
+      "notes": "Apply tool calls to campaign state through tool executor.",
+      "expects": ["applied_actions", "tool_feedback"]
+    },
+    {
+      "id": "state_refresh",
+      "kind": "state_refresh",
+      "notes": "Persist state changes and build response state summary.",
+      "expects": ["state_summary", "effective_actor_id"]
+    }
+  ]
+}

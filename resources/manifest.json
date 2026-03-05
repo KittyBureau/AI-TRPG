@@ -1,0 +1,50 @@
+{
+  "prompts": {
+    "turn_profile_default": {
+      "version": "v1",
+      "path": "resources/prompts/turn_profile_default_v1.txt",
+      "enabled": true
+    }
+  },
+  "flows": {
+    "play_turn_basic": [
+      {
+        "version": "v1",
+        "path": "resources/flows/play_turn_basic_v1.json",
+        "enabled": true
+      }
+    ]
+  },
+  "schemas": {
+    "campaign_selected": [
+      {
+        "version": "v1",
+        "path": "resources/schemas/campaign_selected_v1.schema.json",
+        "enabled": true
+      }
+    ],
+    "character_fact": [
+      {
+        "version": "v1",
+        "path": "resources/schemas/character_fact_v1.schema.json",
+        "enabled": true
+      }
+    ]
+  },
+  "templates": {
+    "campaign_stub": [
+      {
+        "version": "v1",
+        "path": "resources/templates/campaign_stub_v1.json",
+        "enabled": true
+      }
+    ],
+    "character_fact_stub": [
+      {
+        "version": "v1",
+        "path": "resources/templates/character_fact_stub_v1.json",
+        "enabled": true
+      }
+    ]
+  }
+}
