@@ -1,6 +1,6 @@
-# DocumentsAndDirectives
+# AI-TRPG
 
-Minimal backend scaffolding for the AI TRPG prototype.
+Minimal backend + frontend prototype for AI-assisted TRPG flow.
 
 ## Version
 
@@ -8,7 +8,7 @@ Minimal backend scaffolding for the AI TRPG prototype.
 
 ## Start
 
-1. Create a virtual environment and install dependencies (FastAPI + Uvicorn).
+1. Create a virtual environment and install dependencies.
 2. Run the API:
 
 ```bash
@@ -18,13 +18,11 @@ uvicorn backend.api.main:app --reload
 ## LLM Configuration
 
 1. Copy `storage/config/llm_config.example.json` to `storage/config/llm_config.json`.
-2. Edit `current_profile` and profile fields as needed.
-3. On first `/api/chat/turn`, the server will prompt for an API key and a local passphrase
-   (both via stdin with no echo). The key is stored encrypted in `storage/secrets/keyring.json`.
-4. The keyring uses AES-GCM via the `cryptography` package.
+2. Edit `current_profile` and profile settings.
+3. On first `POST /api/v1/chat/turn`, the server prompts for API key and passphrase via stdin.
+4. Encrypted key is written to `storage/secrets/keyring.json` (AES-GCM via `cryptography`).
 
-## Docs
+## Documentation Entry
 
-- `docs/README.md` for the documentation index.
-- `docs/01_architecture.md` for layer overview and request shape.
-- `docs/02_storage_layout.md` for storage layout and JSON schemas.
+- Main docs index: `docs/00_overview/README.md`
+- AI task index: `docs/_index/AI_INDEX.md`

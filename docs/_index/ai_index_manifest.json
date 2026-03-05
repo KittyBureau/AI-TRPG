@@ -20,7 +20,7 @@
         "backend/api/routes/**",
         "backend/domain/models.py",
         "docs/01_specs/storage_layout.md",
-        "docs/02_guides/testing/api_test_guide.md"
+        "docs/20_runtime/testing/api_test_guide.md"
       ]
     },
     {
@@ -73,7 +73,7 @@
         "backend/domain/map_models.py",
         "backend/app/tool_executor.py",
         "docs/01_specs/storage_layout.md",
-        "docs/02_guides/testing/map_generate_manual_test.md"
+        "docs/20_runtime/testing/map_generate_manual_test.md"
       ]
     },
     {
@@ -99,7 +99,8 @@
       "title": "Tests & Gatekeeping",
       "paths": [
         "backend/tests/**",
-        "docs/02_guides/testing/**",
+        "docs/20_runtime/testing/**",
+        "docs/02_guides/testing/playable_v1_manual_test.md",
         "docs/01_specs/**",
         "docs/_index/**"
       ]
@@ -123,7 +124,9 @@
         "frontend/**",
         "docs/00_overview/**",
         "docs/01_specs/**",
-        "docs/02_guides/**",
+        "docs/20_runtime/**",
+        "docs/30_resources/**",
+        "docs/90_playable/**",
         "docs/99_human_only/alignment_reports/**",
         "docs/01_specs/TODO_DOCS_ALIGNMENT.md"
       ]

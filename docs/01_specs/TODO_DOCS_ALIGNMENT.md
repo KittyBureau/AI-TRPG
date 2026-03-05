@@ -17,5 +17,5 @@ TODOs across docs.
 - Scope:
   - `docs/01_specs/character_fact_v1.md` section 8 now separates Guaranteed vs Unspecified
     behavior for GET fact and generate error precedence.
-  - `docs/02_guides/testing/api_test_guide.md` includes the same matrices with explicit
+  - `docs/20_runtime/testing/api_test_guide.md` includes the same matrices with explicit
     test file line references.

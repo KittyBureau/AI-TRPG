@@ -24,7 +24,8 @@
 - If enabled and HP becomes `<= 0`, set state to `dying`.
 - If HP rises above `0` from `dying`, restore to `alive`.
 
-State is persisted in `campaign.json` under `character_states`.
+State authority is persisted in `campaign.json` under `actors[*].character_state`.
+`character_states` remains a legacy mirror only and is cleared on save.
 
 ## Tool Decision Matrix
 

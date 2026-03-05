@@ -42,8 +42,12 @@ Each valid patch increments `settings_revision`.
   invalid `dialog_type` outputs; default `false` preserves fallback behavior.
 - `dialog.conflict_text_checks_enabled=true` enables text-based conflict checks;
   default `false` keeps the existing non-text baseline behavior.
-- `dialog.turn_profile_trace_enabled=true` enables optional `debug.used_profile_hash`
+- `dialog.turn_profile_trace_enabled=true` enables optional top-level `debug`
   in `/api/v1/chat/turn` responses; default `false` omits `debug`.
+- When enabled, `debug.resources` is the primary structured contract
+  (`prompts/flows/schemas/templates/policies/template_usage` arrays).
+- Legacy fields (`debug.prompt`, `debug.flow`, `debug.schemas`, `debug.templates`,
+  `debug.used_*`) remain compatibility outputs.
 
 ## API
 

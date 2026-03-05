@@ -2,7 +2,7 @@
 
 Purpose: a stable, sectioned index of code constraints and verification points.
 Use this as the default reference for every task.
-External Resources Roadmap -> `docs/03_architecture/external_resources_todo.md`
+External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md`
 
 ## 1. Repository Structure & Layer Boundaries
 **Rules**
@@ -29,12 +29,12 @@ External Resources Roadmap -> `docs/03_architecture/external_resources_todo.md`
   - `GET /api/v1/characters/library/{character_id}`
   - `POST /api/v1/characters/library`
   - `POST /api/v1/campaigns/{campaign_id}/party/load`
-- Changes to `Campaign`, `TurnLogEntry`, or API payloads must update `docs/01_specs/storage_layout.md` and `docs/02_guides/testing/api_test_guide.md`.
+- Changes to `Campaign`, `TurnLogEntry`, or API payloads must update `docs/01_specs/storage_layout.md` and `docs/20_runtime/testing/api_test_guide.md`.
 **Checks**
 - Run the API test guide for any changed endpoints.
 - Compare JSON payloads against `backend/domain/models.py`.
 **Scope**
-- `backend/api/routes/**`, `backend/domain/models.py`, `docs/01_specs/storage_layout.md`, `docs/02_guides/testing/api_test_guide.md`.
+- `backend/api/routes/**`, `backend/domain/models.py`, `docs/01_specs/storage_layout.md`, `docs/20_runtime/testing/api_test_guide.md`.
 
 ## 3. Dialog Types & LLM Output Schema
 **Rules**
@@ -97,10 +97,10 @@ External Resources Roadmap -> `docs/03_architecture/external_resources_todo.md`
 - Map validation requires string reachable ids, no duplicates, no self loops, valid targets, and connected graphs per parent group.
 - `map_generate` reverts on invalid maps and enforces `size` in `1..30`.
 **Checks**
-- Run `backend/tests/test_map_generate.py` and follow `docs/02_guides/testing/map_generate_manual_test.md`.
+- Run `backend/tests/test_map_generate.py` and follow `docs/20_runtime/testing/map_generate_manual_test.md`.
 - Review `backend/domain/map_models.py` for validation logic.
 **Scope**
-- `backend/domain/map_models.py`, `backend/app/tool_executor.py`, `docs/01_specs/storage_layout.md`, `docs/02_guides/testing/map_generate_manual_test.md`.
+- `backend/domain/map_models.py`, `backend/app/tool_executor.py`, `docs/01_specs/storage_layout.md`, `docs/20_runtime/testing/map_generate_manual_test.md`.
 
 ## 8. Conflict Detection & Retry
 **Rules**
@@ -128,12 +128,13 @@ External Resources Roadmap -> `docs/03_architecture/external_resources_todo.md`
 
 ## 10. Tests & Gatekeeping
 **Rules**
-- API contract changes require updating `docs/02_guides/testing/api_test_guide.md`.
+- API contract changes require updating `docs/20_runtime/testing/api_test_guide.md`.
 - Tool/state/map changes require running `backend/tests/test_map_generate.py`, `backend/tests/test_move_options.py`, and reviewing the manual map_generate guide when map logic changes.
-- `world_generate` changes require running `backend/tests/test_world_generate_tool.py` and the local smoke script `scripts/smoke_world_generate.ps1` (guide: `docs/02_guides/testing/world_generate_smoke_test.md`).
-- Frontend gameplay flow UI/protocol changes require running `scripts/smoke_frontend_flow.ps1` and checking `frontend/README_frontend.md` + `docs/02_guides/gameplay_flow.md` for sync.
-- For play-panel actor selection consistency changes, also run the manual guide `docs/02_guides/testing/active_actor_integration_smoke.md`.
-- For Play state convergence or refresh behavior changes, run `docs/02_guides/testing/state_consistency_check.md`.
+- `world_generate` changes require running `backend/tests/test_world_generate_tool.py` and the local smoke script `scripts/smoke_world_generate.ps1` (guide: `docs/20_runtime/testing/world_generate_smoke_test.md`).
+- Frontend gameplay flow UI/protocol changes require running `scripts/smoke_frontend_flow.ps1` and checking `frontend/README_frontend.md` + `docs/20_runtime/gameplay_flow.md` + `docs/20_runtime/frontend_entrypoints.md` for sync.
+- For play-panel actor selection consistency changes, also run the manual guide `docs/20_runtime/testing/active_actor_integration_smoke.md`.
+- For Play state convergence or refresh behavior changes, run `docs/20_runtime/testing/state_consistency_check.md`.
+- For Playable v1 closure/regression handoff, run `docs/02_guides/testing/playable_v1_manual_test.md`.
 - Play Action Planner supports structured envelopes (`move` / `scene_action`) and compiles one strict `UI_FLOW_STEP` per step.
 - Round play delta contract is frontend-owned in `frontend/play.js` and must keep stable keys: `actor_id`, `changed`, `position`, `hp`, `character_state`, `inventory`, `error`.
 - Spec changes in `docs/01_specs/**` must be reflected in this AI_INDEX.
@@ -141,7 +142,7 @@ External Resources Roadmap -> `docs/03_architecture/external_resources_todo.md`
 - Run targeted tests and document results in the task output.
 - Update `docs/_index/ai_index_manifest.json` if paths or sections change.
 **Scope**
-- `backend/tests/**`, `docs/02_guides/testing/**`, `docs/01_specs/**`, `docs/_index/**`.
+- `backend/tests/**`, `docs/20_runtime/testing/**`, `docs/01_specs/**`, `docs/_index/**`.
 
 ## 11. Change Process & Documentation Updates
 **Rules**
@@ -156,7 +157,8 @@ External Resources Roadmap -> `docs/03_architecture/external_resources_todo.md`
 
 ## 12. Documentation Authority & Sync Obligations
 **Rules**
-- Authoritative docs: `docs/00_overview/**`, `docs/01_specs/**`, `docs/02_guides/**`.
+- Authoritative docs: `docs/00_overview/**`, `docs/01_specs/**`, `docs/20_runtime/**`, `docs/30_resources/**`, `docs/90_playable/**`.
+- Transitional exception: `docs/02_guides/testing/playable_v1_manual_test.md` remains as a stable manual-test entry path.
 - Human-only docs: `docs/99_human_only/**`. Do not cite or rely on these unless the task explicitly allows it.
 - When a task explicitly requests an alignment report, write the report under `docs/99_human_only/alignment_reports/` using a dated filename (for example: `YYYY-MM-DD_<topic>_alignment_report.md`).
 - Reference/legacy docs are non-authoritative; do not treat them as implementation truth.
@@ -169,7 +171,7 @@ External Resources Roadmap -> `docs/03_architecture/external_resources_todo.md`
 - For alignment tasks, confirm report output path is under `docs/99_human_only/alignment_reports/`.
 - When changing gameplay flow UI controls or turn templates, run a manual chain check: create campaign -> world_generate -> map_generate -> actor_spawn -> move -> inventory_add -> chat/turn.
 **Scope**
-- `backend/**`, `frontend/**`, `docs/00_overview/**`, `docs/01_specs/**`, `docs/02_guides/**`, `docs/99_human_only/alignment_reports/**`, `docs/01_specs/TODO_DOCS_ALIGNMENT.md`.
+- `backend/**`, `frontend/**`, `docs/00_overview/**`, `docs/01_specs/**`, `docs/20_runtime/**`, `docs/30_resources/**`, `docs/90_playable/**`, `docs/99_human_only/alignment_reports/**`, `docs/01_specs/TODO_DOCS_ALIGNMENT.md`.
 
 ## 13. CharacterFact Generation & Persistence
 **Rules**

@@ -298,6 +298,8 @@ Behavior source-of-truth note:
 - File format/path guarantees are defined here.
 - API behavior guarantees (including GET fact fallback and generate error precedence)
   are test-backed in `docs/01_specs/character_fact_v1.md` section 8.
+- Runtime authority summary and legacy mirror policy are also documented in
+  `docs/20_runtime/storage_authority.md`.
 
 ## Map normalization and validation
 
