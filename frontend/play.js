@@ -4,6 +4,7 @@ import {
   initializeStore,
   loadCharacterLibrary,
   loadCharacterToCampaign,
+  selectActiveActor,
   setBaseUrl,
   setCampaignId,
   setCampaignOptions,
@@ -49,6 +50,7 @@ function initPlay() {
     loadCharacterLibrary,
     createCharacter,
     loadCharacterToCampaign,
+    selectActiveActor,
   };
 
   initializeStore();

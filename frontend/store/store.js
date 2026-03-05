@@ -2,6 +2,7 @@ import {
   createCharacter as createCharacterApi,
   listCharacters,
   loadCharacterToCampaign as loadCharacterToCampaignApi,
+  selectActor as selectActorApi,
 } from "../api/api.js";
 
 const BASE_URL_KEY = "raw-console-base-url";
@@ -253,6 +254,49 @@ export async function loadCharacterToCampaign(
   }
   state.character.status = "idle";
   state.character.error = null;
+  emit();
+  return result;
+}
+
+export async function selectActiveActor(
+  activeActorId,
+  campaignId = state.campaignId,
+  baseUrl = state.baseUrl
+) {
+  const normalizedActorId =
+    typeof activeActorId === "string" ? activeActorId.trim() : "";
+  if (!campaignId) {
+    const message = "campaign_id is required";
+    state.statusMessage = message;
+    emit();
+    return {
+      ok: false,
+      status: 400,
+      data: { detail: message },
+      text: message,
+    };
+  }
+  if (!normalizedActorId) {
+    const message = "active_actor_id is required";
+    state.statusMessage = message;
+    emit();
+    return {
+      ok: false,
+      status: 400,
+      data: { detail: message },
+      text: message,
+    };
+  }
+
+  const result = await selectActorApi(baseUrl, campaignId, normalizedActorId);
+  if (!result.ok || !result.data) {
+    state.statusMessage = `Set active actor failed: ${parseApiError(result)}`;
+    emit();
+    return result;
+  }
+
+  state.campaign.active_actor_id = normalizedActorId;
+  state.statusMessage = `Active actor set to ${normalizedActorId}.`;
   emit();
   return result;
 }

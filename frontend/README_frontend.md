@@ -36,7 +36,7 @@ Notes:
 
 ## Frontend architecture (panel-based)
 
-Play/Debug v0 architecture uses plain HTML + CSS Grid + JavaScript modules:
+Current Play/Debug architecture uses plain HTML + JavaScript modules:
 
 ```text
 frontend/
@@ -47,43 +47,42 @@ frontend/
   debug.js
   api/api.js
   store/store.js
-  panels/registry.js
+  panels/campaign_panel.js
+  panels/character_library_panel.js
   panels/party_panel.js
-  panels/action_planner.js
-  panels/scene_panel.js
-  panels/log_panel.js
+  panels/actor_control_panel.js
+  panels/debug_panel.js
   models/log_entry.js
   renderers/delta_renderer.js
 ```
 
 Key constraints implemented:
-- UI modules are mounted as Panels via `panels/registry.js`.
+- `play.js` only initializes store and panel modules.
 - State authority is centralized in `store/store.js`.
 - Network calls are encapsulated in `api/api.js`.
-- Play page avoids raw JSON output.
-- Debug page exposes raw request/response and trace export.
+- Panel modules render and dispatch store actions.
 
 ## Play vs Debug pages
 
 - `frontend/play.html`:
-  - CSS Grid layout with campaign bar + 3 columns.
-  - Left: Party + Action Planner.
-  - Center: Scene + Map Placeholder.
-  - Right: Round Log.
-  - Round Log renders narrative + delta lines only (no raw JSON).
-  - Scene panel reads `GET /api/v1/map/view` and renders `entities_in_area` with verb buttons.
-  - Clicking a verb queues a structured action envelope in Action Planner (no immediate execution).
-  - Action Planner supports envelope types:
-    - `{type:"move", actor_id, to_area_id}`
-    - `{type:"scene_action", actor_id, action, target_id, params}`
-  - Round Runner compiles each envelope into one strict `UI_FLOW_STEP` turn call with `execution.actor_id`.
+  - Vertical panel flow:
+    - `Campaign Panel`
+    - `Character Library Panel`
+    - `Party Panel`
+    - `Actor Control Panel`
+    - `Debug Panel`
+  - `Party Panel` includes manual active actor switching:
+    - Select actor from `party_character_ids`
+    - Click **Set Active**
+    - Calls `POST /api/v1/campaign/select_actor`
+    - On success updates `campaign.active_actor_id` in store
 - `frontend/debug.html`:
   - Request Builder, Response Viewer, Trace Log.
   - Copy request/response and export reproduction bundle.
 - `frontend/index.html`:
   - Legacy raw console remains available for backward compatibility.
 
-## V1.1 quick operations in UI
+## V1.1 quick operations in legacy UI
 
 The frontend now provides a **Campaign Status & V1.1 Ops** panel:
 
@@ -144,7 +143,7 @@ When toggling `context.compress_enabled`, the UI also patches
 
 Open `http://127.0.0.1:5173/map.html` to see the read-only map snapshot.
 
-## Frontend flow regression script (lightweight)
+## Frontend flow regression script (legacy path, lightweight)
 
 To quickly validate the frontend gameplay button chain protocol (without browser automation),
 run:

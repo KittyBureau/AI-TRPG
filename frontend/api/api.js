@@ -99,3 +99,30 @@ export async function loadCharacterToCampaign(baseUrl, campaignId, characterId) 
     }
   );
 }
+
+export async function selectActor(baseUrl, campaignId, activeActorId) {
+  if (!campaignId) {
+    return {
+      ok: false,
+      status: 400,
+      data: null,
+      text: "campaign_id is required",
+    };
+  }
+  if (!activeActorId) {
+    return {
+      ok: false,
+      status: 400,
+      data: null,
+      text: "active_actor_id is required",
+    };
+  }
+  return request(baseUrl, "/api/v1/campaign/select_actor", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      campaign_id: campaignId,
+      active_actor_id: activeActorId,
+    }),
+  });
+}

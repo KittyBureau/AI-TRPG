@@ -3,6 +3,43 @@ export function initPanel(store) {
   if (!mount) {
     return;
   }
+  const uiState = {
+    selectedActorId: "",
+    statusText: "",
+    errorText: "",
+  };
+
+  function parseApiError(result) {
+    if (result?.data && typeof result.data.detail === "string") {
+      return result.data.detail;
+    }
+    if (typeof result?.text === "string" && result.text.trim()) {
+      return result.text.trim();
+    }
+    return `HTTP ${result?.status ?? 500}`;
+  }
+
+  async function setActiveActor() {
+    const actorId = (uiState.selectedActorId || "").trim();
+    if (!actorId) {
+      uiState.statusText = "";
+      uiState.errorText = "Select an actor first.";
+      render();
+      return;
+    }
+    const result = await store.selectActiveActor(actorId);
+    if (!result.ok) {
+      const message = parseApiError(result);
+      uiState.statusText = "";
+      uiState.errorText = `Set active failed: ${message}`;
+      console.error("Set active actor failed", result);
+      render();
+      return;
+    }
+    uiState.errorText = "";
+    uiState.statusText = `Active actor set to ${actorId}.`;
+    render();
+  }
 
   function render() {
     const state = store.getState();
@@ -12,6 +49,11 @@ export function initPanel(store) {
         ? state.partyActors
         : [];
     const activeActorId = state.campaign?.active_actor_id || "";
+    if (!uiState.selectedActorId || !party.includes(uiState.selectedActorId)) {
+      uiState.selectedActorId = activeActorId && party.includes(activeActorId)
+        ? activeActorId
+        : party[0] || "";
+    }
 
     mount.innerHTML = "";
 
@@ -24,6 +66,45 @@ export function initPanel(store) {
     active.className = "row";
     active.textContent = `active_actor_id: ${activeActorId || "none"}`;
     mount.appendChild(active);
+
+    const controls = document.createElement("label");
+    controls.className = "field";
+    controls.innerHTML = '<span class="field-label">Set active actor</span>';
+    const controlsRow = document.createElement("div");
+    controlsRow.className = "inline";
+
+    const select = document.createElement("select");
+    const emptyOption = document.createElement("option");
+    emptyOption.value = "";
+    emptyOption.textContent = "Select actor";
+    select.appendChild(emptyOption);
+    for (const actorId of party) {
+      const option = document.createElement("option");
+      option.value = actorId;
+      option.textContent = actorId;
+      option.selected = actorId === uiState.selectedActorId;
+      select.appendChild(option);
+    }
+    select.addEventListener("change", () => {
+      uiState.selectedActorId = select.value;
+    });
+
+    const setButton = document.createElement("button");
+    setButton.className = "primary";
+    setButton.textContent = "Set Active";
+    setButton.disabled = !party.length;
+    setButton.addEventListener("click", setActiveActor);
+
+    controlsRow.appendChild(select);
+    controlsRow.appendChild(setButton);
+    controls.appendChild(controlsRow);
+    mount.appendChild(controls);
+
+    const status = document.createElement("div");
+    status.className = "note";
+    status.textContent =
+      uiState.errorText || uiState.statusText || "Use party actors to switch active actor.";
+    mount.appendChild(status);
 
     const listTitle = document.createElement("div");
     listTitle.className = "note";

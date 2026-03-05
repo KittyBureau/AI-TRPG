@@ -35,6 +35,9 @@ Turn actor context:
 ## Backend Endpoints Used In This Flow
 
 - `POST /api/v1/campaign/create`
+- `POST /api/v1/campaign/select_actor` (manual active actor switch)
+- `GET /api/v1/characters/library` (optional for library inspect)
+- `POST /api/v1/campaigns/{campaign_id}/party/load` (optional for deterministic party load)
 - `POST /api/v1/chat/turn`
 - `GET /api/v1/map/view` (optional for inspection)
 - `GET /api/v1/campaigns/{campaign_id}/world` (optional for inspection)
@@ -169,9 +172,25 @@ Expected check:
 
 - response includes `narrative_text` (non-empty preferred)
 
+### 8) Manually switch active actor
+
+```bash
+curl -sS -X POST "$BASE/api/v1/campaign/select_actor" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "campaign_id":"camp_0001",
+    "active_actor_id":"pc_001"
+  }'
+```
+
+Expected check:
+
+- response `active_actor_id` equals requested actor
+- actor must already be in `selected.party_character_ids`
+
 ## Frontend Minimal Flow
 
-Open `frontend/index.html` through a static server and set Base URL.
+Open `frontend/play.html` through a static server and set Base URL.
 
 Page roles:
 
@@ -195,41 +214,29 @@ frontend/
 
 The page now includes these flow panels:
 
-- `World Setup`
-- `Actor Spawn`
-- `Move`
-- `Flow Buttons`
-- `Scene` now includes `entities_in_area` with per-entity verb buttons.
+- `Campaign Panel`
+- `Character Library Panel`
+- `Party Panel`
+- `Actor Control Panel`
+- `Debug Panel`
 
 ### Manual step buttons
 
 Use the following buttons in order:
 
-1. `Create Campaign` (existing Connection panel)
-2. `Generate World`
-3. `Generate Map`
-4. `Spawn Actor`
-5. `Move`
-6. `Inventory Add` (through Turn Panel quick input/template)
-7. `Submit Turn`
-
-### One-click chain
-
-Use `Run Full Flow` in `Flow Buttons` to run:
-
-- create campaign -> world -> map -> spawn -> move -> turn
-- Inventory feedback is visible in turn `state_summary.active_actor_inventory`.
+1. `Create Campaign` or select existing campaign
+2. In `Character Library`, load at least two characters into campaign
+3. In `Party Panel`, use selector + `Set Active` to switch active actor
+4. In `Actor Control Panel`, submit `Turn` or `Move`
 
 ## Play page Round MVP
 
-`play.html` provides a minimal multi-actor round loop:
+`play.html` provides a deterministic panel flow:
 
 1. Select campaign.
-2. Input actor ids (CSV/newline) and apply.
-3. Adjust initiative order using Up/Down.
-4. Fill one action text per actor.
-5. Choose failure strategy: `Stop Round` or `Continue Round`.
-6. Click **Run Round**.
+2. Load characters from library to party.
+3. Switch active actor manually in `Party Panel` when needed.
+4. Send turn or move with selected actor in `Actor Control Panel`.
 
 Each step calls `/api/v1/chat/turn` sequentially with:
 
@@ -241,18 +248,11 @@ Each step calls `/api/v1/chat/turn` sequentially with:
 }
 ```
 
-When using Action Planner envelopes:
+Notes:
 
-- `move` action compiles to one strict `UI_FLOW_STEP` that calls `move`.
-- `scene_action` action compiles to one strict `UI_FLOW_STEP` that calls `scene_action`.
-- Each planner step sends `execution.actor_id` to pin effective actor context.
-
-The response `effective_actor_id` confirms execution identity. UI log stores a fixed
-delta object per actor step (derived from `state_summary`) with stable keys:
-`actor_id`, `changed`, `position`, `hp`, `character_state`, `inventory`, `error`.
-`inventory.changes[*]` uses `{item_id,before,after,delta}`.
-
-The flow result is shown in the panel output.
+- `party/load` only auto-sets active actor when current active is empty.
+- To force a switch, use `Party Panel -> Set Active` (calls `/api/v1/campaign/select_actor`).
+- Turn response `effective_actor_id` is the source of truth for execution identity.
 
 ## Frontend lightweight regression script
 
