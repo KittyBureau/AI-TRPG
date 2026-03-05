@@ -35,6 +35,23 @@ export function initPanel(store) {
     store.setDebugResponseText(JSON.stringify(result.data, null, 2));
   }
 
+  async function refreshCurrentCampaign() {
+    const state = store.getState();
+    if (!state.campaignId) {
+      store.setStatusMessage("Select a campaign first.");
+      return;
+    }
+    const result = await store.refreshCampaign(state.campaignId, state.baseUrl);
+    if (!result.ok) {
+      store.setStatusMessage(`Refresh campaign failed (${result.status}).`);
+      return;
+    }
+    store.setStatusMessage(`Refreshed campaign ${state.campaignId} from backend authoritative state.`);
+    if (result.data) {
+      store.setDebugResponseText(JSON.stringify(result.data, null, 2));
+    }
+  }
+
   function changeCampaign(campaignId) {
     store.setCampaignId(campaignId);
     store.setPartyActors([]);
@@ -88,6 +105,10 @@ export function initPanel(store) {
     refreshButton.textContent = "Refresh";
     refreshButton.addEventListener("click", () => refreshCampaigns());
 
+    const refreshCampaignButton = document.createElement("button");
+    refreshCampaignButton.textContent = "Refresh Campaign";
+    refreshCampaignButton.addEventListener("click", refreshCurrentCampaign);
+
     const createButton = document.createElement("button");
     createButton.className = "primary";
     createButton.textContent = "Create Campaign";
@@ -95,6 +116,7 @@ export function initPanel(store) {
 
     controls.appendChild(select);
     controls.appendChild(refreshButton);
+    controls.appendChild(refreshCampaignButton);
     controls.appendChild(createButton);
     campaignField.appendChild(controls);
     mount.appendChild(campaignField);

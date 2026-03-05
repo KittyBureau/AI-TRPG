@@ -1,5 +1,6 @@
 import {
   createCharacter as createCharacterApi,
+  getCampaign as getCampaignApi,
   listCharacters,
   loadCharacterToCampaign as loadCharacterToCampaignApi,
   selectActor as selectActorApi,
@@ -297,6 +298,56 @@ export async function selectActiveActor(
 
   state.campaign.active_actor_id = normalizedActorId;
   state.statusMessage = `Active actor set to ${normalizedActorId}.`;
+  emit();
+  return result;
+}
+
+export async function refreshCampaign(
+  campaignId = state.campaignId,
+  baseUrl = state.baseUrl
+) {
+  const resolvedCampaignId =
+    typeof campaignId === "string" && campaignId.trim() ? campaignId.trim() : "";
+  if (!resolvedCampaignId) {
+    const message = "campaign_id is required";
+    state.statusMessage = message;
+    emit();
+    return {
+      ok: false,
+      status: 400,
+      data: { detail: message },
+      text: message,
+    };
+  }
+
+  const result = await getCampaignApi(baseUrl, resolvedCampaignId);
+  if (!result.ok || !result.data) {
+    state.statusMessage = `Refresh campaign failed: ${parseApiError(result)}`;
+    emit();
+    return result;
+  }
+
+  const selected =
+    result.data.selected && typeof result.data.selected === "object"
+      ? result.data.selected
+      : {};
+  const normalizedParty = [
+    ...new Set(
+      Array.isArray(selected.party_character_ids)
+        ? selected.party_character_ids
+            .filter((value) => typeof value === "string" && value.trim())
+            .map((value) => value.trim())
+        : []
+    ),
+  ];
+  const backendActiveActorId =
+    typeof selected.active_actor_id === "string"
+      ? selected.active_actor_id.trim()
+      : "";
+  applyPartyActorsToState(normalizedParty);
+  state.campaignId = resolvedCampaignId;
+  state.campaign.active_actor_id = backendActiveActorId;
+  state.statusMessage = `Campaign refreshed from backend: active=${state.campaign.active_actor_id || "none"}, party=${state.campaign.party_character_ids.length}.`;
   emit();
   return result;
 }

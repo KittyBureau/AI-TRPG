@@ -455,3 +455,14 @@ When validating current mainline behavior, include these checks:
 5. persistence check for entity changes
    - after `take` / `drop` / `detach`, verify `storage/campaigns/<campaign_id>/campaign.json`
      reflects updated `entities.<entity_id>.loc` / `kind` / `state` values.
+
+## Campaign get endpoint regression (`/api/v1/campaign/get`)
+
+1. call:
+   - `GET /api/v1/campaign/get?campaign_id=<campaign_id>`
+2. verify response fields:
+   - `campaign_id`
+   - `selected.party_character_ids` (list)
+   - `selected.active_actor_id` (string)
+   - `actors` (actor id list)
+3. verify `404` when campaign does not exist.

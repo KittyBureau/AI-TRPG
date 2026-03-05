@@ -36,6 +36,19 @@ export async function createCampaign(baseUrl, payload = {}) {
   });
 }
 
+export async function getCampaign(baseUrl, campaignId) {
+  if (!campaignId) {
+    return {
+      ok: false,
+      status: 400,
+      data: null,
+      text: "campaign_id is required",
+    };
+  }
+  const params = new URLSearchParams({ campaign_id: campaignId });
+  return request(baseUrl, `/api/v1/campaign/get?${params.toString()}`);
+}
+
 export async function chatTurn(baseUrl, payload) {
   return request(baseUrl, "/api/v1/chat/turn", {
     method: "POST",

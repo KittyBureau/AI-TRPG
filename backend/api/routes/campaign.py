@@ -76,6 +76,17 @@ class AdvanceMilestoneResponse(BaseModel):
     milestone: CampaignStatusMilestoneResponse
 
 
+class CampaignSelectedResponse(BaseModel):
+    party_character_ids: List[str] = Field(default_factory=list)
+    active_actor_id: str
+
+
+class CampaignGetResponse(BaseModel):
+    campaign_id: str
+    selected: CampaignSelectedResponse
+    actors: List[str] = Field(default_factory=list)
+
+
 @router.post("/create", response_model=CreateCampaignResponse)
 def create_campaign(request: CreateCampaignRequest) -> CreateCampaignResponse:
     world_id = request.world_id or "world_001"
@@ -124,6 +135,23 @@ def select_actor(request: SelectActorRequest) -> SelectActorResponse:
     return SelectActorResponse(
         campaign_id=campaign.id,
         active_actor_id=campaign.selected.active_actor_id,
+    )
+
+
+@router.get("/get", response_model=CampaignGetResponse)
+def get_campaign(campaign_id: str) -> CampaignGetResponse:
+    repo = FileRepo(Path.cwd() / "storage")
+    try:
+        campaign = repo.get_campaign(campaign_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return CampaignGetResponse(
+        campaign_id=campaign.id,
+        selected=CampaignSelectedResponse(
+            party_character_ids=list(campaign.selected.party_character_ids),
+            active_actor_id=campaign.selected.active_actor_id,
+        ),
+        actors=sorted(campaign.actors.keys()),
     )
 
 

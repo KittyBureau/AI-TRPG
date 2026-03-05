@@ -22,6 +22,7 @@
 ## Guides (How-To)
 
 - `docs/02_guides/testing/api_test_guide.md` - API test guide (Stage 1-4).
+- `docs/02_guides/testing/active_actor_integration_smoke.md` - Play panel active-actor integration smoke checklist.
 - `docs/02_guides/testing/map_generate_manual_test.md` - Manual map_generate regression/smoke.
 - `docs/02_guides/api_v1_route_migration.md` - API route prefix migration note (`/api/v1`).
 - `frontend/README_frontend.md` - Lightweight frontend console usage and V1.1 operations panel guide.

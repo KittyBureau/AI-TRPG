@@ -76,6 +76,9 @@ Key constraints implemented:
     - Click **Set Active**
     - Calls `POST /api/v1/campaign/select_actor`
     - On success updates `campaign.active_actor_id` in store
+  - `Campaign Panel` includes **Refresh Campaign**:
+    - Calls `GET /api/v1/campaign/get?campaign_id=...`
+    - Syncs `selected.party_character_ids` and `selected.active_actor_id` from backend authoritative state
 - `frontend/debug.html`:
   - Request Builder, Response Viewer, Trace Log.
   - Copy request/response and export reproduction bundle.

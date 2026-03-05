@@ -35,6 +35,7 @@ Turn actor context:
 ## Backend Endpoints Used In This Flow
 
 - `POST /api/v1/campaign/create`
+- `GET /api/v1/campaign/get` (authoritative selected/actors snapshot for one campaign)
 - `POST /api/v1/campaign/select_actor` (manual active actor switch)
 - `GET /api/v1/characters/library` (optional for library inspect)
 - `POST /api/v1/campaigns/{campaign_id}/party/load` (optional for deterministic party load)
@@ -188,6 +189,17 @@ Expected check:
 - response `active_actor_id` equals requested actor
 - actor must already be in `selected.party_character_ids`
 
+### 9) Refresh campaign authoritative state
+
+```bash
+curl -sS "$BASE/api/v1/campaign/get?campaign_id=camp_0001"
+```
+
+Expected check:
+
+- response includes `selected.party_character_ids`
+- response includes `selected.active_actor_id`
+
 ## Frontend Minimal Flow
 
 Open `frontend/play.html` through a static server and set Base URL.
@@ -228,6 +240,7 @@ Use the following buttons in order:
 2. In `Character Library`, load at least two characters into campaign
 3. In `Party Panel`, use selector + `Set Active` to switch active actor
 4. In `Actor Control Panel`, submit `Turn` or `Move`
+5. In `Campaign Panel`, click `Refresh Campaign` to re-sync party/active from backend
 
 ## Play page Round MVP
 

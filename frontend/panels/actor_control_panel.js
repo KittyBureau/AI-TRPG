@@ -1,4 +1,5 @@
 import { chatTurn, getMapView } from "../api/api.js";
+import { getPartyActorIds, resolveActingActorId } from "../utils/acting_actor.js";
 
 function buildMovePrompt(actorId, toAreaId) {
   return `[UI_FLOW_STEP]
@@ -27,7 +28,6 @@ export function initPanel(store) {
   }
 
   const uiState = {
-    actorId: "",
     userInput: "",
     moveToAreaId: "",
   };
@@ -49,9 +49,9 @@ export function initPanel(store) {
       store.setStatusMessage("Select a campaign first.");
       return;
     }
-    const actorId = uiState.actorId.trim();
+    const actorId = resolveActingActorId(state);
     if (!actorId) {
-      store.setStatusMessage("Select an actor.");
+      store.setStatusMessage("Party empty / no actor selected.");
       return;
     }
     const userInput = uiState.userInput.trim();
@@ -75,7 +75,7 @@ export function initPanel(store) {
     }
     store.setDebugResponseText(JSON.stringify(result.data, null, 2));
     await refreshMap(state.campaignId, actorId);
-    store.setStatusMessage("Turn completed.");
+    store.setStatusMessage(`Turn completed as ${actorId}.`);
   }
 
   async function runMove() {
@@ -84,10 +84,14 @@ export function initPanel(store) {
       store.setStatusMessage("Select a campaign first.");
       return;
     }
-    const actorId = uiState.actorId.trim();
+    const actorId = resolveActingActorId(state);
     const toAreaId = uiState.moveToAreaId.trim();
     if (!actorId || !toAreaId) {
-      store.setStatusMessage("actor and to_area_id are required.");
+      if (!actorId) {
+        store.setStatusMessage("Party empty / no actor selected.");
+      } else {
+        store.setStatusMessage("to_area_id is required.");
+      }
       return;
     }
     const payload = {
@@ -106,20 +110,14 @@ export function initPanel(store) {
     }
     store.setDebugResponseText(JSON.stringify(result.data, null, 2));
     await refreshMap(state.campaignId, actorId);
-    store.setStatusMessage("Move completed.");
+    store.setStatusMessage(`Move completed as ${actorId}.`);
   }
 
   function render() {
     const state = store.getState();
-    const party = Array.isArray(state.campaign?.party_character_ids)
-      ? state.campaign.party_character_ids
-      : Array.isArray(state.partyActors)
-        ? state.partyActors
-        : [];
-
-    if (!uiState.actorId || !party.includes(uiState.actorId)) {
-      uiState.actorId = party[0] || "";
-    }
+    const party = getPartyActorIds(state);
+    const actingActorId = resolveActingActorId(state);
+    const canAct = Boolean(actingActorId);
 
     mount.innerHTML = "";
 
@@ -127,6 +125,11 @@ export function initPanel(store) {
     title.className = "panel-title";
     title.textContent = "Actor Control";
     mount.appendChild(title);
+
+    const actingAs = document.createElement("div");
+    actingAs.className = "row";
+    actingAs.textContent = `Acting as: ${actingActorId || "none"}`;
+    mount.appendChild(actingAs);
 
     const actorField = document.createElement("label");
     actorField.className = "field";
@@ -140,14 +143,29 @@ export function initPanel(store) {
       const option = document.createElement("option");
       option.value = actorId;
       option.textContent = actorId;
-      option.selected = actorId === uiState.actorId;
+      option.selected = actorId === actingActorId;
       actorSelect.appendChild(option);
     }
-    actorSelect.addEventListener("change", () => {
-      uiState.actorId = actorSelect.value;
+    actorSelect.disabled = !party.length;
+    actorSelect.addEventListener("change", async () => {
+      const nextActorId = actorSelect.value.trim();
+      if (!nextActorId || nextActorId === actingActorId) {
+        return;
+      }
+      const result = await store.selectActiveActor(nextActorId);
+      if (!result.ok) {
+        store.setStatusMessage(`Set active actor failed: ${parseApiError(result)}`);
+      }
     });
     actorField.appendChild(actorSelect);
     mount.appendChild(actorField);
+
+    if (!canAct) {
+      const emptyHint = document.createElement("div");
+      emptyHint.className = "note";
+      emptyHint.textContent = "Party empty / no actor selected.";
+      mount.appendChild(emptyHint);
+    }
 
     const turnField = document.createElement("label");
     turnField.className = "field";
@@ -165,6 +183,7 @@ export function initPanel(store) {
     const turnButton = document.createElement("button");
     turnButton.className = "primary";
     turnButton.textContent = "Send Turn";
+    turnButton.disabled = !canAct;
     turnButton.addEventListener("click", runTurn);
     mount.appendChild(turnButton);
 
@@ -182,6 +201,7 @@ export function initPanel(store) {
 
     const moveButton = document.createElement("button");
     moveButton.textContent = "Move";
+    moveButton.disabled = !canAct;
     moveButton.addEventListener("click", runMove);
     mount.appendChild(moveButton);
   }
