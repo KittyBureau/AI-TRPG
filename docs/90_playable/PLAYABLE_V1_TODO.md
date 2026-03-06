@@ -1,6 +1,6 @@
 ﻿# PLAYABLE v1 TODO (Development Mainline)
 
-Last updated: 2026-03-05
+Last updated: 2026-03-06
 
 ## Positioning
 
@@ -37,9 +37,9 @@ Non-goals for Playable v1:
 ## Item Counts
 
 - P0: 14 items (must-complete)
-- P1: 12 items
-- P2: 10 items
-- Total: 36 items
+- P1: 13 items
+- P2: 11 items
+- Total: 38 items
 
 ## TOC
 
@@ -349,6 +349,19 @@ Non-goals for Playable v1:
 - Tests: review checklist + path consistency scan in `docs/00_overview/DOCS_PATH_MAPPING.md`
 - Rollback: revert docs gating edits and restore previous manifest/index mapping.
 
+### P1-13 Preparation for Future Context System
+- Status: `TODO`
+- Why: prepare data shape and observability for future context optimization without changing current runtime behavior.
+- Scope: future data model hooks and prompt trace observability only; no current prompt builder changes.
+- Tasks:
+  - Allow entities/areas to optionally contain a lightweight `tags` field (unused for now).
+  - Ensure debug trace records prompt token counts.
+  - Do not change current prompt building logic yet.
+- Status Note: Preparation only. No runtime changes.
+- Acceptance: prep work is limited to optional schema/documentation/trace readiness and preserves current prompt assembly behavior.
+- Tests: docs review only until implementation is explicitly scheduled.
+- Rollback: remove unused prep hooks and trace notes if they create confusion before implementation.
+
 ---
 
 ## P2 (Post-v1 / Optimization)
@@ -432,3 +445,22 @@ Non-goals for Playable v1:
 - Acceptance: documented switch + rollback drill is repeatable by non-authors.
 - Tests: manual manifest toggle rehearsal + `pytest -q`
 - Rollback: revert manifest toggle and changelog entry per playbook.
+
+### P2-11 Context Architecture Optimization (Queued)
+- Status: `TODO`
+- STATUS: queued for P2 (not implemented).
+- Why: future improvement to support long play sessions with stable world consistency and lower token usage.
+- Core idea:
+  - Build prompts from **state + area context** instead of long dialogue history.
+  - Current area: full description + entity tags.
+  - Nearby areas: summarized state.
+  - Distant world: compressed world facts.
+  - Recent dialogue: short rolling window only.
+- Subtasks:
+  - Implement a **Context Builder** module responsible for constructing prompts.
+  - Introduce **persistent tags** and **transient tags (TTL)** for entities and areas.
+  - Replace long dialogue history with **state-derived summaries**.
+  - Add token monitoring and heuristics to trigger compression.
+- Acceptance: design and implementation, when scheduled, preserve world consistency while reducing token growth in long sessions.
+- Tests: future long-session regression coverage and prompt-size observability checks after implementation is approved.
+- Rollback: keep the current history-oriented prompt assembly if the optimization proves unstable.

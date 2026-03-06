@@ -22,6 +22,13 @@ incremental delivery.
   - orchestration: `backend/app/character_fact_generation.py`
   - file IO: `backend/infra/file_repo.py` and `backend/infra/character_fact_store.py`
 
+## Future Direction (Informational Only)
+
+Prompt generation may move toward a **state-driven context model** where the
+world state is summarized through tags and area states instead of replaying full
+dialogue history. This is a future context-optimization direction only and does
+not change current runtime behavior.
+
 ## Stage 1 Data Flow
 
 1. `/api/v1/chat/turn` receives `campaign_id` and `user_input` (`actor_id` optional).
