@@ -37,18 +37,19 @@ class TurnResponse(BaseModel):
     debug: Optional[Dict[str, Any]] = None
 
 
-@router.post("/turn", response_model=TurnResponse)
+@router.post("/turn", response_model=TurnResponse, response_model_exclude_unset=True)
 def submit_turn(request: TurnRequest) -> TurnResponse:
     service = _service()
-    execution_actor_id: Optional[str] = None
-    if isinstance(request.execution, dict):
-        candidate = request.execution.get("actor_id")
-        if isinstance(candidate, str) and candidate.strip():
-            execution_actor_id = candidate.strip()
-    effective_actor_id = execution_actor_id or request.actor_id
     try:
         response = service.submit_turn(
-            request.campaign_id, request.user_input, actor_id=effective_actor_id
+            request.campaign_id,
+            request.user_input,
+            actor_id=request.actor_id,
+            execution_actor_id=(
+                request.execution.get("actor_id")
+                if isinstance(request.execution, dict)
+                else None
+            ),
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

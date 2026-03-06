@@ -158,6 +158,33 @@ Fail:
 - tool execution mutates wrong actor/state unexpectedly
 - storage corruption or missing required campaign/turn/world files
 
+### B5. Record template
+
+Use this minimal record block during each release-candidate run:
+
+```text
+Set B Run Record
+- Date:
+- Operator:
+- Backend mode: real LLM / controlled stub
+- Campaign id:
+- Trace off check: PASS / FAIL
+- Trace on check (optional): PASS / FAIL / SKIPPED
+- Turns completed:
+- Tools observed:
+  - world_generate:
+  - map_generate:
+  - move_options:
+  - move:
+  - scene_action:
+  - inventory_add:
+  - narrative-only turn:
+- turn_log.jsonl row count:
+- Storage parseable: PASS / FAIL
+- Actor authority coherent: PASS / FAIL
+- Notes / blockers:
+```
+
 ## Recommended Logging During Manual Runs
 
 Capture:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Dict
 
@@ -123,6 +124,42 @@ def test_world_generate_is_idempotent_for_seed_and_generator(tmp_path: Path) -> 
     assert first_result["generator_id"] == second_result["generator_id"]
     assert second_result["created"] is False
     assert first_world.updated_at == second_world.updated_at
+
+
+def test_world_generate_stub_repeated_calls_keep_world_json_stable(tmp_path: Path) -> None:
+    repo = FileRepo(tmp_path / "storage")
+    campaign = _make_campaign("camp_0002b", world_id="world_stub_repeat")
+    repo.create_campaign(campaign)
+    call = ToolCall(id="call_world_stub_repeat", tool="world_generate", args={})
+
+    first_actions, first_feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [call],
+        repo=repo,
+    )
+    assert first_feedback is None
+    world_path = tmp_path / "storage" / "worlds" / "world_stub_repeat" / "world.json"
+    first_payload = json.loads(world_path.read_text(encoding="utf-8"))
+
+    second_actions, second_feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [call],
+        repo=repo,
+    )
+    assert second_feedback is None
+    second_payload = json.loads(world_path.read_text(encoding="utf-8"))
+
+    assert first_actions[0].result["seed"] == second_actions[0].result["seed"]
+    assert first_actions[0].result["generator_id"] == second_actions[0].result["generator_id"]
+    assert first_payload == second_payload
+    loaded_world = repo.get_world("world_stub_repeat")
+    assert loaded_world is not None
+    if hasattr(loaded_world, "model_dump"):
+        assert loaded_world.model_dump() == first_payload
+    else:
+        assert loaded_world.dict() == first_payload
 
 
 def test_world_generate_bind_to_campaign_persists_selected_world_id(

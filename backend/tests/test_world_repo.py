@@ -42,3 +42,21 @@ def test_get_or_create_world_stub_is_idempotent(tmp_path: Path) -> None:
     assert second.world_id == "world_abc"
     assert first.seed == second.seed
     assert second.generator.params.get("seed_source") == "world_id_hash"
+
+
+def test_get_or_create_world_stub_is_deterministic_across_storage_roots(
+    tmp_path: Path,
+) -> None:
+    first_repo = FileRepo(tmp_path / "one" / "storage")
+    second_repo = FileRepo(tmp_path / "two" / "storage")
+
+    first = first_repo.get_or_create_world_stub("world_abc")
+    second = second_repo.get_or_create_world_stub("world_abc")
+
+    first_path = tmp_path / "one" / "storage" / "worlds" / "world_abc" / "world.json"
+    second_path = tmp_path / "two" / "storage" / "worlds" / "world_abc" / "world.json"
+    if hasattr(first, "model_dump"):
+        assert first.model_dump() == second.model_dump()
+    else:
+        assert first.dict() == second.dict()
+    assert first_path.read_text(encoding="utf-8") == second_path.read_text(encoding="utf-8")

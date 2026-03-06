@@ -38,16 +38,30 @@ class _StubSceneActionLLM:
             "dialog_type": "scene_description",
             "tool_calls": [
                 {
-                    "id": "call_scene_take",
+                    "id": "call_scene_open",
                     "tool": "scene_action",
                     "args": {
                         "actor_id": "pc_001",
-                        "action": "take",
-                        "target_id": "coin_01",
+                        "action": "open",
+                        "target_id": "crate_01",
                         "params": {},
                     },
                 }
             ],
+        }
+
+
+class _NarrativeOnlyLLM:
+    def generate(
+        self,
+        system_prompt: str,
+        user_input: str,
+        debug_append: Any,
+    ) -> Dict[str, Any]:
+        return {
+            "assistant_text": "The room is quiet.",
+            "dialog_type": "scene_description",
+            "tool_calls": [],
         }
 
 
@@ -91,15 +105,15 @@ def _create_campaign(tmp_path: Path, campaign_id: str) -> None:
             )
         },
         entities={
-            "coin_01": Entity(
-                id="coin_01",
-                kind="item",
-                label="Old Coin",
-                tags=["loot"],
+            "crate_01": Entity(
+                id="crate_01",
+                kind="container",
+                label="Supply Crate",
+                tags=["container"],
                 loc=EntityLocation(type="area", id="area_001"),
-                verbs=["inspect", "take"],
-                state={},
-                props={"mass": 1},
+                verbs=["inspect", "open", "search"],
+                state={"opened": False},
+                props={"mass": 8},
             )
         },
     )
@@ -133,8 +147,46 @@ def test_chat_turn_scene_action_updates_campaign_entities(
     assert payload["effective_actor_id"] == "pc_001"
     assert payload["applied_actions"][0]["tool"] == "scene_action"
     assert payload["applied_actions"][0]["result"]["ok"] is True
+    assert payload["applied_actions"][0]["result"]["patches"]["entity_patches"] == [
+        {
+            "id": "crate_01",
+            "changes": {
+                "state": {"opened": True},
+            },
+        }
+    ]
 
     campaign_path = tmp_path / "storage" / "campaigns" / campaign_id / "campaign.json"
     data = json.loads(campaign_path.read_text(encoding="utf-8"))
-    assert data["entities"]["coin_01"]["loc"]["type"] == "actor"
-    assert data["entities"]["coin_01"]["loc"]["id"] == "pc_001"
+    assert data["actors"]["pc_001"]["position"] == "area_001"
+    assert data["entities"]["crate_01"]["loc"]["type"] == "area"
+    assert data["entities"]["crate_01"]["loc"]["id"] == "area_001"
+    assert data["entities"]["crate_01"]["state"]["opened"] is True
+
+
+def test_chat_turn_without_tools_does_not_change_actor_position(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    campaign_id = "camp_narrative_turn"
+    _create_campaign(tmp_path, campaign_id)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(turn_service_module, "LLMClient", _NarrativeOnlyLLM)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/v1/chat/turn",
+        json={
+            "campaign_id": campaign_id,
+            "user_input": "Describe the current scene without calling tools.",
+            "execution": {"actor_id": "pc_001"},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["applied_actions"] == []
+
+    campaign_path = tmp_path / "storage" / "campaigns" / campaign_id / "campaign.json"
+    data = json.loads(campaign_path.read_text(encoding="utf-8"))
+    assert data["actors"]["pc_001"]["position"] == "area_001"

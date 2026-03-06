@@ -1,12 +1,15 @@
 import {
   createCharacter as createCharacterApi,
   getCampaign as getCampaignApi,
+  getRuntimeStatus as getRuntimeStatusApi,
+  listCampaigns as listCampaignsApi,
   listCharacters,
   loadCharacterToCampaign as loadCharacterToCampaignApi,
   selectActor as selectActorApi,
 } from "../api/api.js";
 
 const BASE_URL_KEY = "raw-console-base-url";
+const DEFAULT_BACKEND_BASE_URL = "http://127.0.0.1:8000";
 
 const state = {
   baseUrl: "",
@@ -42,6 +45,10 @@ const state = {
     responseText: "",
     traces: [],
   },
+  backend: {
+    ready: null,
+    reason: "unknown",
+  },
 };
 
 const subscribers = new Set();
@@ -53,7 +60,26 @@ function emit() {
 }
 
 function normalizeBaseUrl(raw) {
-  return (raw || "").trim().replace(/\/+$/, "");
+  const normalized = (raw || "").trim().replace(/\/+$/, "");
+  return normalized || DEFAULT_BACKEND_BASE_URL;
+}
+
+function syncCampaignOption(campaignId, patch = {}) {
+  if (!campaignId) {
+    return;
+  }
+  const index = state.campaignOptions.findIndex((campaign) => campaign.id === campaignId);
+  if (index < 0) {
+    return;
+  }
+  const current =
+    state.campaignOptions[index] && typeof state.campaignOptions[index] === "object"
+      ? state.campaignOptions[index]
+      : {};
+  state.campaignOptions[index] = {
+    ...current,
+    ...patch,
+  };
 }
 
 function applyPartyActorsToState(actorIds) {
@@ -181,6 +207,34 @@ function parseApiError(result) {
   return `HTTP ${result?.status ?? 500}`;
 }
 
+function _setStatusMessageSilently(nextMessage) {
+  if (typeof nextMessage !== "string" || !nextMessage.trim()) {
+    return false;
+  }
+  if (state.statusMessage === nextMessage.trim()) {
+    return false;
+  }
+  state.statusMessage = nextMessage.trim();
+  return true;
+}
+
+function formatBackendNotReadyMessage(reason) {
+  const normalized = typeof reason === "string" ? reason.trim() : "";
+  if (normalized === "config_missing") {
+    return "Backend credentials are not ready. Create storage/config/llm_config.json first.";
+  }
+  if (normalized === "keyring_missing") {
+    return "Backend keyring is missing. Create storage/secrets/keyring.json before sending turns.";
+  }
+  if (normalized === "credentials_unavailable") {
+    return "Backend credentials are not ready. Check storage/config/llm_config.json and storage/secrets/keyring.json.";
+  }
+  if (normalized === "keyring_locked" || normalized === "passphrase_required") {
+    return "Backend is not ready yet. Run `python -m backend.tools.unlock_keyring` in a local terminal, then retry.";
+  }
+  return "Backend is not ready yet. Check backend runtime status and unlock the keyring locally if needed.";
+}
+
 export async function loadCharacterLibrary(baseUrl = state.baseUrl) {
   state.character.status = "loading";
   state.character.error = null;
@@ -197,6 +251,181 @@ export async function loadCharacterLibrary(baseUrl = state.baseUrl) {
   state.character.error = null;
   emit();
   return result;
+}
+
+export async function loadCampaignOptionsFromBackend(
+  baseUrl = state.baseUrl,
+  options = {}
+) {
+  if (typeof baseUrl !== "string" || !baseUrl.trim()) {
+    if (options.silent !== true) {
+      state.statusMessage = "Base URL is required.";
+      emit();
+    }
+    return {
+      ok: false,
+      status: 0,
+      data: null,
+      text: "Base URL is required.",
+    };
+  }
+  const result = await listCampaignsApi(baseUrl);
+  if (!result.ok || !result.data || !Array.isArray(result.data.campaigns)) {
+    if (options.silent !== true) {
+      state.statusMessage = `Failed to load campaigns (${result.status}).`;
+      emit();
+    }
+    return result;
+  }
+  state.campaignOptions = result.data.campaigns;
+  if (!state.campaignId && state.campaignOptions.length > 0) {
+    state.campaignId = state.campaignOptions[0].id;
+  }
+  const selectedCampaign = state.campaignOptions.find(
+    (campaign) => campaign.id === state.campaignId
+  );
+  if (
+    selectedCampaign &&
+    typeof selectedCampaign.active_actor_id === "string"
+  ) {
+    state.campaign.active_actor_id = selectedCampaign.active_actor_id;
+  }
+  if (options.silent !== true) {
+    state.statusMessage = `Loaded ${result.data.campaigns.length} campaigns.`;
+  }
+  emit();
+  return result;
+}
+
+export async function checkBackendReady(
+  baseUrl = state.baseUrl,
+  options = {}
+) {
+  if (typeof baseUrl !== "string" || !baseUrl.trim()) {
+    const previousReady = state.backend.ready;
+    const previousReason = state.backend.reason;
+    state.backend.ready = null;
+    state.backend.reason = "base_url_missing";
+    let changed =
+      previousReady !== state.backend.ready ||
+      previousReason !== state.backend.reason;
+    if (options.silent !== true && options.reportMissingBaseUrl === true) {
+      changed = _setStatusMessageSilently("Base URL is required.") || changed;
+    }
+    if (changed) {
+      emit();
+    }
+    return {
+      ready: null,
+      reason: "base_url_missing",
+      ok: false,
+      status: 0,
+    };
+  }
+  const result = await getRuntimeStatusApi(baseUrl);
+  if (!result.ok || !result.data || typeof result.data.ready !== "boolean") {
+    const previousReady = state.backend.ready;
+    const previousReason = state.backend.reason;
+    state.backend.ready = null;
+    state.backend.reason = "status_unavailable";
+    let changed =
+      previousReady !== state.backend.ready ||
+      previousReason !== state.backend.reason;
+    if (options.silent !== true) {
+      changed =
+        _setStatusMessageSilently(
+          `Backend status check failed: ${parseApiError(result)}`
+        ) || changed;
+    }
+    if (changed) {
+      emit();
+    }
+    return {
+      ready: null,
+      reason: "status_unavailable",
+      ok: false,
+      status: result.status,
+    };
+  }
+
+  const previousReady = state.backend.ready;
+  const previousReason = state.backend.reason;
+  state.backend.ready = result.data.ready;
+  state.backend.reason =
+    typeof result.data.reason === "string" && result.data.reason.trim()
+      ? result.data.reason.trim()
+      : "unknown";
+  let changed =
+    previousReady !== state.backend.ready ||
+    previousReason !== state.backend.reason;
+  if (!result.data.ready && options.silent !== true) {
+    changed =
+      _setStatusMessageSilently(
+        formatBackendNotReadyMessage(state.backend.reason)
+      ) || changed;
+  }
+  if (changed) {
+    emit();
+  }
+  return {
+    ready: state.backend.ready,
+    reason: state.backend.reason,
+    ok: true,
+    status: result.status,
+  };
+}
+
+export async function recoverFrontendSession(
+  baseUrl = state.baseUrl,
+  options = {}
+) {
+  const readiness = await checkBackendReady(baseUrl, {
+    silent: options.silent !== false,
+  });
+  if (readiness.ready !== true) {
+    return {
+      ok: false,
+      ready: readiness.ready,
+      reason: readiness.reason,
+      recovered: false,
+    };
+  }
+
+  const campaignsResult = await loadCampaignOptionsFromBackend(baseUrl, {
+    silent: true,
+  });
+  if (!campaignsResult.ok) {
+    return {
+      ok: false,
+      ready: true,
+      reason: "campaign_list_failed",
+      recovered: false,
+    };
+  }
+
+  const nextState = getState();
+  if (nextState.campaignId) {
+    const refreshResult = await refreshCampaign(nextState.campaignId, baseUrl);
+    if (!refreshResult.ok) {
+      return {
+        ok: false,
+        ready: true,
+        reason: "campaign_refresh_failed",
+        recovered: false,
+      };
+    }
+  }
+
+  if (options.loadCharacterLibrary === true) {
+    await loadCharacterLibrary(baseUrl);
+  }
+
+  return {
+    ok: true,
+    ready: true,
+    reason: "ready",
+    recovered: true,
+  };
 }
 
 export async function createCharacter(baseUrl = state.baseUrl, payload = null) {
@@ -243,6 +472,7 @@ export async function loadCharacterToCampaign(
   }
   if (typeof result.data.active_actor_id === "string") {
     state.campaign.active_actor_id = result.data.active_actor_id;
+    syncCampaignOption(campaignId, { active_actor_id: result.data.active_actor_id });
   }
   if (typeof result.data.character_id === "string") {
     state.character.selected_character_id = result.data.character_id;
@@ -296,6 +526,7 @@ export async function selectActiveActor(
   }
 
   state.campaign.active_actor_id = normalizedActorId;
+  syncCampaignOption(campaignId, { active_actor_id: normalizedActorId });
   state.statusMessage = `Active actor set to ${normalizedActorId}.`;
   emit();
   const refreshResult = await refreshCampaign(campaignId, baseUrl);
@@ -351,9 +582,43 @@ export async function refreshCampaign(
   applyPartyActorsToState(normalizedParty);
   state.campaignId = resolvedCampaignId;
   state.campaign.active_actor_id = backendActiveActorId;
+  syncCampaignOption(resolvedCampaignId, { active_actor_id: backendActiveActorId });
   state.statusMessage = `Campaign refreshed from backend: active=${state.campaign.active_actor_id || "none"}, party=${state.campaign.party_character_ids.length}.`;
   emit();
   return result;
+}
+
+export function recordTurnResult(responseData, rawText = "") {
+  const payload =
+    responseData && typeof responseData === "object" && !Array.isArray(responseData)
+      ? responseData
+      : null;
+  if (payload?.state_summary && typeof payload.state_summary === "object") {
+    state.stateSummary = payload.state_summary;
+  }
+  if (typeof rawText === "string") {
+    state.debug.responseText = rawText;
+  }
+  const effectiveActorId =
+    typeof payload?.effective_actor_id === "string" ? payload.effective_actor_id.trim() : "";
+  if (effectiveActorId) {
+    state.campaign.active_actor_id = effectiveActorId;
+    syncCampaignOption(state.campaignId, { active_actor_id: effectiveActorId });
+  }
+  state.turnHistory.push({
+    effective_actor_id: effectiveActorId,
+    applied_actions: Array.isArray(payload?.applied_actions) ? payload.applied_actions : [],
+    tool_feedback:
+      payload?.tool_feedback && typeof payload.tool_feedback === "object"
+        ? payload.tool_feedback
+        : null,
+    state_summary:
+      payload?.state_summary && typeof payload.state_summary === "object"
+        ? payload.state_summary
+        : null,
+    raw: payload,
+  });
+  emit();
 }
 
 export function setInitiativeOrder(order) {
@@ -535,3 +800,5 @@ export function clearDebugTrace() {
 export function copyStateSnapshot() {
   return JSON.parse(JSON.stringify(state));
 }
+
+export { formatBackendNotReadyMessage };

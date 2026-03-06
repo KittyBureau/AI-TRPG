@@ -19,10 +19,15 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 ## 2. API & Data Contracts
 **Rules**
 - Request/response shapes follow `backend/api/routes/*.py` and `backend/domain/models.py`.
-- `/api/v1/chat/turn` responses include `narrative_text`, `dialog_type`, `tool_calls`, `applied_actions`, `tool_feedback`, `conflict_report`, and `state_summary`; optional top-level `debug` may appear when debug settings are enabled.
+- `/api/v1/chat/turn` stable top-level response keys are `effective_actor_id`, `narrative_text`, `dialog_type`, `tool_calls`, `applied_actions`, `tool_feedback`, `conflict_report`, and `state_summary`.
+- `/api/v1/chat/turn` omits top-level `debug` when trace is off; when trace is on, `debug.resources` is present and uses array categories.
+- `/api/v1/chat/turn` keeps `tool_calls` / `applied_actions` as arrays; `tool_feedback` and `conflict_report` may be `null` depending on turn outcome.
+- `/api/v1/chat/turn.state_summary` keeps stable v1 keys: `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, `inventories`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, `active_actor_inventory`.
 - `GET /api/v1/map/view` returns area context plus `entities_in_area` (backend-authoritative scene entities for current area).
 - `/api/v1/chat/turn` actor context resolution uses `execution.actor_id` first, then top-level `actor_id`, then `campaign.selected.active_actor_id`; response includes `effective_actor_id`.
 - `/api/v1/chat/turn` runs under a per-campaign serial lock; concurrent same-campaign turns return `409`.
+- `GET /api/v1/runtime/status` returns `ready` + `reason` for keyring/config readiness, and frontend play/debug uses it before sending turn requests.
+- `POST /api/v1/runtime/unlock` is a local-only runtime unlock path used by `python -m backend.tools.unlock_keyring`; the frontend must not collect passphrases.
 - `/api/v1/campaigns/{campaign_id}/world` resolves `campaign.selected.world_id` and returns world data; returns `409` when world_id is empty.
 - Character Library REST is deterministic and separate from chat-turn tool flow:
   - `GET /api/v1/characters/library`
@@ -84,7 +89,9 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - Character library persists at `storage/characters_library/<character_id>.json`.
 - Worlds persist at `storage/worlds/<world_id>/world.json`; v1 API may lazily create a deterministic stub world on first read.
 - LLM config lives at `storage/config/llm_config.json`; keyring at `storage/secrets/keyring.json` with no env fallback.
+- Backend startup runs a non-interactive LLM credential precheck only; passphrase entry happens via `python -m backend.tools.unlock_keyring`.
 - Storage fields match `docs/01_specs/storage_layout.md`.
+- `docs/00_overview/PROJECT_STATUS.md` summarizes the current stable runtime/frontend/storage shape for Playable v1 handoff.
 **Checks**
 - Run the API test guide to verify files are written with expected shapes.
 - Inspect storage files after changes to models or persistence logic.
@@ -132,9 +139,13 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - Tool/state/map changes require running `backend/tests/test_map_generate.py`, `backend/tests/test_move_options.py`, and reviewing the manual map_generate guide when map logic changes.
 - `world_generate` changes require running `backend/tests/test_world_generate_tool.py` and the local smoke script `scripts/smoke_world_generate.ps1` (guide: `docs/20_runtime/testing/world_generate_smoke_test.md`).
 - Frontend gameplay flow UI/protocol changes require running `scripts/smoke_frontend_flow.ps1` and checking `frontend/README_frontend.md` + `docs/20_runtime/gameplay_flow.md` + `docs/20_runtime/frontend_entrypoints.md` for sync.
+- Frontend readiness gating must not blank the page: base panels mount first, `not ready` is stored as state, and recovery works via polling or the minimal retry action.
+- Frontend readiness polling must not churn focused input DOM; unchanged polling state should not trigger full input-panel re-render.
+- Runtime unlock verification for local development uses `GET /api/v1/runtime/status` plus `python -m backend.tools.unlock_keyring`; startup `getpass()` prompts are no longer valid test expectations.
 - For play-panel actor selection consistency changes, also run the manual guide `docs/20_runtime/testing/active_actor_integration_smoke.md`.
 - For Play state convergence or refresh behavior changes, run `docs/20_runtime/testing/state_consistency_check.md`.
 - For Playable v1 closure/regression handoff, run `docs/02_guides/testing/playable_v1_manual_test.md`.
+- Release gate requires all three deterministic smoke scripts plus a recorded Set B 10-turn run from `docs/02_guides/testing/playable_v1_manual_test.md`.
 - Play Action Planner supports structured envelopes (`move` / `scene_action`) and compiles one strict `UI_FLOW_STEP` per step.
 - Round play delta contract is frontend-owned in `frontend/play.js` and must keep stable keys: `actor_id`, `changed`, `position`, `hp`, `character_state`, `inventory`, `error`.
 - Spec changes in `docs/01_specs/**` must be reflected in this AI_INDEX.
@@ -158,6 +169,7 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 ## 12. Documentation Authority & Sync Obligations
 **Rules**
 - Authoritative docs: `docs/00_overview/**`, `docs/01_specs/**`, `docs/20_runtime/**`, `docs/30_resources/**`, `docs/90_playable/**`.
+- Current architecture/status overview for Playable v1 lives in `docs/00_overview/PROJECT_STATUS.md`.
 - Transitional exception: `docs/02_guides/testing/playable_v1_manual_test.md` remains as a stable manual-test entry path.
 - Human-only docs: `docs/99_human_only/**`. Do not cite or rely on these unless the task explicitly allows it.
 - When a task explicitly requests an alignment report, write the report under `docs/99_human_only/alignment_reports/` using a dated filename (for example: `YYYY-MM-DD_<topic>_alignment_report.md`).

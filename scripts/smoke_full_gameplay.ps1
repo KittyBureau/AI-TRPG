@@ -478,6 +478,18 @@ try {
         Stop-Process -Id $serverProcess.Id -Force
     }
     if ($testPassed -and -not $KeepWorkspace -and (Test-Path $workspace)) {
-        Remove-Item -Recurse -Force $workspace
+        $removed = $false
+        for ($attempt = 1; $attempt -le 5 -and -not $removed; $attempt++) {
+            try {
+                Remove-Item -Recurse -Force -ErrorAction Stop $workspace
+                $removed = $true
+            } catch {
+                if ($attempt -lt 5) {
+                    Start-Sleep -Milliseconds 250
+                } else {
+                    Write-Warning ("Workspace cleanup skipped: {0}" -f $_.Exception.Message)
+                }
+            }
+        }
     }
 }

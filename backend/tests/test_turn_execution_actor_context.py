@@ -59,7 +59,12 @@ class _StubExecutionContextLLM:
                     "id": "call_ctx_mismatch_move",
                     "tool": "move",
                     "args": {"actor_id": "pc_001", "to_area_id": "area_002"},
-                }
+                },
+                {
+                    "id": "call_ctx_mismatch_inventory",
+                    "tool": "inventory_add",
+                    "args": {"actor_id": "pc_001", "item_id": "torch", "quantity": 1},
+                },
             ]
         return {
             "assistant_text": "",
@@ -169,6 +174,59 @@ def test_turn_actor_context_executes_tools_for_specified_actor_only(
     assert summary["inventories"]["pc_001"] == {}
 
 
+def test_turn_actor_context_execution_actor_id_takes_priority_over_legacy_actor_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _create_campaign(tmp_path, "camp_ctx_priority")
+    client = _client(tmp_path, monkeypatch)
+
+    response = client.post(
+        "/api/v1/chat/turn",
+        json={
+            "campaign_id": "camp_ctx_priority",
+            "user_input": "CTX_TARGET",
+            "actor_id": "pc_001",
+            "execution": {"actor_id": "pc_002"},
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    summary = payload["state_summary"]
+    assert payload["effective_actor_id"] == "pc_002"
+    assert summary["active_actor_id"] == "pc_002"
+    assert summary["positions"]["pc_002"] == "area_002"
+    assert summary["positions"]["pc_001"] == "area_001"
+    assert summary["inventories"]["pc_002"]["torch"] == 1
+    assert summary["inventories"]["pc_001"] == {}
+
+
+def test_turn_actor_context_uses_legacy_actor_id_when_execution_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _create_campaign(tmp_path, "camp_ctx_legacy")
+    client = _client(tmp_path, monkeypatch)
+
+    response = client.post(
+        "/api/v1/chat/turn",
+        json={
+            "campaign_id": "camp_ctx_legacy",
+            "user_input": "CTX_TARGET",
+            "actor_id": "pc_002",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    summary = payload["state_summary"]
+    assert payload["effective_actor_id"] == "pc_002"
+    assert summary["active_actor_id"] == "pc_002"
+    assert summary["positions"]["pc_002"] == "area_002"
+    assert summary["positions"]["pc_001"] == "area_001"
+    assert summary["inventories"]["pc_002"]["torch"] == 1
+    assert summary["inventories"]["pc_001"] == {}
+
+
 def test_turn_actor_context_mismatch_rejects_tool_and_keeps_state(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -187,7 +245,16 @@ def test_turn_actor_context_mismatch_rejects_tool_and_keeps_state(
     assert response.status_code == 200
     payload = response.json()
     summary = payload["state_summary"]
+    failed_calls = payload["tool_feedback"]["failed_calls"]
     assert payload["effective_actor_id"] == "pc_002"
+    assert payload["applied_actions"] == []
     assert summary["positions"]["pc_001"] == "area_001"
     assert summary["positions"]["pc_002"] == "area_001"
-    assert payload["tool_feedback"]["failed_calls"][0]["reason"] == "actor_context_mismatch"
+    assert summary["inventories"]["pc_001"] == {}
+    assert summary["inventories"]["pc_002"] == {}
+    assert len(failed_calls) == 2
+    assert {item["tool"] for item in failed_calls} == {"move", "inventory_add"}
+    assert all(item["status"] == "rejected" for item in failed_calls)
+    assert all(
+        item["reason"] == "actor_context_mismatch" for item in failed_calls
+    )

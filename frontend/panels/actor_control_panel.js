@@ -21,6 +21,42 @@ function parseApiError(result) {
   return `HTTP ${result?.status ?? 500}`;
 }
 
+function captureFocusState(root) {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || !root.contains(active)) {
+    return null;
+  }
+  const key = active.getAttribute("data-focus-key");
+  if (!key) {
+    return null;
+  }
+  return {
+    key,
+    selectionStart:
+      typeof active.selectionStart === "number" ? active.selectionStart : null,
+    selectionEnd:
+      typeof active.selectionEnd === "number" ? active.selectionEnd : null,
+  };
+}
+
+function restoreFocusState(root, snapshot) {
+  if (!snapshot) {
+    return;
+  }
+  const target = root.querySelector(`[data-focus-key="${snapshot.key}"]`);
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  target.focus();
+  if (
+    typeof snapshot.selectionStart === "number" &&
+    typeof snapshot.selectionEnd === "number" &&
+    "setSelectionRange" in target
+  ) {
+    target.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+  }
+}
+
 export function initPanel(store) {
   const mount = document.getElementById("actorControlPanel");
   if (!mount) {
@@ -62,6 +98,12 @@ export function initPanel(store) {
       store.setStatusMessage("Select a campaign first.");
       return;
     }
+    if (state.baseUrl && typeof store.checkBackendReady === "function") {
+      const readiness = await store.checkBackendReady(state.baseUrl, { silent: false });
+      if (readiness.ready === false) {
+        return;
+      }
+    }
     const actorId = resolveActingActorId(state);
     if (!actorId) {
       store.setStatusMessage("Party empty / no actor selected.");
@@ -83,16 +125,17 @@ export function initPanel(store) {
       store.setDebugResponseText(result.text || "");
       return;
     }
-    if (result.data.state_summary) {
-      store.setStateSummary(result.data.state_summary);
-    }
-    store.setDebugResponseText(JSON.stringify(result.data, null, 2));
+    store.recordTurnResult(result.data, JSON.stringify(result.data, null, 2));
     await refreshMap(state.campaignId, actorId);
     const refreshed = await refreshCampaignState(state.campaignId);
     if (!refreshed) {
       return;
     }
-    store.setStatusMessage(`Turn completed as ${actorId}.`);
+    const effectiveActorId =
+      typeof result.data.effective_actor_id === "string" && result.data.effective_actor_id.trim()
+        ? result.data.effective_actor_id.trim()
+        : actorId;
+    store.setStatusMessage(`Turn completed as ${effectiveActorId}.`);
   }
 
   async function runMove() {
@@ -100,6 +143,12 @@ export function initPanel(store) {
     if (!state.campaignId) {
       store.setStatusMessage("Select a campaign first.");
       return;
+    }
+    if (state.baseUrl && typeof store.checkBackendReady === "function") {
+      const readiness = await store.checkBackendReady(state.baseUrl, { silent: false });
+      if (readiness.ready === false) {
+        return;
+      }
     }
     const actorId = resolveActingActorId(state);
     const toAreaId = uiState.moveToAreaId.trim();
@@ -122,20 +171,22 @@ export function initPanel(store) {
       store.setDebugResponseText(result.text || "");
       return;
     }
-    if (result.data.state_summary) {
-      store.setStateSummary(result.data.state_summary);
-    }
-    store.setDebugResponseText(JSON.stringify(result.data, null, 2));
+    store.recordTurnResult(result.data, JSON.stringify(result.data, null, 2));
     await refreshMap(state.campaignId, actorId);
     const refreshed = await refreshCampaignState(state.campaignId);
     if (!refreshed) {
       return;
     }
-    store.setStatusMessage(`Move completed as ${actorId}.`);
+    const effectiveActorId =
+      typeof result.data.effective_actor_id === "string" && result.data.effective_actor_id.trim()
+        ? result.data.effective_actor_id.trim()
+        : actorId;
+    store.setStatusMessage(`Move completed as ${effectiveActorId}.`);
   }
 
   function render() {
     const state = store.getState();
+    const focusSnapshot = captureFocusState(mount);
     const party = getPartyActorIds(state);
     const actingActorId = resolveActingActorId(state);
     const canAct = Boolean(actingActorId);
@@ -156,6 +207,7 @@ export function initPanel(store) {
     actorField.className = "field";
     actorField.innerHTML = '<span class="field-label">Actor</span>';
     const actorSelect = document.createElement("select");
+    actorSelect.setAttribute("data-focus-key", "actor-select");
     const actorEmpty = document.createElement("option");
     actorEmpty.value = "";
     actorEmpty.textContent = "Select actor";
@@ -192,6 +244,7 @@ export function initPanel(store) {
     turnField.className = "field";
     turnField.innerHTML = '<span class="field-label">Turn Input</span>';
     const turnInput = document.createElement("textarea");
+    turnInput.setAttribute("data-focus-key", "turn-input");
     turnInput.rows = 3;
     turnInput.placeholder = "Describe action...";
     turnInput.value = uiState.userInput;
@@ -212,6 +265,7 @@ export function initPanel(store) {
     moveField.className = "field";
     moveField.innerHTML = '<span class="field-label">Move to area_id</span>';
     const moveInput = document.createElement("input");
+    moveInput.setAttribute("data-focus-key", "move-input");
     moveInput.placeholder = "area_002";
     moveInput.value = uiState.moveToAreaId;
     moveInput.addEventListener("input", () => {
@@ -225,6 +279,8 @@ export function initPanel(store) {
     moveButton.disabled = !canAct;
     moveButton.addEventListener("click", runMove);
     mount.appendChild(moveButton);
+
+    restoreFocusState(mount, focusSnapshot);
   }
 
   render();

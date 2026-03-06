@@ -1032,7 +1032,9 @@ def test_turn_profile_trace_includes_policy_metadata_when_enabled(
             {
                 "id": "turn_tool_policy",
                 "version": "v1",
+                "tool_allowlist_default": ["move"],
                 "retry_policy": {"max_conflict_retries": 2},
+                "conflict_policy": {"detector": "detect_conflicts"},
             }
         ),
         encoding="utf-8",
@@ -1117,6 +1119,126 @@ def test_turn_profile_trace_includes_policy_metadata_when_enabled(
     assert policy_meta["name"] == loaded.name
     assert policy_meta["version"] == loaded.version
     assert policy_meta["hash"] == loaded.source_hash
+
+
+def test_turn_profile_trace_policy_fallback_keeps_turn_runtime_stable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_0015c")
+    campaign.settings_snapshot.dialog.turn_profile_trace_enabled = True
+    repo.save_campaign(campaign)
+
+    resources_dir = tmp_path / "resources"
+    prompts_dir = resources_dir / "prompts"
+    flows_dir = resources_dir / "flows"
+    schemas_dir = resources_dir / "schemas"
+    templates_dir = resources_dir / "templates"
+    policies_dir = resources_dir / "policies"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    flows_dir.mkdir(parents=True, exist_ok=True)
+    schemas_dir.mkdir(parents=True, exist_ok=True)
+    templates_dir.mkdir(parents=True, exist_ok=True)
+    policies_dir.mkdir(parents=True, exist_ok=True)
+
+    (prompts_dir / "turn_profile_default_v1.txt").write_text(
+        "Prompt with policy fallback. Context: {{CONTEXT_JSON}}", encoding="utf-8"
+    )
+    (flows_dir / "play_turn_basic_v1.json").write_text(
+        json.dumps({"id": "play_turn_basic", "version": "v1", "steps": []}),
+        encoding="utf-8",
+    )
+    (schemas_dir / "campaign_selected_v1.schema.json").write_text(
+        json.dumps({"type": "object"}), encoding="utf-8"
+    )
+    (schemas_dir / "character_fact_v1.schema.json").write_text(
+        json.dumps({"type": "object"}), encoding="utf-8"
+    )
+    (schemas_dir / "debug_resources_v1.schema.json").write_text(
+        json.dumps({"type": "object"}), encoding="utf-8"
+    )
+    (templates_dir / "campaign_stub_v1.json").write_text(
+        json.dumps({"selected": {"party_character_ids": [], "active_actor_id": ""}}),
+        encoding="utf-8",
+    )
+    (templates_dir / "character_fact_stub_v1.json").write_text(
+        json.dumps({"name": "", "summary": "", "tags": [], "meta": {}}),
+        encoding="utf-8",
+    )
+    (policies_dir / "tool_policy_v1.json").write_text(
+        json.dumps({"id": "turn_tool_policy", "version": "v1"}),
+        encoding="utf-8",
+    )
+    (resources_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "prompts": {
+                    "turn_profile_default": {
+                        "version": "v1",
+                        "path": "resources/prompts/turn_profile_default_v1.txt",
+                        "enabled": True,
+                    }
+                },
+                "flows": {
+                    "play_turn_basic": {
+                        "version": "v1",
+                        "path": "resources/flows/play_turn_basic_v1.json",
+                        "enabled": True,
+                    }
+                },
+                "schemas": {
+                    "campaign_selected": {
+                        "version": "v1",
+                        "path": "resources/schemas/campaign_selected_v1.schema.json",
+                        "enabled": True,
+                    },
+                    "character_fact": {
+                        "version": "v1",
+                        "path": "resources/schemas/character_fact_v1.schema.json",
+                        "enabled": True,
+                    },
+                    "debug_resources_v1": {
+                        "version": "v1",
+                        "path": "resources/schemas/debug_resources_v1.schema.json",
+                        "enabled": True,
+                    },
+                },
+                "templates": {
+                    "campaign_stub": {
+                        "version": "v1",
+                        "path": "resources/templates/campaign_stub_v1.json",
+                        "enabled": True,
+                    },
+                    "character_fact_stub": {
+                        "version": "v1",
+                        "path": "resources/templates/character_fact_stub_v1.json",
+                        "enabled": True,
+                    },
+                },
+                "policies": {
+                    "turn_tool_policy": {
+                        "version": "v1",
+                        "path": "resources/policies/tool_policy_v1.json",
+                        "enabled": True,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = service.submit_turn("camp_0015c", "hello")
+
+    assert result["narrative_text"] == "Stub response."
+    debug = result.get("debug")
+    assert isinstance(debug, dict)
+    resources = debug.get("resources")
+    assert isinstance(resources, dict)
+    policies_debug = resources.get("policies")
+    assert isinstance(policies_debug, list)
+    assert policies_debug[0]["name"] == "turn_tool_policy"
+    assert policies_debug[0]["version"] == "builtin-v1"
+    assert policies_debug[0]["fallback"] is True
 
 
 def test_turn_profile_trace_template_fallback_on_multiple_enabled_entries(

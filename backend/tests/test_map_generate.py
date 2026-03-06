@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
 
+import backend.app.tool_executor as tool_executor_module
 from backend.app.tool_executor import execute_tool_calls
 from backend.domain.map_models import require_valid_map
 from backend.domain.models import (
@@ -19,6 +21,7 @@ from backend.domain.models import (
     ToolCall,
 )
 from backend.infra.file_repo import FileRepo
+from backend.infra.map_generators.deterministic_generator import MapGenerationResult
 
 
 def _make_campaign(map_data: MapData) -> Campaign:
@@ -160,6 +163,142 @@ def test_map_generate_child_layer() -> None:
         assert "area_001" in campaign.map.areas[area_id].reachable_area_ids
         assert area_id in campaign.map.areas["area_001"].reachable_area_ids
     require_valid_map(campaign.map)
+
+
+def test_map_generate_updates_only_map_authority() -> None:
+    map_data = MapData(
+        areas={
+            "area_001": MapArea(
+                id="area_001", name="Root", reachable_area_ids=[]
+            )
+        },
+        connections=[],
+    )
+    campaign = _make_campaign(map_data)
+    campaign.selected.world_id = "world_keep"
+    campaign.settings_revision = 9
+    campaign.actors["pc_001"].inventory = {"rope": 1}
+    before_selected = deepcopy(campaign.selected)
+    before_actor = deepcopy(campaign.actors["pc_001"])
+    before_goal = deepcopy(campaign.goal)
+    before_milestone = deepcopy(campaign.milestone)
+    call = ToolCall(
+        id="call_authority",
+        tool="map_generate",
+        args={
+            "parent_area_id": "area_001",
+            "theme": "Authority",
+            "constraints": {"size": 2, "seed": "authority"},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    assert campaign.selected == before_selected
+    assert campaign.actors["pc_001"] == before_actor
+    assert campaign.goal == before_goal
+    assert campaign.milestone == before_milestone
+    assert campaign.settings_revision == 9
+    require_valid_map(campaign.map)
+    for connection in campaign.map.connections:
+        assert connection.from_area_id in campaign.map.areas
+        assert connection.to_area_id in campaign.map.areas
+
+
+def test_map_generate_invalid_graph_rolls_back_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    map_data = MapData(
+        areas={
+            "area_001": MapArea(
+                id="area_001", name="Root", reachable_area_ids=[]
+            )
+        },
+        connections=[],
+    )
+    campaign = _make_campaign(map_data)
+    before_map = deepcopy(campaign.map)
+    before_selected = deepcopy(campaign.selected)
+    before_actor = deepcopy(campaign.actors["pc_001"])
+
+    class _BadGraphGenerator:
+        def generate(self, existing_map, parent_area_id, theme, size, seed):
+            return MapGenerationResult(
+                new_areas={
+                    "area_002": MapArea(
+                        id="area_002",
+                        name="Broken",
+                        reachable_area_ids=[],
+                    )
+                },
+                new_edges=[("area_002", "area_missing")],
+                created_area_ids=["area_002"],
+                warnings=[],
+                entry_area_id=None,
+            )
+
+    monkeypatch.setattr(
+        tool_executor_module,
+        "DeterministicMapGenerator",
+        _BadGraphGenerator,
+    )
+    call = ToolCall(
+        id="call_bad_graph",
+        tool="map_generate",
+        args={"parent_area_id": None, "theme": "Broken", "constraints": {"size": 1}},
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert applied_actions == []
+    assert tool_feedback is not None
+    assert tool_feedback.failed_calls[0].reason == "invalid_args"
+    assert campaign.map == before_map
+    assert campaign.selected == before_selected
+    assert campaign.actors["pc_001"] == before_actor
+
+
+def test_map_generate_exception_rolls_back_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    map_data = MapData(
+        areas={
+            "area_001": MapArea(
+                id="area_001", name="Root", reachable_area_ids=[]
+            )
+        },
+        connections=[],
+    )
+    campaign = _make_campaign(map_data)
+    before_map = deepcopy(campaign.map)
+    before_selected = deepcopy(campaign.selected)
+    before_actor = deepcopy(campaign.actors["pc_001"])
+
+    class _ExplodingGenerator:
+        def generate(self, existing_map, parent_area_id, theme, size, seed):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        tool_executor_module,
+        "DeterministicMapGenerator",
+        _ExplodingGenerator,
+    )
+    call = ToolCall(
+        id="call_boom",
+        tool="map_generate",
+        args={"parent_area_id": None, "theme": "Broken", "constraints": {"size": 1}},
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert applied_actions == []
+    assert tool_feedback is not None
+    assert tool_feedback.failed_calls[0].reason == "invalid_args"
+    assert campaign.map == before_map
+    assert campaign.selected == before_selected
+    assert campaign.actors["pc_001"] == before_actor
 
 
 @pytest.mark.parametrize(

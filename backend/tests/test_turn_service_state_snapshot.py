@@ -35,7 +35,7 @@ def _make_campaign() -> Campaign:
     )
 
 
-def test_snapshot_restore_reverts_legacy_mirrors_and_actor_state() -> None:
+def test_snapshot_restore_reverts_actor_state_without_writing_legacy_mirrors() -> None:
     campaign = _make_campaign()
     facade = create_character_facade()
 
@@ -51,6 +51,6 @@ def test_snapshot_restore_reverts_legacy_mirrors_and_actor_state() -> None:
     assert campaign.actors["pc_001"].position == "area_001"
     assert campaign.actors["pc_001"].hp == 10
     assert campaign.actors["pc_001"].character_state == "alive"
-    assert campaign.positions["pc_001"] == "area_001"
-    assert campaign.hp["pc_001"] == 10
-    assert campaign.character_states["pc_001"] == "alive"
+    assert campaign.positions == {}
+    assert campaign.hp == {}
+    assert campaign.character_states == {}

@@ -35,17 +35,61 @@ def get_keyring_path() -> Path:
     return Path.cwd() / "storage" / "secrets" / "keyring.json"
 
 
-def get_api_key(key_ref: str, keyring_path: Optional[Path] = None) -> str:
+def clear_cached_master_key() -> None:
+    global _cached_master_key
+    _cached_master_key = None
+
+
+def describe_keyring_requirement(
+    key_ref: str, keyring_path: Optional[Path] = None
+) -> str:
     path = keyring_path or get_keyring_path()
     keyring = _read_keyring(path)
-    if keyring is None or key_ref not in keyring["keys"]:
-        ensure_key_exists(key_ref, path)
-        keyring = _read_keyring(path)
-    if keyring is None or key_ref not in keyring["keys"]:
-        raise RuntimeError(f"Key ref not found after initialization: {key_ref}")
-    master_key = _get_master_key(keyring)
+    if keyring is None:
+        return "keyring_missing"
+    if key_ref not in keyring["keys"]:
+        return "credentials_unavailable"
+    if _cached_master_key is None:
+        return "passphrase_required"
+    return "ready"
+
+
+def get_api_key(
+    key_ref: str,
+    keyring_path: Optional[Path] = None,
+    *,
+    interactive: bool = False,
+    passphrase: Optional[str] = None,
+) -> str:
+    path = keyring_path or get_keyring_path()
+    keyring = _read_keyring(path)
+    if keyring is None:
+        raise FileNotFoundError(f"Keyring file not found: {path}")
+    if key_ref not in keyring["keys"]:
+        raise RuntimeError(f"Key ref not found: {key_ref}")
+    master_key = _resolve_master_key(
+        keyring,
+        interactive=interactive,
+        passphrase=passphrase,
+    )
     encrypted = keyring["keys"][key_ref]
-    return _decrypt_value(master_key, encrypted, key_ref)
+    plaintext = _decrypt_value(master_key, encrypted, key_ref)
+    _cache_master_key(master_key)
+    return plaintext
+
+
+def unlock_keyring(
+    key_ref: str,
+    passphrase: str,
+    keyring_path: Optional[Path] = None,
+) -> str:
+    clear_cached_master_key()
+    return get_api_key(
+        key_ref,
+        keyring_path,
+        interactive=False,
+        passphrase=passphrase,
+    )
 
 
 def ensure_key_exists(key_ref: str, keyring_path: Optional[Path] = None) -> None:
@@ -58,7 +102,12 @@ def ensure_key_exists(key_ref: str, keyring_path: Optional[Path] = None) -> None
         return
 
     api_key = _prompt_secret(f"Enter API key for {key_ref}: ")
-    master_key = _get_master_key(keyring, allow_create=True)
+    master_key = _resolve_master_key(
+        keyring,
+        allow_create=True,
+        interactive=True,
+    )
+    _cache_master_key(master_key)
     encrypted = _encrypt_value(master_key, api_key)
     keyring["keys"][key_ref] = encrypted
     _write_keyring(path, keyring)
@@ -94,23 +143,33 @@ def _write_keyring(path: Path, data: Dict[str, Any]) -> None:
     tmp_path.replace(path)
 
 
-def _get_master_key(
-    keyring: Dict[str, Any], *, allow_create: bool = False
+def _resolve_master_key(
+    keyring: Dict[str, Any],
+    *,
+    allow_create: bool = False,
+    interactive: bool = False,
+    passphrase: Optional[str] = None,
 ) -> bytes:
-    global _cached_master_key
     if _cached_master_key is not None:
         return _cached_master_key
     salt_b64 = keyring.get("salt")
     if not isinstance(salt_b64, str):
         raise ValueError("Keyring missing salt.")
     salt = _b64decode(salt_b64)
-    if allow_create and not keyring.get("keys"):
-        passphrase = _prompt_secret("Create keyring passphrase: ")
-    else:
-        passphrase = _prompt_secret("Enter keyring passphrase: ")
-    master_key = _derive_key(passphrase, salt, _get_iterations(keyring))
+    resolved_passphrase = passphrase
+    if resolved_passphrase is None:
+        if not interactive:
+            raise RuntimeError("Keyring is locked. Run unlock_keyring first.")
+        if allow_create and not keyring.get("keys"):
+            resolved_passphrase = _prompt_secret("Create keyring passphrase: ")
+        else:
+            resolved_passphrase = _prompt_secret("Enter keyring passphrase: ")
+    return _derive_key(resolved_passphrase, salt, _get_iterations(keyring))
+
+
+def _cache_master_key(master_key: bytes) -> None:
+    global _cached_master_key
     _cached_master_key = master_key
-    return master_key
 
 
 def _get_iterations(keyring: Dict[str, Any]) -> int:

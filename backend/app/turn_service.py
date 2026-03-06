@@ -73,6 +73,26 @@ class CampaignBusyError(RuntimeError):
     pass
 
 
+def _normalize_actor_id(value: Optional[str]) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _resolve_effective_actor_id(
+    campaign: Campaign,
+    *,
+    execution_actor_id: Optional[str],
+    actor_id: Optional[str],
+) -> str:
+    return (
+        _normalize_actor_id(execution_actor_id)
+        or _normalize_actor_id(actor_id)
+        or campaign.selected.active_actor_id
+    )
+
+
 def _builtin_turn_prompt_template() -> str:
     return (
         "You are the AI GM. Output JSON with keys 'assistant_text', 'dialog_type', and 'tool_calls'. "
@@ -365,7 +385,12 @@ _CAMPAIGN_TURN_LOCKS = CampaignTurnLockRegistry()
 class TurnService:
     def __init__(self, repo: FileRepo) -> None:
         self.repo = repo
-        self.llm = LLMClient()
+        self.llm: Optional[LLMClient] = None
+
+    def _get_llm(self) -> LLMClient:
+        if self.llm is None:
+            self.llm = LLMClient()
+        return self.llm
 
     def create_campaign(
         self,
@@ -464,19 +489,28 @@ class TurnService:
         return self.repo.update_active_actor(campaign, actor_id)
 
     def submit_turn(
-        self, campaign_id: str, user_input: str, actor_id: Optional[str] = None
+        self,
+        campaign_id: str,
+        user_input: str,
+        actor_id: Optional[str] = None,
+        *,
+        execution_actor_id: Optional[str] = None,
     ) -> Dict[str, object]:
         campaign_lock = _CAMPAIGN_TURN_LOCKS.try_acquire(campaign_id)
         if campaign_lock is None:
             raise CampaignBusyError(
-                "campaign turn is already running; wait and retry."
+                "turn_in_progress: campaign turn is already running; wait and retry."
             )
         try:
             campaign = self.repo.get_campaign(campaign_id)
             state_updated = _ensure_minimum_state(campaign)
             if state_updated:
                 self.repo.save_campaign(campaign)
-            effective_actor_id = actor_id or campaign.selected.active_actor_id
+            effective_actor_id = _resolve_effective_actor_id(
+                campaign,
+                execution_actor_id=execution_actor_id,
+                actor_id=actor_id,
+            )
             if effective_actor_id not in campaign.selected.party_character_ids:
                 raise ValueError("actor_id not in party_character_ids")
             if _mark_ended_if_needed(campaign):
@@ -532,7 +566,9 @@ class TurnService:
             max_retries = 2
 
             while True:
-                llm_output = self.llm.generate(system_prompt, user_input, debug_append)
+                llm_output = self._get_llm().generate(
+                    system_prompt, user_input, debug_append
+                )
                 raw_dialog_type = llm_output.get("dialog_type")
                 _enforce_dialog_type_guard(
                     raw_dialog_type,

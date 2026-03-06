@@ -52,115 +52,201 @@ Non-goals for Playable v1:
 ## P0 (Must Complete)
 
 ### P0-01 Turn response contract freeze
-- Status: `TODO`
+- Status: `DONE`
 - Why: play loop depends on stable response fields.
 - Scope: `backend/api/routes/chat.py`, `backend/app/turn_service.py`, `backend/domain/models.py`
 - Acceptance: `/api/v1/chat/turn` keeps required keys and compatible semantics.
 - Tests: `backend/tests/test_api_v1_routing.py`, `scripts/smoke_full_gameplay.ps1`
+- Verification Evidence:
+  - `pytest -q` -> `154 passed`
+  - `pytest -q backend/tests/test_turn_response_contract_api.py backend/tests/test_trace_gate_api.py backend/tests/test_sample_playthrough_v0.py` -> `7 passed`
+  - `backend/tests/test_turn_response_contract_api.py` freezes narrative-only success, mixed tool success+failure, conflict retry exhaustion response, trace-on debug resources, and turn_log alignment
+  - `backend/tests/test_trace_gate_api.py` keeps `debug` omitted when trace is off and `debug.resources` array categories when trace is on
+  - Docs synced to current runtime contract: `docs/01_specs/storage_layout.md`, `docs/20_runtime/testing/api_test_guide.md`, `docs/20_runtime/gameplay_flow.md`, `docs/_index/AI_INDEX.md`
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_full_gameplay.ps1` -> `PASS (8/8)`
 - Rollback: revert turn response contract changes and restore previous API shape.
 
 ### P0-02 Effective actor resolution hardening
-- Status: `TODO`
+- Status: `DONE`
 - Why: wrong actor execution breaks state trust.
 - Scope: `backend/api/routes/chat.py`, `backend/app/turn_service.py`, `backend/app/tool_executor.py`
 - Acceptance: priority `execution.actor_id -> actor_id -> selected.active_actor_id` is stable.
 - Tests: `backend/tests/test_turn_execution_actor_context.py`, `backend/tests/test_select_actor_validation.py`
+- Verification Evidence:
+  - `pytest -q` -> `117 passed`
+  - `backend/tests/test_turn_execution_actor_context.py` covers `execution.actor_id -> actor_id -> selected.active_actor_id`
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_full_gameplay.ps1` -> `PASS (8/8)`
 - Rollback: restore previous actor resolution path and mismatch rejection logic.
 
 ### P0-03 Actor mismatch rejection reliability
-- Status: `TODO`
+- Status: `DONE`
 - Why: prevents cross-actor unintended mutations.
 - Scope: `backend/app/tool_executor.py`, `backend/app/turn_service.py`
 - Acceptance: mismatched `args.actor_id` always yields `actor_context_mismatch`.
 - Tests: `backend/tests/test_turn_execution_actor_context.py`, manual Set B in `docs/02_guides/testing/playable_v1_manual_test.md`
+- Verification Evidence:
+  - `pytest -q` -> `117 passed`
+  - `backend/tests/test_turn_execution_actor_context.py` asserts mismatched `move` and `inventory_add` both return `failed_calls.status == "rejected"` and `reason == "actor_context_mismatch"`
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_full_gameplay.ps1` -> `PASS (8/8)`
 - Rollback: revert strict mismatch guard to last green state.
 
 ### P0-04 Campaign turn lock reliability
-- Status: `TODO`
+- Status: `DONE`
 - Why: concurrent writes can corrupt campaign state.
 - Scope: `backend/app/turn_service.py`
 - Acceptance: same-campaign concurrent turn returns deterministic `409` behavior.
 - Tests: `backend/tests/test_turn_campaign_lock.py`
+- Verification Evidence:
+  - `pytest -q` -> `121 passed`
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_full_gameplay.ps1` -> `PASS (8/8)`
+  - `backend/tests/test_turn_campaign_lock.py` covers same-campaign `409 turn_in_progress`, different-campaign concurrent success, and lock release after turn exception
 - Rollback: restore previous lock registry and error mapping.
 
 ### P0-05 World generate deterministic safety
-- Status: `TODO`
+- Status: `DONE`
 - Why: world bootstrap must be reproducible and recoverable.
 - Scope: `backend/app/world_service.py`, `backend/infra/file_repo.py`, `backend/app/tool_executor.py`
 - Acceptance: bound world id reuse, deterministic world stub behavior, no drift on repeated call.
 - Tests: `backend/tests/test_world_generate_tool.py`, `scripts/smoke_world_generate.ps1`
+- Verification Evidence:
+  - `pytest -q` -> `146 passed`
+  - `backend/tests/test_world_repo.py::test_get_or_create_world_stub_is_deterministic_across_storage_roots`
+  - `backend/tests/test_world_generate_tool.py::test_world_generate_stub_repeated_calls_keep_world_json_stable`
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_world_generate.ps1` -> `PASS (A/B/C/D)`
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_full_gameplay.ps1 -KeepWorkspace` -> `PASS (8/8)`
 - Rollback: revert world generate path and file repo changes.
 
 ### P0-06 Map generate authority integrity
-- Status: `TODO`
+- Status: `DONE`
 - Why: broken map graph blocks movement loop.
 - Scope: `backend/domain/map_models.py`, `backend/app/tool_executor.py`
 - Acceptance: `reachable_area_ids` authority, map validation and revert-on-invalid remain intact.
 - Tests: `backend/tests/test_map_generate.py`, `docs/20_runtime/testing/map_generate_manual_test.md`
+- Verification Evidence:
+  - `pytest -q` -> `146 passed`
+  - `backend/tests/test_map_generate.py::test_map_generate_updates_only_map_authority`
+  - `backend/tests/test_map_generate.py::test_map_generate_invalid_graph_rolls_back_state`
+  - `backend/tests/test_map_generate.py::test_map_generate_exception_rolls_back_state`
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_full_gameplay.ps1 -KeepWorkspace` -> `PASS (8/8)`
 - Rollback: revert map validation and normalization changes.
 
 ### P0-07 Move and move_options closure
-- Status: `TODO`
+- Status: `DONE`
 - Why: exploration loop needs deterministic movement affordances.
 - Scope: `backend/app/tool_executor.py`, `backend/app/turn_service.py`
 - Acceptance: `move_options` is read-only; `move` is required for location changes.
 - Tests: `backend/tests/test_move.py`, `backend/tests/test_move_options.py`, `scripts/smoke_full_gameplay.ps1`
+- Verification Evidence:
+  - `pytest -q` -> `149 passed`
+  - `pytest -q backend/tests/test_move.py backend/tests/test_move_options.py backend/tests/test_scene_action_tool.py backend/tests/test_scene_action_turn_api.py` -> `21 passed`
+  - `backend/tests/test_move_options.py::test_move_options_is_read_only_for_persistent_state`
+  - `backend/tests/test_scene_action_turn_api.py::test_chat_turn_without_tools_does_not_change_actor_position`
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_full_gameplay.ps1` -> `PASS (8/8)`
+  - Modified tests: `backend/tests/test_move_options.py`, `backend/tests/test_scene_action_turn_api.py`
 - Rollback: restore previous move/move_options execution behavior.
 
 ### P0-08 Scene interaction minimum viable path
-- Status: `TODO`
+- Status: `DONE`
 - Why: non-move interactions are core to playability.
 - Scope: `backend/app/tool_executor.py`, `backend/tests/test_scene_action_tool.py`
 - Acceptance: one valid `scene_action` path works end-to-end and persists entity deltas.
 - Tests: `backend/tests/test_scene_action_tool.py`, `backend/tests/test_scene_action_turn_api.py`
+- Verification Evidence:
+  - `pytest -q` -> `149 passed`
+  - `pytest -q backend/tests/test_move.py backend/tests/test_move_options.py backend/tests/test_scene_action_tool.py backend/tests/test_scene_action_turn_api.py` -> `21 passed`
+  - `backend/tests/test_scene_action_tool.py::test_scene_action_exception_rolls_back_entity_changes`
+  - `backend/tests/test_scene_action_turn_api.py::test_chat_turn_scene_action_updates_campaign_entities`
+  - API path verified via turn test: `scene_action=open` writes `campaign.json.entities.crate_01.state.opened=true` while `actors.pc_001.position` remains unchanged
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_full_gameplay.ps1` -> `PASS (8/8)`
+  - Modified tests: `backend/tests/test_scene_action_tool.py`, `backend/tests/test_scene_action_turn_api.py`
 - Rollback: revert scene_action mutation path to last green commit.
 
 ### P0-09 Inventory mutation authority
-- Status: `TODO`
+- Status: `DONE`
 - Why: loot progression needs durable state mutation.
 - Scope: `backend/app/tool_executor.py`, `backend/domain/models.py`
 - Acceptance: inventory changes persist only via `inventory_add` tool and appear in state summary.
 - Tests: `backend/tests/test_inventory_add_tool.py`, `scripts/smoke_full_gameplay.ps1`
+- Verification Evidence:
+  - `pytest -q` -> `150 passed`
+  - `pytest -q backend/tests/test_inventory_add_tool.py backend/tests/test_move.py backend/tests/test_scene_action_tool.py` -> `22 passed`
+  - `backend/tests/test_inventory_add_tool.py::test_inventory_add_applies_and_updates_actor_inventory`
+  - `backend/tests/test_inventory_add_tool.py::test_regular_turn_does_not_change_inventory_without_inventory_add`
+  - `backend/tests/test_move.py::test_move_succeeds_with_explicit_actor_id`
+  - `backend/tests/test_scene_action_tool.py::test_scene_action_take_and_drop_updates_location`
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_full_gameplay.ps1` -> `PASS (8/8)`
+  - Modified tests: `backend/tests/test_inventory_add_tool.py`, `backend/tests/test_move.py`, `backend/tests/test_scene_action_tool.py`
 - Rollback: revert inventory mutation handling.
 
 ### P0-10 Storage authority consistency
-- Status: `TODO`
+- Status: `DONE`
 - Why: runtime needs one source of truth for actor state.
 - Scope: `backend/infra/file_repo.py`, `backend/domain/character_access.py`, `backend/domain/models.py`
 - Acceptance: `actors[*]` remains authoritative; legacy mirrors are compatibility-only.
 - Tests: `backend/tests/test_turn_service_state_snapshot.py`, `backend/tests/test_character_facade.py`
+- Verification Evidence:
+  - `pytest -q` -> `121 passed`
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_full_gameplay.ps1` -> `PASS (8/8)`
+  - `backend/tests/test_character_facade.py`, `backend/tests/test_turn_service_state_snapshot.py`, `backend/tests/test_move.py`, and `backend/tests/test_inventory_add_tool.py` verify reads may use legacy mirrors, but runtime updates/persistence only write `actors[*]` and saved mirror fields remain empty
 - Rollback: restore previous migration/legacy mirror handling.
 
 ### P0-11 Trace gate default-off safety
-- Status: `TODO`
+- Status: `DONE`
 - Why: debug payload overhead should be opt-in.
 - Scope: `backend/domain/settings.py`, `backend/app/turn_service.py`, `backend/app/debug_resources.py`
 - Acceptance: `debug` absent by default; appears only when trace enabled.
 - Tests: `backend/tests/test_turn_service_lifecycle.py`, `docs/20_runtime/testing/api_test_guide.md`
+- Verification Evidence:
+  - `pytest -q` -> `141 passed`
+  - `backend/tests/test_trace_gate_api.py::test_chat_turn_omits_top_level_debug_when_trace_is_off`
+  - `backend/tests/test_trace_gate_api.py::test_settings_apply_toggles_trace_and_chat_turn_debug_contract`
+  - API trace gate checks are covered by the tests above: trace off omits top-level `debug`; trace on includes `debug.resources` with array categories and legacy debug compatibility fields
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_full_gameplay.ps1` -> `PASS (8/8)`
 - Rollback: revert debug payload gating logic.
 
 ### P0-12 External resource fallback safety
-- Status: `TODO`
+- Status: `DONE`
 - Why: resource file/manifest errors must degrade gracefully.
 - Scope: `backend/infra/resource_loader.py`, `resources/manifest.json`
 - Acceptance: prompt/flow/schema/template strict loader + policy fallback behavior remains stable.
 - Tests: `backend/tests/test_policy_resource_loader.py`, `backend/tests/test_resources_manifest_hashes.py`
+- Verification Evidence:
+  - `pytest -q` -> `141 passed`
+  - `backend/tests/test_policy_resource_loader.py` covers policy fallback for manifest missing, section/name missing, invalid entry shape, multiple enabled, missing file, invalid JSON, and invalid content
+  - `backend/tests/test_resource_loader_strict.py` keeps prompt/flow/schema/template loaders strict and verifies hash mismatch alone does not block loading
+  - `backend/tests/test_turn_service_lifecycle.py::test_turn_profile_trace_policy_fallback_keeps_turn_runtime_stable` verifies malformed external policy falls back to builtin without turn failure
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_full_gameplay.ps1` -> `PASS (8/8)`
 - Rollback: restore previous loader fallback behavior.
 
 ### P0-13 Frontend panel loop stability
-- Status: `TODO`
+- Status: `DONE`
 - Why: playable loop must function from Play UI without raw JSON edits.
 - Scope: `frontend/play.js`, `frontend/store/store.js`, `frontend/panels/*.js`, `frontend/api/api.js`
 - Acceptance: campaign -> party -> active actor -> turn path is repeatable in Play UI.
 - Tests: `scripts/smoke_frontend_flow.ps1`, `docs/20_runtime/testing/active_actor_integration_smoke.md`
+- Verification Evidence:
+  - `pytest -q` -> `150 passed`
+  - `node --experimental-default-type=module --test frontend/tests/store_loop.test.mjs` -> `3 passed`
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_frontend_flow.ps1` -> `PASS (8/8)`
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_full_gameplay.ps1` -> `PASS (8/8)`
+  - `frontend/tests/store_loop.test.mjs` verifies `refreshCampaign`, `selectActiveActor`, and `recordTurnResult` keep active actor / applied actions synchronized in store
+  - Modified tests: `frontend/tests/store_loop.test.mjs`, `scripts/smoke_frontend_flow.ps1`
 - Rollback: revert Play panel/store changes as one unit.
 
 ### P0-14 Release gate: deterministic suite + 10-turn manual
-- Status: `TODO`
+- Status: `DONE`
 - Why: Playable v1 must be provably reproducible.
 - Scope: `scripts/smoke_world_generate.ps1`, `scripts/smoke_full_gameplay.ps1`, `scripts/smoke_frontend_flow.ps1`, `docs/02_guides/testing/playable_v1_manual_test.md`
 - Acceptance: all deterministic smokes pass and manual 10-turn checklist passes.
 - Tests: all three smoke scripts + Set B manual run
+- Verification Evidence:
+  - `pytest -q` -> `154 passed`
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_world_generate.ps1` -> `PASS (A/B/C/D)`
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_full_gameplay.ps1` -> `PASS (8/8)`
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_frontend_flow.ps1` -> `PASS (8/8)`
+  - Set B run record captured at `.tmp/manual_set_b_release/20260306T_set_b/set_b_record.json`
+  - Set B summary: trace-off PASS, trace-on PASS, 10 turns completed, observed `world_generate/map_generate/actor_spawn/move_options/scene_action/move/inventory_add/narrative-only`, `turn_log.jsonl == 10`, storage parseable PASS, actor authority coherent PASS
+  - Manual recording template added to `docs/02_guides/testing/playable_v1_manual_test.md`; release-gate cleanup stability hardened in `scripts/smoke_full_gameplay.ps1`
 - Rollback: block release and revert last unstable changeset.
 
 ---

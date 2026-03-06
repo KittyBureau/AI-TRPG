@@ -1,6 +1,6 @@
 ﻿# API Test Guide (Authoritative)
 
-Last updated: 2026-03-05
+Last updated: 2026-03-06
 
 This is the single authoritative API test guide.
 
@@ -16,7 +16,16 @@ uvicorn backend.api.main:app --reload
 
 - copy `storage/config/llm_config.example.json` -> `storage/config/llm_config.json`
 - configure profile
-- first `POST /api/v1/chat/turn` prompts for key/passphrase on stdin
+- backend startup performs a non-interactive credential precheck
+- if `GET /api/v1/runtime/status` returns `{"ready": false, "reason": "passphrase_required"}`, run:
+
+```bash
+python -m backend.tools.unlock_keyring
+```
+
+- `POST /api/v1/runtime/unlock` is reserved for the local unlock command; the frontend does not collect passphrases
+- `GET /api/v1/runtime/status` returns `{"ready": true|false, "reason": "..."}` for frontend/readiness checks
+- backend startup no longer blocks on `getpass()`; unlock happens only through the explicit local CLI
 
 3. Base URL:
 
@@ -49,6 +58,14 @@ Primary pass criteria:
 
 ## 3. Core API Contract Checks
 
+Stable API endpoints used by the current playable loop:
+
+- `GET /api/v1/runtime/status`
+- `POST /api/v1/runtime/unlock`
+- `GET /api/v1/campaign/list`
+- `GET /api/v1/characters/library`
+- `POST /api/v1/chat/turn`
+
 ### 3.1 Campaign create/list/get/select
 
 - `POST /api/v1/campaign/create`
@@ -77,6 +94,22 @@ Response required keys:
 - `conflict_report`
 - `state_summary`
 
+Stable response semantics:
+
+- top-level `debug` is omitted when trace is off
+- top-level `debug` is present only when trace is on
+- `tool_feedback` may be `null` when there are no failed calls
+- `conflict_report` may be `null` when no retry-exhausted conflict occurred
+- `tool_calls` and `applied_actions` are always arrays
+- `state_summary` is always present and must include:
+  - `active_actor_id`
+  - `positions`, `positions_parent`, `positions_child`
+  - `hp`, `character_states`
+  - `inventories`
+  - `objective`
+  - `active_area_id`, `active_area_name`, `active_area_description`
+  - `active_actor_inventory`
+
 Actor context priority:
 
 - `execution.actor_id` -> top-level `actor_id` -> `selected.active_actor_id`
@@ -89,7 +122,23 @@ Concurrency rule:
 
 - concurrent same-campaign turns may return `409` with "already running"
 
-### 3.3 Settings contract
+### 3.3 Runtime readiness contract
+
+- `GET /api/v1/runtime/status`
+- `POST /api/v1/runtime/unlock` (local CLI path)
+
+Checks:
+
+- startup precheck runs before frontend gameplay flow
+- startup precheck is non-interactive and must not call `getpass()`
+- `ready=false` with `reason=passphrase_required` means the developer should run `python -m backend.tools.unlock_keyring`
+- other stable reasons include `config_missing`, `keyring_missing`, `credentials_unavailable`, `keyring_locked`
+- `ready=true` means keyring/config probe has succeeded for the active LLM profile
+- when frontend opens while `ready=false`, page chrome/panels should still render and show a retry/unlock hint
+- after unlock, frontend should recover without full page refresh (polling or `Retry Connection`)
+- frontend polling/state refresh must not churn focused turn inputs while waiting for readiness changes
+
+### 3.4 Settings contract
 
 - `GET /api/v1/settings/schema?campaign_id=...`
 - `POST /api/v1/settings/apply`
@@ -181,4 +230,5 @@ Minimum regression pass for API changes:
 2. trace gate check passes
 3. core create/list/get/select + turn contract checks pass
 4. storage authority checks pass
-5. if character modules touched, character library/fact checks pass
+5. Set B 10-turn manual record is completed for release-gate verification
+6. if character modules touched, character library/fact checks pass

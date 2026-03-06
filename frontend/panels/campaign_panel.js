@@ -52,16 +52,64 @@ export function initPanel(store) {
     }
   }
 
-  function changeCampaign(campaignId) {
+  async function changeCampaign(campaignId) {
     store.setCampaignId(campaignId);
-    store.setPartyActors([]);
-    store.setStatusMessage(
-      campaignId ? `Selected campaign ${campaignId}.` : "Campaign cleared."
-    );
+    if (!campaignId) {
+      store.setPartyActors([]);
+      store.setStatusMessage("Campaign cleared.");
+      return;
+    }
+    const result = await store.refreshCampaign(campaignId, store.getState().baseUrl);
+    if (!result.ok) {
+      store.setPartyActors([]);
+      store.setStatusMessage(`Selected campaign ${campaignId}, but refresh failed (${result.status}).`);
+      return;
+    }
+    if (result.data) {
+      store.setDebugResponseText(JSON.stringify(result.data, null, 2));
+    }
+    store.setStatusMessage(`Selected campaign ${campaignId}.`);
+  }
+
+  function captureFocusState() {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || !mount.contains(active)) {
+      return null;
+    }
+    const key = active.getAttribute("data-focus-key");
+    if (!key) {
+      return null;
+    }
+    return {
+      key,
+      selectionStart:
+        typeof active.selectionStart === "number" ? active.selectionStart : null,
+      selectionEnd:
+        typeof active.selectionEnd === "number" ? active.selectionEnd : null,
+    };
+  }
+
+  function restoreFocusState(snapshot) {
+    if (!snapshot) {
+      return;
+    }
+    const target = mount.querySelector(`[data-focus-key="${snapshot.key}"]`);
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    target.focus();
+    if (
+      typeof snapshot.selectionStart === "number" &&
+      typeof snapshot.selectionEnd === "number" &&
+      "setSelectionRange" in target
+    ) {
+      target.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+    }
   }
 
   function render() {
     const state = store.getState();
+    const focusSnapshot = captureFocusState();
     mount.innerHTML = "";
 
     const title = document.createElement("h2");
@@ -73,10 +121,14 @@ export function initPanel(store) {
     baseField.className = "field";
     baseField.innerHTML = '<span class="field-label">Base URL</span>';
     const baseInput = document.createElement("input");
+    baseInput.setAttribute("data-focus-key", "base-url-input");
     baseInput.placeholder = "http://127.0.0.1:8000";
     baseInput.value = state.baseUrl || "";
-    baseInput.addEventListener("change", () => {
+    baseInput.addEventListener("change", async () => {
       store.setBaseUrl(baseInput.value);
+      if (typeof store.recoverRuntime === "function" && store.getState().baseUrl) {
+        await store.recoverRuntime({ silent: false, manual: true });
+      }
     });
     baseField.appendChild(baseInput);
     mount.appendChild(baseField);
@@ -88,6 +140,7 @@ export function initPanel(store) {
     controls.className = "inline";
 
     const select = document.createElement("select");
+    select.setAttribute("data-focus-key", "campaign-select");
     const empty = document.createElement("option");
     empty.value = "";
     empty.textContent = "Select campaign";
@@ -99,7 +152,9 @@ export function initPanel(store) {
       option.selected = campaign.id === state.campaignId;
       select.appendChild(option);
     }
-    select.addEventListener("change", () => changeCampaign(select.value));
+    select.addEventListener("change", () => {
+      void changeCampaign(select.value);
+    });
 
     const refreshButton = document.createElement("button");
     refreshButton.textContent = "Refresh";
@@ -109,6 +164,19 @@ export function initPanel(store) {
     refreshCampaignButton.textContent = "Refresh Campaign";
     refreshCampaignButton.addEventListener("click", refreshCurrentCampaign);
 
+    const retryButton = document.createElement("button");
+    retryButton.textContent = "Retry Connection";
+    retryButton.addEventListener("click", async () => {
+      if (typeof store.recoverRuntime === "function") {
+        const recovered = await store.recoverRuntime({ silent: false, manual: true });
+        if (!recovered && store.getState().backend?.ready !== false) {
+          await refreshCampaigns();
+        }
+      } else {
+        await refreshCampaigns();
+      }
+    });
+
     const createButton = document.createElement("button");
     createButton.className = "primary";
     createButton.textContent = "Create Campaign";
@@ -117,12 +185,25 @@ export function initPanel(store) {
     controls.appendChild(select);
     controls.appendChild(refreshButton);
     controls.appendChild(refreshCampaignButton);
+    controls.appendChild(retryButton);
     controls.appendChild(createButton);
     campaignField.appendChild(controls);
     mount.appendChild(campaignField);
+
+    if (state.backend?.ready === false) {
+      const note = document.createElement("div");
+      note.className = "note";
+      note.textContent =
+        "Backend not ready. Run `python -m backend.tools.unlock_keyring`, then click Retry Connection.";
+      mount.appendChild(note);
+    }
+
+    restoreFocusState(focusSnapshot);
   }
 
   render();
   store.subscribe(render);
-  refreshCampaigns({ silent: true });
+  if (store.getState().backend?.ready !== false) {
+    refreshCampaigns({ silent: true });
+  }
 }

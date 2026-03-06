@@ -361,7 +361,7 @@ function renderHistory() {
 function getBaseUrl() {
   const raw = elements.baseUrl.value.trim();
   if (!raw) {
-    return "";
+    return "http://127.0.0.1:8000";
   }
   return raw.replace(/\/+$/, "");
 }

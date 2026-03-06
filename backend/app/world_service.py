@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
 from backend.domain.models import Campaign
-from backend.domain.world_models import World, stable_seed_from_world_id
+from backend.domain.world_models import World, stable_world_timestamp
 from backend.infra.file_repo import FileRepo
 
 
@@ -46,7 +45,6 @@ def generate_world(
         created=created,
     )
     if normalized:
-        world.updated_at = datetime.now(timezone.utc).isoformat()
         repo.save_world(world)
 
     if bind_to_campaign:
@@ -130,7 +128,7 @@ def _normalize_world_v1(
     created: bool,
 ) -> bool:
     changed = False
-    now = datetime.now(timezone.utc).isoformat()
+    now = stable_world_timestamp(world_id)
 
     if not world.world_id.strip():
         world.world_id = world_id

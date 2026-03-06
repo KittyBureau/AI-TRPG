@@ -15,6 +15,26 @@ This guide documents the complete MVP loop from campaign creation to at least on
 
 It covers both API-first usage and the minimal frontend flow controls.
 
+## Runtime readiness before gameplay
+
+Before starting the gameplay loop:
+
+1. Start the backend.
+2. Check `GET /api/v1/runtime/status`.
+3. If it returns `{"ready": false, "reason": "passphrase_required"}`, run:
+
+```bash
+python -m backend.tools.unlock_keyring
+```
+
+4. Wait for `GET /api/v1/runtime/status` to return `{"ready": true, "reason": "ready"}`.
+
+Notes:
+
+- Backend startup no longer performs interactive `getpass()` prompting.
+- The frontend may load while `ready=false`; it should show a not-ready hint, keep the page chrome visible, and recover automatically or through `Retry Connection` after unlock.
+- Frontend polling/recovery must not rebuild the active turn input on every status check.
+
 ## Important Constraint
 
 The backend currently exposes `world_generate`, `map_generate`, `actor_spawn`, `move`, `scene_action`, and `inventory_add` as tool calls executed inside `POST /api/v1/chat/turn`. There are no dedicated HTTP endpoints for these tools.
@@ -34,7 +54,10 @@ Turn actor context:
 
 ## Backend Endpoints Used In This Flow
 
+- `GET /api/v1/runtime/status`
+- `POST /api/v1/runtime/unlock` (local CLI path; not a browser passphrase form)
 - `POST /api/v1/campaign/create`
+- `GET /api/v1/campaign/list`
 - `GET /api/v1/campaign/get` (authoritative selected/actors snapshot for one campaign)
 - `POST /api/v1/campaign/select_actor` (manual active actor switch)
 - `GET /api/v1/characters/library` (optional for library inspect)
@@ -234,6 +257,13 @@ The page now includes these flow panels:
 - `Actor Control Panel`
 - `Debug Panel`
 
+Frontend runtime behavior:
+
+- The page can initialize while backend runtime status is `not ready`.
+- `play.html` and `debug.html` poll `GET /api/v1/runtime/status` lightly while blocked.
+- After local unlock succeeds, the frontend re-loads campaign list, refreshes the selected campaign, and restores active actor state without requiring a full page refresh.
+- Input areas must remain stable while readiness polling runs.
+
 ### Manual step buttons
 
 Use the following buttons in order:
@@ -304,6 +334,12 @@ Optional:
   - `applied_actions`
   - `tool_feedback`
   - `state_summary`
+  - `conflict_report`
+  - optional `debug` only when trace is enabled
+- nullability / optional notes:
+  - `tool_feedback` may be `null` when no failed calls occurred
+  - `conflict_report` may be `null` when no conflict retry exhaustion occurred
+  - `debug` must be absent, not `null`, when trace is disabled
 - optional files:
   - `storage/campaigns/<campaign_id>/campaign.json`
   - `storage/campaigns/<campaign_id>/turn_log.jsonl`

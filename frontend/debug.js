@@ -1,8 +1,10 @@
 import { chatTurn, listCampaigns } from "./api/api.js";
 import {
   appendDebugTrace,
+  checkBackendReady,
   getState,
   initializeStore,
+  recoverFrontendSession,
   setBaseUrl,
   setCampaignId,
   setCampaignOptions,
@@ -21,6 +23,51 @@ import { clearPanelRegistry, registerPanel, renderPanels } from "./panels/regist
 
 const statusLine = document.getElementById("statusLine");
 
+function captureFocusState(...roots) {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) {
+    return null;
+  }
+  const key = active.getAttribute("data-focus-key");
+  if (!key) {
+    return null;
+  }
+  if (!roots.some((root) => root instanceof HTMLElement && root.contains(active))) {
+    return null;
+  }
+  return {
+    key,
+    selectionStart:
+      typeof active.selectionStart === "number" ? active.selectionStart : null,
+    selectionEnd:
+      typeof active.selectionEnd === "number" ? active.selectionEnd : null,
+  };
+}
+
+function restoreFocusState(snapshot, ...roots) {
+  if (!snapshot) {
+    return;
+  }
+  for (const root of roots) {
+    if (!(root instanceof HTMLElement)) {
+      continue;
+    }
+    const target = root.querySelector(`[data-focus-key="${snapshot.key}"]`);
+    if (!(target instanceof HTMLElement)) {
+      continue;
+    }
+    target.focus();
+    if (
+      typeof snapshot.selectionStart === "number" &&
+      typeof snapshot.selectionEnd === "number" &&
+      "setSelectionRange" in target
+    ) {
+      target.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+    }
+    return;
+  }
+}
+
 function setStatus(text) {
   setStatusMessage(text);
 }
@@ -29,6 +76,19 @@ function renderStatusLine() {
   if (statusLine) {
     statusLine.textContent = getState().statusMessage || "Idle";
   }
+}
+
+function startReadinessPolling() {
+  window.setInterval(async () => {
+    const state = getState();
+    if (!state.baseUrl || state.backend?.ready !== false) {
+      return;
+    }
+    const recovered = await recoverRuntime({ silent: true, manual: false });
+    if (recovered) {
+      setStatus("Backend unlocked. Debug page recovered.");
+    }
+  }, 3000);
 }
 
 function jsonPretty(value) {
@@ -77,8 +137,42 @@ async function refreshCampaigns() {
   setStatus(`Loaded ${result.data.campaigns.length} campaigns.`);
 }
 
+let recoverPromise = null;
+
+function recoverRuntime({ silent = false, manual = false } = {}) {
+  if (recoverPromise) {
+    return recoverPromise;
+  }
+  recoverPromise = (async () => {
+    const recovered = await recoverFrontendSession(getState().baseUrl, {
+      silent,
+      loadCharacterLibrary: false,
+    });
+    if (!recovered.ok) {
+      return false;
+    }
+    if (!getState().debug.requestText) {
+      setDebugRequestText(jsonPretty(buildDefaultRequest()));
+    }
+    if (manual) {
+      setStatus("Backend ready. Debug data reloaded.");
+    }
+    return true;
+  })();
+  recoverPromise = recoverPromise.finally(() => {
+    recoverPromise = null;
+  });
+  return recoverPromise;
+}
+
 async function sendRequestFromBuilder() {
   const state = getState();
+  if (state.baseUrl) {
+    const readiness = await checkBackendReady(state.baseUrl, { silent: false });
+    if (readiness.ready === false) {
+      return;
+    }
+  }
   const parsed = tryParseJson(state.debug.requestText || "");
   if (!parsed.ok) {
     setStatus("Request JSON is invalid.");
@@ -125,6 +219,7 @@ function renderRequestBuilderPanel(body, state, context) {
   baseField.className = "field";
   baseField.innerHTML = '<span class="field-label">Base URL</span>';
   const baseInput = document.createElement("input");
+  baseInput.setAttribute("data-focus-key", "debug-base-url");
   baseInput.placeholder = "http://127.0.0.1:8000";
   baseInput.value = state.baseUrl || "";
   baseInput.addEventListener("change", () => context.setBaseUrl(baseInput.value));
@@ -136,6 +231,7 @@ function renderRequestBuilderPanel(body, state, context) {
   const campaignControls = document.createElement("div");
   campaignControls.className = "inline";
   const campaignSelect = document.createElement("select");
+  campaignSelect.setAttribute("data-focus-key", "debug-campaign-select");
   for (const campaign of state.campaignOptions) {
     const option = document.createElement("option");
     option.value = campaign.id;
@@ -158,6 +254,7 @@ function renderRequestBuilderPanel(body, state, context) {
   requestField.className = "field";
   requestField.innerHTML = '<span class="field-label">Request Builder (raw JSON)</span>';
   const requestInput = document.createElement("textarea");
+  requestInput.setAttribute("data-focus-key", "debug-request-input");
   requestInput.rows = 12;
   requestInput.value = state.debug.requestText || "";
   requestInput.addEventListener("input", () => {
@@ -187,8 +284,16 @@ function renderRequestBuilderPanel(body, state, context) {
   sendBtn.textContent = "Send /chat/turn";
   sendBtn.addEventListener("click", context.sendRequest);
 
+  const retryBtn = document.createElement("button");
+  retryBtn.className = "ghost";
+  retryBtn.textContent = "Retry Connection";
+  retryBtn.addEventListener("click", async () => {
+    await context.recoverRuntime({ silent: false, manual: true });
+  });
+
   actions.appendChild(templateBtn);
   actions.appendChild(copyBtn);
+  actions.appendChild(retryBtn);
   actions.appendChild(sendBtn);
 
   body.appendChild(baseField);
@@ -344,18 +449,26 @@ function mountDebugPanels() {
 
   const context = {
     setStatus,
-    setBaseUrl,
+    setBaseUrl: async (value) => {
+      setBaseUrl(value);
+      if (getState().baseUrl) {
+        await recoverRuntime({ silent: false, manual: true });
+      }
+    },
     setCampaignId,
     refreshCampaigns,
     sendRequest: sendRequestFromBuilder,
     setDebugRequestText,
     exportBundle,
     clearTrace: clearDebugTrace,
+    recoverRuntime,
   };
 
   const render = () => renderPanels({ mounts, state: getState(), context });
   const renderWithStatus = () => {
+    const focusSnapshot = captureFocusState(mounts.left, mounts.right);
     render();
+    restoreFocusState(focusSnapshot, mounts.left, mounts.right);
     renderStatusLine();
   };
   renderWithStatus();
@@ -366,12 +479,18 @@ async function init() {
   initializeStore();
   registerDebugPanels();
   mountDebugPanels();
-  setStatus("Loading debug data...");
-  await refreshCampaigns();
+  startReadinessPolling();
   if (!getState().debug.requestText) {
     setDebugRequestText(jsonPretty(buildDefaultRequest()));
   }
-  setStatus("Debug page ready.");
+  if (getState().baseUrl) {
+    const recovered = await recoverRuntime({ silent: false, manual: false });
+    if (!recovered && getState().backend.ready !== false) {
+      setStatus("Debug page ready.");
+    }
+  } else {
+    setStatus("Debug page ready.");
+  }
 }
 
-init();
+void init();

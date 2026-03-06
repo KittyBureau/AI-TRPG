@@ -278,7 +278,7 @@ def load_enabled_policy(name: str, *, repo_root: Path | None = None) -> LoadedPo
         if not policy_path.exists():
             return _fallback_policy(name)
         content = json.loads(policy_path.read_text(encoding="utf-8"))
-        if not isinstance(content, dict):
+        if not _is_valid_policy_content(name, content):
             return _fallback_policy(name)
     except (ResourceLoaderError, json.JSONDecodeError):
         return _fallback_policy(name)
@@ -338,6 +338,30 @@ def _builtin_policy_content(name: str) -> Dict[str, Any]:
         "version": "builtin-v1",
         "notes": "metadata-only fallback policy descriptor.",
     }
+
+
+def _is_valid_policy_content(name: str, content: object) -> bool:
+    if not isinstance(content, dict):
+        return False
+    policy_id = content.get("id")
+    version = content.get("version")
+    if not isinstance(policy_id, str) or policy_id.strip() != name:
+        return False
+    if not isinstance(version, str) or not version.strip():
+        return False
+    if name != "turn_tool_policy":
+        return True
+
+    allowlist = content.get("tool_allowlist_default")
+    if not isinstance(allowlist, list) or not all(
+        isinstance(item, str) and item.strip() for item in allowlist
+    ):
+        return False
+    if not isinstance(content.get("retry_policy"), dict):
+        return False
+    if not isinstance(content.get("conflict_policy"), dict):
+        return False
+    return True
 
 
 def render_prompt(

@@ -35,6 +35,12 @@ def stable_seed_from_world_id(world_id: str) -> int:
     return int(digest[:16], 16) % (2**31)
 
 
+def stable_world_timestamp(world_id: str) -> str:
+    digest = hashlib.sha256(world_id.encode("utf-8")).hexdigest()
+    seconds = int(digest[16:24], 16) % (24 * 60 * 60)
+    return f"2026-03-03T{seconds // 3600:02d}:{(seconds % 3600) // 60:02d}:{seconds % 60:02d}+00:00"
+
+
 def normalize_world(world: World) -> None:
     world.world_id = world.world_id.strip()
     world.name = world.name.strip() or world.world_id
@@ -74,7 +80,7 @@ def build_world_stub(
     generator_default: str = "stub",
 ) -> World:
     normalized_world_id = world_id.strip()
-    now = datetime.now(timezone.utc).isoformat()
+    now = stable_world_timestamp(normalized_world_id)
     seed = stable_seed_from_world_id(normalized_world_id)
     world = World(
         world_id=normalized_world_id,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import backend.app.tool_executor as tool_executor_module
+
 from backend.app.tool_executor import execute_tool_calls
 from backend.domain.models import (
     ActorState,
@@ -206,6 +208,7 @@ def test_scene_action_detach_respects_carry_limit() -> None:
 
 def test_scene_action_take_and_drop_updates_location() -> None:
     campaign = _base_campaign()
+    campaign.actors["pc_001"].inventory = {"torch": 1}
     campaign.entities["apple_01"] = Entity(
         id="apple_01",
         kind="item",
@@ -241,6 +244,7 @@ def test_scene_action_take_and_drop_updates_location() -> None:
     assert take_feedback is None
     assert len(take_actions) == 1
     assert take_actions[0].result["ok"] is True
+    assert campaign.actors["pc_001"].inventory == {"torch": 1}
     assert campaign.entities["apple_01"].loc.type == "actor"
     assert campaign.entities["apple_01"].loc.id == "pc_001"
 
@@ -248,8 +252,51 @@ def test_scene_action_take_and_drop_updates_location() -> None:
     assert drop_feedback is None
     assert len(drop_actions) == 1
     assert drop_actions[0].result["ok"] is True
+    assert campaign.actors["pc_001"].inventory == {"torch": 1}
     assert campaign.entities["apple_01"].loc.type == "area"
     assert campaign.entities["apple_01"].loc.id == "area_001"
+    assert campaign.actors["pc_001"].position == "area_001"
+
+
+def test_scene_action_exception_rolls_back_entity_changes(
+    monkeypatch,
+) -> None:
+    campaign = _base_campaign()
+    campaign.entities["apple_01"] = Entity(
+        id="apple_01",
+        kind="item",
+        label="Apple",
+        tags=["food"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "take"],
+        state={},
+        props={"mass": 1},
+    )
+    before = campaign.model_dump(mode="python")
+
+    def _boom(*args, **kwargs) -> None:
+        raise RuntimeError("patch failed")
+
+    monkeypatch.setattr(tool_executor_module, "_append_entity_patch", _boom)
+    call = ToolCall(
+        id="call_take_boom",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "take",
+            "target_id": "apple_01",
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is False
+    assert result["error"]["code"] == "scene_action_failed"
+    assert campaign.model_dump(mode="python") == before
 
 
 def test_scene_action_actor_context_mismatch_rejected() -> None:

@@ -160,9 +160,23 @@ try {
         bind_to_party = $true
     }
     Assert-True $spawnStep.ok "actor_spawn did not apply expected tool"
+    $spawnedActorId = [string]$spawnStep.turn.applied_actions[0].result.actor_id
+    Assert-True (-not [string]::IsNullOrWhiteSpace($spawnedActorId)) "actor_spawn returned empty actor_id"
+
+    $setActive = Invoke-JsonPost "$baseUrl/api/v1/campaign/select_actor" @{
+        campaign_id = $campaignId
+        active_actor_id = $spawnedActorId
+    }
+    Assert-True ([string]$setActive.active_actor_id -eq $spawnedActorId) "select_actor did not return requested active actor"
+    Add-StepResult "select_actor" "PASS" ("active_actor_id={0}" -f $spawnedActorId)
+
+    $campaignGet = curl.exe -sS "$baseUrl/api/v1/campaign/get?campaign_id=$campaignId" | ConvertFrom-Json
+    Assert-True ([string]$campaignGet.selected.active_actor_id -eq $spawnedActorId) "campaign/get active_actor_id mismatch"
+    Assert-True (@($campaignGet.selected.party_character_ids) -contains $spawnedActorId) "campaign/get party missing spawned actor"
+    Add-StepResult "refresh_campaign" "PASS" ("active={0}, party={1}" -f [string]$campaignGet.selected.active_actor_id, @($campaignGet.selected.party_character_ids).Count)
 
     $moveStep = Invoke-ToolStep $baseUrl $campaignId "move" "move" @{
-        actor_id = "pc_001"
+        actor_id = $spawnedActorId
         to_area_id = "area_002"
     }
     Assert-True $moveStep.ok "move did not apply expected tool"
@@ -170,9 +184,13 @@ try {
     $turn = Invoke-JsonPost "$baseUrl/api/v1/chat/turn" @{
         campaign_id = $campaignId
         user_input = "Describe the current scene without calling tools."
+        execution = @{
+            actor_id = $spawnedActorId
+        }
     }
     Assert-True ($turn.PSObject.Properties.Name -contains "narrative_text") "chat_turn missing narrative_text"
     Assert-True ($turn.PSObject.Properties.Name -contains "state_summary") "chat_turn missing state_summary"
+    Assert-True ([string]$turn.effective_actor_id -eq $spawnedActorId) "chat_turn effective_actor_id mismatch"
     $chatActions = @($turn.applied_actions)
     Assert-True ($chatActions.Count -eq 0) "chat_turn expected no applied_actions"
     Add-StepResult "chat_turn" "PASS" "narrative-only turn shape validated"

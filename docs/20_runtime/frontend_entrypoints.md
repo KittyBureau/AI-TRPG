@@ -26,6 +26,25 @@ Play page panels:
 - Actor Control Panel
 - Debug Panel
 
+Runtime readiness gate:
+
+- Play and Debug pages query `GET /api/v1/runtime/status` during initialization.
+- Frontend API calls target the backend base URL (local static-server development defaults to `http://127.0.0.1:8000`); they must not rely on relative `/api/v1/*` paths under the frontend static server.
+- Play/Debug always mount their base panel framework first; `not ready` is treated as runtime state, not as a fatal page-init error.
+- When `ready=false` with `reason=passphrase_required`, the UI keeps using the existing status area and tells the user to run `python -m backend.tools.unlock_keyring`.
+- The frontend does not collect passphrases; startup no longer uses a background `getpass()` prompt, and recovery begins only after the backend reports `ready=true`.
+- Play and Debug do a lightweight readiness re-check while blocked, so the page can recover after a successful local unlock.
+- Play also exposes a minimal manual recovery action via `Retry Connection` in the Campaign panel; Debug exposes the same action in the Request Builder.
+- Readiness polling must not rebuild focused text inputs on every cycle; repeated unchanged status checks should avoid full panel re-render, and focused textarea/input selection should survive the one-shot recovery refresh.
+
+Stable runtime endpoints used by the frontend:
+
+- `GET /api/v1/runtime/status`
+- `POST /api/v1/runtime/unlock` (CLI-facing; frontend never posts passphrases)
+- `GET /api/v1/campaign/list`
+- `GET /api/v1/characters/library`
+- `POST /api/v1/chat/turn`
+
 ## Validation Entry
 
 Deterministic smoke scripts:

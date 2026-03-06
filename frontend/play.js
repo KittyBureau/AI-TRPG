@@ -1,9 +1,12 @@
 import {
+  checkBackendReady,
   createCharacter,
   getState,
   initializeStore,
   loadCharacterLibrary,
   loadCharacterToCampaign,
+  loadCampaignOptionsFromBackend,
+  recoverFrontendSession,
   refreshCampaign,
   selectActiveActor,
   setBaseUrl,
@@ -11,6 +14,7 @@ import {
   setCampaignOptions,
   setCharacterCreateForm,
   setDebugResponseText,
+  recordTurnResult,
   setMapView,
   setPartyActors,
   setStateSummary,
@@ -35,7 +39,20 @@ function initStatusLine(store) {
   store.subscribe(render);
 }
 
-function initPlay() {
+function startReadinessPolling(store) {
+  window.setInterval(async () => {
+    const state = store.getState();
+    if (!state.baseUrl || state.backend?.ready !== false) {
+      return;
+    }
+    const recovered = await store.recoverRuntime({ silent: true, manual: false });
+    if (recovered) {
+      store.setStatusMessage("Backend unlocked. Play page recovered.");
+    }
+  }, 3000);
+}
+
+async function initPlay() {
   const store = {
     getState,
     subscribe,
@@ -46,13 +63,41 @@ function initPlay() {
     setPartyActors,
     setCharacterCreateForm,
     setDebugResponseText,
+    recordTurnResult,
     setStateSummary,
     setMapView,
+    loadCampaignOptionsFromBackend,
     loadCharacterLibrary,
+    checkBackendReady,
+    recoverFrontendSession,
     createCharacter,
     loadCharacterToCampaign,
     refreshCampaign,
     selectActiveActor,
+  };
+
+  let recoverPromise = null;
+  store.recoverRuntime = ({ silent = false, manual = false } = {}) => {
+    if (recoverPromise) {
+      return recoverPromise;
+    }
+    recoverPromise = (async () => {
+      const recovered = await store.recoverFrontendSession(store.getState().baseUrl, {
+        silent,
+        loadCharacterLibrary: true,
+      });
+      if (!recovered.ok) {
+        return false;
+      }
+      if (manual) {
+        store.setStatusMessage("Backend ready. Play data reloaded.");
+      }
+      return true;
+    })();
+    recoverPromise = recoverPromise.finally(() => {
+      recoverPromise = null;
+    });
+    return recoverPromise;
   };
 
   initializeStore();
@@ -62,7 +107,15 @@ function initPlay() {
   initPartyPanel(store);
   initActorControlPanel(store);
   initDebugPanel(store);
-  store.setStatusMessage("Play page ready.");
+  startReadinessPolling(store);
+  if (store.getState().baseUrl) {
+    const recovered = await store.recoverRuntime({ silent: false, manual: false });
+    if (!recovered && store.getState().backend.ready !== false) {
+      store.setStatusMessage("Play page ready.");
+    }
+  } else {
+    store.setStatusMessage("Play page ready.");
+  }
 }
 
-initPlay();
+void initPlay();

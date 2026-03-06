@@ -1,4 +1,5 @@
 const BASE_URL_KEY = "raw-console-base-url";
+const DEFAULT_BACKEND_BASE_URL = "http://127.0.0.1:8000";
 
 const elements = {
   campaignId: document.getElementById("campaignId"),
@@ -14,7 +15,8 @@ function setStatus(message) {
 
 function getBaseUrl() {
   const raw = localStorage.getItem(BASE_URL_KEY) || "";
-  return raw.trim().replace(/\/+$/, "");
+  const normalized = raw.trim().replace(/\/+$/, "");
+  return normalized || DEFAULT_BACKEND_BASE_URL;
 }
 
 function buildUrl(path) {

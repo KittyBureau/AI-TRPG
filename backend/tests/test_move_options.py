@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 import pytest
 
 from backend.app.tool_executor import execute_tool_calls
 from backend.domain.models import (
     ActorState,
     Campaign,
+    Entity,
+    EntityLocation,
     Goal,
     MapArea,
     MapData,
@@ -107,6 +111,47 @@ def test_move_options_does_not_change_positions() -> None:
         actor_id: actor.position for actor_id, actor in campaign.actors.items()
     }
     assert after_positions == before_positions
+
+
+def test_move_options_is_read_only_for_persistent_state() -> None:
+    map_data = MapData(
+        areas={
+            "area_001": MapArea(
+                id="area_001",
+                name="Root",
+                reachable_area_ids=["area_002"],
+            ),
+            "area_002": MapArea(
+                id="area_002",
+                name="Side Room",
+                reachable_area_ids=[],
+            ),
+        },
+        connections=[],
+    )
+    campaign = _make_campaign(map_data)
+    campaign.actors["pc_001"].inventory = {"torch": 1}
+    campaign.entities["crate_01"] = Entity(
+        id="crate_01",
+        kind="container",
+        label="Crate",
+        tags=["wood"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "open", "search"],
+        state={"opened": False},
+        props={"mass": 5},
+    )
+    before = deepcopy(campaign.model_dump(mode="python"))
+
+    call = ToolCall(id="call_read_only", tool="move_options", args={})
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    assert applied_actions[0].result == {
+        "options": [{"to_area_id": "area_002", "name": "Side Room"}]
+    }
+    assert campaign.model_dump(mode="python") == before
 
 
 @pytest.mark.parametrize(

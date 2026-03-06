@@ -1,5 +1,8 @@
+const DEFAULT_BACKEND_BASE_URL = "http://127.0.0.1:8000";
+
 function normalizeBaseUrl(raw) {
-  return (raw || "").trim().replace(/\/+$/, "");
+  const normalized = (raw || "").trim().replace(/\/+$/, "");
+  return normalized || DEFAULT_BACKEND_BASE_URL;
 }
 
 function buildUrl(baseUrl, path) {
@@ -24,11 +27,15 @@ async function request(baseUrl, path, options = {}) {
   };
 }
 
-export async function listCampaigns(baseUrl) {
+async function listCampaigns(baseUrl) {
   return request(baseUrl, "/api/v1/campaign/list");
 }
 
-export async function createCampaign(baseUrl, payload = {}) {
+async function getRuntimeStatus(baseUrl) {
+  return request(baseUrl, "/api/v1/runtime/status");
+}
+
+async function createCampaign(baseUrl, payload = {}) {
   return request(baseUrl, "/api/v1/campaign/create", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -36,7 +43,7 @@ export async function createCampaign(baseUrl, payload = {}) {
   });
 }
 
-export async function getCampaign(baseUrl, campaignId) {
+async function getCampaign(baseUrl, campaignId) {
   if (!campaignId) {
     return {
       ok: false,
@@ -49,7 +56,7 @@ export async function getCampaign(baseUrl, campaignId) {
   return request(baseUrl, `/api/v1/campaign/get?${params.toString()}`);
 }
 
-export async function chatTurn(baseUrl, payload) {
+async function chatTurn(baseUrl, payload) {
   return request(baseUrl, "/api/v1/chat/turn", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -57,7 +64,7 @@ export async function chatTurn(baseUrl, payload) {
   });
 }
 
-export async function getMapView(baseUrl, campaignId, actorId = null) {
+async function getMapView(baseUrl, campaignId, actorId = null) {
   if (!campaignId) {
     return {
       ok: false,
@@ -73,11 +80,11 @@ export async function getMapView(baseUrl, campaignId, actorId = null) {
   return request(baseUrl, `/api/v1/map/view?${params.toString()}`);
 }
 
-export async function listCharacters(baseUrl) {
+async function listCharacters(baseUrl) {
   return request(baseUrl, "/api/v1/characters/library");
 }
 
-export async function createCharacter(baseUrl, payload) {
+async function createCharacter(baseUrl, payload) {
   return request(baseUrl, "/api/v1/characters/library", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -85,7 +92,7 @@ export async function createCharacter(baseUrl, payload) {
   });
 }
 
-export async function loadCharacterToCampaign(baseUrl, campaignId, characterId) {
+async function loadCharacterToCampaign(baseUrl, campaignId, characterId) {
   if (!campaignId) {
     return {
       ok: false,
@@ -113,7 +120,7 @@ export async function loadCharacterToCampaign(baseUrl, campaignId, characterId) 
   );
 }
 
-export async function selectActor(baseUrl, campaignId, activeActorId) {
+async function selectActor(baseUrl, campaignId, activeActorId) {
   if (!campaignId) {
     return {
       ok: false,
@@ -139,3 +146,16 @@ export async function selectActor(baseUrl, campaignId, activeActorId) {
     }),
   });
 }
+
+export {
+  chatTurn,
+  createCampaign,
+  createCharacter,
+  getCampaign,
+  getMapView,
+  getRuntimeStatus,
+  listCampaigns,
+  listCharacters,
+  loadCharacterToCampaign,
+  selectActor,
+};

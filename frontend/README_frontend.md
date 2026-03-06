@@ -17,6 +17,8 @@ python -m http.server 5173
 Then open `http://127.0.0.1:5173` and set **Base URL** to `http://127.0.0.1:8000`.
 The map view page reads the same base URL from local storage.
 
+If the backend reports `passphrase_required`, Play/Debug now show a readiness prompt and ask you to run `python -m backend.tools.unlock_keyring` before sending turns.
+
 Main entry points:
 - `http://127.0.0.1:5173/play.html` (play mode, panel architecture)
 - `http://127.0.0.1:5173/debug.html` (debug mode, raw request/response)

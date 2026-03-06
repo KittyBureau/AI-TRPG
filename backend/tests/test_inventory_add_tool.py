@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Dict
 
@@ -94,6 +95,12 @@ def test_inventory_add_applies_and_updates_actor_inventory() -> None:
         "new_quantity": 2,
     }
     assert campaign.actors["pc_001"].inventory["torch"] == 2
+    assert campaign.positions == {}
+    assert campaign.hp == {}
+    assert campaign.character_states == {}
+    assert campaign.state.positions == {}
+    assert campaign.state.positions_parent == {}
+    assert campaign.state.positions_child == {}
 
 
 @pytest.mark.parametrize(
@@ -154,4 +161,54 @@ def test_inventory_add_persists_via_turn_service(
     assert response["applied_actions"][0]["tool"] == "inventory_add"
     assert response["state_summary"]["active_actor_inventory"] == {"medkit": 1}
     reloaded = repo.get_campaign("camp_inventory_turn")
+    payload = json.loads(
+        (tmp_path / "storage" / "campaigns" / "camp_inventory_turn" / "campaign.json").read_text(
+            encoding="utf-8"
+        )
+    )
     assert reloaded.actors["pc_001"].inventory == {"medkit": 1}
+    assert reloaded.positions == {}
+    assert reloaded.hp == {}
+    assert reloaded.character_states == {}
+    assert reloaded.state.positions == {}
+    assert reloaded.state.positions_parent == {}
+    assert reloaded.state.positions_child == {}
+    assert payload["positions"] == {}
+    assert payload["hp"] == {}
+    assert payload["character_states"] == {}
+    assert payload["state"]["positions"] == {}
+    assert payload["state"]["positions_parent"] == {}
+    assert payload["state"]["positions_child"] == {}
+
+
+def test_regular_turn_does_not_change_inventory_without_inventory_add(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        turn_service_module,
+        "LLMClient",
+        lambda: _StubLLM(
+            {
+                "assistant_text": "You pause and observe the room.",
+                "dialog_type": "scene_description",
+                "tool_calls": [],
+            }
+        ),
+    )
+
+    repo = FileRepo(tmp_path / "storage")
+    service = TurnService(repo)
+    campaign = _make_campaign("camp_inventory_narrative")
+    campaign.actors["pc_001"].inventory = {"torch": 1}
+    repo.create_campaign(campaign)
+
+    response = service.submit_turn(
+        "camp_inventory_narrative",
+        "Describe the current scene without calling tools.",
+    )
+
+    assert response["applied_actions"] == []
+    assert response["state_summary"]["active_actor_inventory"] == {"torch": 1}
+    reloaded = repo.get_campaign("camp_inventory_narrative")
+    assert reloaded.actors["pc_001"].inventory == {"torch": 1}

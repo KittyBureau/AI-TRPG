@@ -4,16 +4,40 @@ All persistent data is stored under the workspace root:
 
 ```
 storage/
+  campaigns/
+    camp_0001/
+      campaign.json
+      turn_log.jsonl
+      characters/
+        generated/
+          batch_*.json
+          *.fact.draft.json
+          *.fact.accepted.json
   characters_library/
     ch_xxxxxxxx.json
   worlds/
     world_001/
       world.json
-  campaigns/
-    camp_0001/
-      campaign.json
-      turn_log.jsonl
+  config/
+    llm_config.json
+  secrets/
+    keyring.json
 ```
+
+Current storage roots in active use:
+
+- `storage/campaigns/`
+- `storage/characters_library/`
+- `storage/worlds/`
+- `storage/config/`
+- `storage/secrets/`
+
+Runtime credential flow note:
+
+- Backend startup performs a non-interactive readiness probe only.
+- Runtime readiness is queried via `GET /api/v1/runtime/status`.
+- If the reason is `passphrase_required`, local unlock is performed explicitly with `python -m backend.tools.unlock_keyring`.
+- Credential unlock does not happen via a startup `getpass()` prompt.
 
 ## world.json (MVP v1)
 
@@ -422,6 +446,6 @@ tool feedback may include reason `repeat_illegal_request`.
 | assistant_text | string | LLM output. |
 | assistant_structured | object | Tool calls container. |
 | applied_actions | array | Applied tool results. |
-| tool_feedback | object | Failed tool calls with reasons. |
-| conflict_report | object | Conflict info when retries occur. |
-| state_summary | object | Includes `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, `inventories`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, `active_actor_inventory`. |
+| tool_feedback | object | Failed tool calls with reasons; may be `null` when no failures occurred. |
+| conflict_report | object | Conflict info when retries occur; may be `null` on normal turns. |
+| state_summary | object | Stable v1 summary contract: `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, `inventories`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, `active_actor_inventory`. |

@@ -11,8 +11,13 @@ JSON response format. Configuration is loaded from:
 - `storage/config/llm_config.json` (current_profile + profiles)
 - `storage/secrets/keyring.json` (encrypted API keys)
 
-The keyring is created on first run via interactive input (no echo). There is
-no environment-variable fallback.
+The keyring remains local-file based with no environment-variable fallback.
+Runtime startup is non-interactive: it only checks config/keyring readiness.
+If runtime status reports `passphrase_required`, unlock the running backend with:
+
+```bash
+python -m backend.tools.unlock_keyring
+```
 
 The model must return a JSON object:
 
