@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -83,3 +84,40 @@ def test_campaign_get_reflects_party_load_and_select_actor(
     assert "ch_smoke_001" in body["selected"]["party_character_ids"]
     assert body["selected"]["active_actor_id"] == "ch_smoke_001"
     assert "ch_smoke_001" in body["actors"]
+
+
+def test_campaign_get_returns_404_for_missing_campaign(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+
+    response = client.get("/api/v1/campaign/get", params={"campaign_id": "camp_missing"})
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Campaign not found: camp_missing"
+
+
+def test_campaign_get_returns_stable_500_for_invalid_campaign_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    campaign_dir = tmp_path / "storage" / "campaigns" / "camp_invalid"
+    campaign_dir.mkdir(parents=True, exist_ok=True)
+    (campaign_dir / "campaign.json").write_text(
+        json.dumps(
+            {
+                "id": "camp_invalid",
+                "selected": {
+                    "world_id": "world_001",
+                    "party_character_ids": ["pc_001"],
+                },
+                "settings_snapshot": {},
+                "goal": {"text": "Goal", "status": "active"},
+                "milestone": {"current": "intro", "last_advanced_turn": 0},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    response = client.get("/api/v1/campaign/get", params={"campaign_id": "camp_invalid"})
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Campaign invalid: camp_invalid"

@@ -58,7 +58,7 @@ Turn actor context:
 - `POST /api/v1/runtime/unlock` (local CLI path; not a browser passphrase form)
 - `POST /api/v1/campaign/create`
 - `GET /api/v1/campaign/list`
-- `GET /api/v1/campaign/get` (authoritative selected/actors snapshot for one campaign)
+- `GET /api/v1/campaign/get` (authoritative selected/actors/status snapshot for one campaign)
 - `POST /api/v1/campaign/select_actor` (manual active actor switch)
 - `GET /api/v1/characters/library` (optional for library inspect)
 - `POST /api/v1/campaigns/{campaign_id}/party/load` (optional for deterministic party load)
@@ -222,6 +222,10 @@ Expected check:
 
 - response includes `selected.party_character_ids`
 - response includes `selected.active_actor_id`
+- response includes `status.ended` and `status.milestone.current`
+- missing campaign returns explicit error instead of fallback success
+- invalid persisted campaign payload returns explicit error; frontend refresh should not overwrite current party/active state on that failure
+- when `status` is unavailable in the payload, Play should show campaign status as unavailable instead of deriving a second local truth
 
 ## Frontend Minimal Flow
 
@@ -272,7 +276,7 @@ Use the following buttons in order:
 2. In `Character Library`, load at least two characters into campaign
 3. In `Party Panel`, use selector + `Set Active` to switch active actor
 4. In `Actor Control Panel`, submit `Turn` or `Move`
-5. In `Campaign Panel`, click `Refresh Campaign` to re-sync party/active from backend
+5. In `Campaign Panel`, click `Refresh Campaign` to re-sync party/active/status from backend
 
 State consistency verification:
 

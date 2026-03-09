@@ -14,6 +14,7 @@ It rewrites frontend state from response `selected`:
 
 - `state.campaign.party_character_ids`
 - `state.campaign.active_actor_id`
+- `state.campaign.status`
 
 No local party repair is performed beyond lightweight normalization (trim empty values, dedupe).
 
@@ -37,6 +38,7 @@ This keeps Party/Active display and next action actor resolution consistent with
 6. Verify:
    - Party panel equals backend `selected.party_character_ids`
    - Active actor equals backend `selected.active_actor_id`
+   - Campaign panel lifecycle/milestone display equals backend `status`
    - Actor Control `Acting as` follows `resolveActingActorId(state)`
 
 ## Failure Diagnosis
@@ -45,5 +47,10 @@ This keeps Party/Active display and next action actor resolution consistent with
   - endpoint reachable (`/api/v1/campaign/get`)
   - request `campaign_id` is non-empty
   - response contains `selected.party_character_ids` and `selected.active_actor_id`
+- expected failure semantics:
+  - missing campaign -> `404`
+  - invalid persisted campaign payload -> `500`
+- on refresh failure, Play store should keep the previous party/active snapshot instead of rewriting local state from a partial payload
+- on refresh failure, Play store should clear campaign status display instead of showing stale status for the wrong campaign snapshot
 - If active switch fails:
   - ensure target actor is in `party_character_ids` (backend validation rejects otherwise)

@@ -18,6 +18,7 @@ const state = {
   campaign: {
     party_character_ids: [],
     active_actor_id: "",
+    status: null,
   },
   character: {
     library: [],
@@ -248,6 +249,7 @@ export function setCampaignOptions(campaigns) {
 }
 
 export function setCampaignId(campaignId) {
+  const previousCampaignId = state.campaignId;
   state.campaignId = campaignId || null;
   const selectedCampaign = state.campaignOptions.find(
     (campaign) => campaign.id === state.campaignId
@@ -257,6 +259,9 @@ export function setCampaignId(campaignId) {
     typeof selectedCampaign.active_actor_id === "string"
   ) {
     state.campaign.active_actor_id = selectedCampaign.active_actor_id;
+  }
+  if (previousCampaignId !== state.campaignId) {
+    state.campaign.status = null;
   }
   emit();
 }
@@ -328,6 +333,81 @@ function parseApiError(result) {
     return result.text.trim();
   }
   return `HTTP ${result?.status ?? 500}`;
+}
+
+function normalizeCampaignGetPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const campaignId =
+    typeof payload.campaign_id === "string" && payload.campaign_id.trim()
+      ? payload.campaign_id.trim()
+      : "";
+  const selected =
+    payload.selected && typeof payload.selected === "object" && !Array.isArray(payload.selected)
+      ? payload.selected
+      : null;
+  const activeActorId =
+    typeof selected?.active_actor_id === "string" ? selected.active_actor_id.trim() : "";
+  if (!campaignId || !selected || !Array.isArray(selected.party_character_ids)) {
+    return null;
+  }
+  if (!Array.isArray(payload.actors)) {
+    return null;
+  }
+  const rawStatus =
+    payload.status && typeof payload.status === "object" && !Array.isArray(payload.status)
+      ? payload.status
+      : null;
+  const rawMilestone =
+    rawStatus?.milestone &&
+    typeof rawStatus.milestone === "object" &&
+    !Array.isArray(rawStatus.milestone)
+      ? rawStatus.milestone
+      : null;
+  const milestoneCurrent =
+    typeof rawMilestone?.current === "string" && rawMilestone.current.trim()
+      ? rawMilestone.current.trim()
+      : "";
+  return {
+    campaignId,
+    activeActorId,
+    normalizedParty: [
+      ...new Set(
+        selected.party_character_ids
+          .filter((value) => typeof value === "string" && value.trim())
+          .map((value) => value.trim())
+      ),
+    ],
+    statusSnapshot:
+      rawStatus && milestoneCurrent
+        ? {
+            ended: rawStatus.ended === true,
+            reason:
+              typeof rawStatus.reason === "string" && rawStatus.reason.trim()
+                ? rawStatus.reason.trim()
+                : null,
+            ended_at:
+              typeof rawStatus.ended_at === "string" && rawStatus.ended_at.trim()
+                ? rawStatus.ended_at.trim()
+                : null,
+            milestone: {
+              current: milestoneCurrent,
+              last_advanced_turn: Number.isInteger(rawMilestone.last_advanced_turn)
+                ? rawMilestone.last_advanced_turn
+                : 0,
+              turn_trigger_interval: Number.isInteger(rawMilestone.turn_trigger_interval)
+                ? rawMilestone.turn_trigger_interval
+                : 0,
+              pressure: Number.isInteger(rawMilestone.pressure) ? rawMilestone.pressure : 0,
+              pressure_threshold: Number.isInteger(rawMilestone.pressure_threshold)
+                ? rawMilestone.pressure_threshold
+                : 0,
+              summary: typeof rawMilestone.summary === "string" ? rawMilestone.summary.trim() : "",
+            },
+          }
+        : null,
+  };
 }
 
 function _setStatusMessageSilently(nextMessage) {
@@ -680,32 +760,33 @@ export async function refreshCampaign(
 
   const result = await getCampaignApi(baseUrl, resolvedCampaignId);
   if (!result.ok || !result.data) {
+    state.campaign.status = null;
     state.statusMessage = `Refresh campaign failed: ${parseApiError(result)}`;
     emit();
     return result;
   }
 
-  const selected =
-    result.data.selected && typeof result.data.selected === "object"
-      ? result.data.selected
-      : {};
-  const normalizedParty = [
-    ...new Set(
-      Array.isArray(selected.party_character_ids)
-        ? selected.party_character_ids
-            .filter((value) => typeof value === "string" && value.trim())
-            .map((value) => value.trim())
-        : []
-    ),
-  ];
-  const backendActiveActorId =
-    typeof selected.active_actor_id === "string"
-      ? selected.active_actor_id.trim()
-      : "";
-  applyPartyActorsToState(normalizedParty);
-  state.campaignId = resolvedCampaignId;
-  state.campaign.active_actor_id = backendActiveActorId;
-  syncCampaignOption(resolvedCampaignId, { active_actor_id: backendActiveActorId });
+  const normalizedPayload = normalizeCampaignGetPayload(result.data);
+  if (!normalizedPayload) {
+    const invalidResult = {
+      ok: false,
+      status: result.status || 500,
+      data: { detail: "campaign/get returned invalid payload" },
+      text: result.text,
+    };
+    state.campaign.status = null;
+    state.statusMessage = `Refresh campaign failed: ${parseApiError(invalidResult)}`;
+    emit();
+    return invalidResult;
+  }
+
+  applyPartyActorsToState(normalizedPayload.normalizedParty);
+  state.campaignId = normalizedPayload.campaignId;
+  state.campaign.active_actor_id = normalizedPayload.activeActorId;
+  state.campaign.status = normalizedPayload.statusSnapshot;
+  syncCampaignOption(normalizedPayload.campaignId, {
+    active_actor_id: normalizedPayload.activeActorId,
+  });
   reconcileSelectedItemsWithInventory();
   state.statusMessage = `Campaign refreshed from backend: active=${state.campaign.active_actor_id || "none"}, party=${state.campaign.party_character_ids.length}.`;
   emit();

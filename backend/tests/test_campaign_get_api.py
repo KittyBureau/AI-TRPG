@@ -70,6 +70,19 @@ def test_campaign_get_returns_selected_party_and_active_actor(
     assert body["selected"]["party_character_ids"] == ["pc_001", "pc_002"]
     assert body["selected"]["active_actor_id"] == "pc_002"
     assert body["actors"] == ["pc_001", "pc_002"]
+    assert body["status"] == {
+        "ended": False,
+        "reason": None,
+        "ended_at": None,
+        "milestone": {
+            "current": "intro",
+            "last_advanced_turn": 0,
+            "turn_trigger_interval": 6,
+            "pressure": 0,
+            "pressure_threshold": 2,
+            "summary": "",
+        },
+    }
 
 
 def test_campaign_get_returns_404_for_missing_campaign(

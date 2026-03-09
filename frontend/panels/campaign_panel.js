@@ -1,5 +1,30 @@
 import { createCampaign, listCampaigns } from "../api/api.js";
 
+export function formatCampaignStatusLines(status) {
+  if (!status || typeof status !== "object") {
+    return ["Campaign status unavailable until authoritative refresh succeeds."];
+  }
+  const milestone =
+    status.milestone && typeof status.milestone === "object" ? status.milestone : null;
+  const milestoneCurrent =
+    typeof milestone?.current === "string" && milestone.current.trim()
+      ? milestone.current.trim()
+      : "";
+  if (!milestoneCurrent) {
+    return ["Campaign status unavailable until authoritative refresh succeeds."];
+  }
+
+  const lines = [`Status: ${status.ended === true ? "ended" : "active"}`];
+  lines.push(`Milestone: ${milestoneCurrent}`);
+  if (typeof milestone.summary === "string" && milestone.summary.trim()) {
+    lines.push(`Milestone summary: ${milestone.summary.trim()}`);
+  }
+  if (status.ended === true && typeof status.reason === "string" && status.reason.trim()) {
+    lines.push(`Ended reason: ${status.reason.trim()}`);
+  }
+  return lines;
+}
+
 export function initPanel(store) {
   const mount = document.getElementById("campaignPanel");
   if (!mount) {
@@ -30,7 +55,14 @@ export function initPanel(store) {
     }
     await refreshCampaigns({ silent: true });
     store.setCampaignId(result.data.campaign_id);
-    store.setPartyActors([]);
+    const refreshResult = await store.refreshCampaign(result.data.campaign_id, state.baseUrl);
+    if (!refreshResult.ok) {
+      store.setPartyActors([]);
+      store.setStatusMessage(
+        `Created campaign ${result.data.campaign_id}, but refresh failed (${refreshResult.status}).`
+      );
+      return;
+    }
     store.setStatusMessage(`Created campaign ${result.data.campaign_id}.`);
     store.setDebugResponseText(JSON.stringify(result.data, null, 2));
   }
@@ -189,6 +221,15 @@ export function initPanel(store) {
     controls.appendChild(createButton);
     campaignField.appendChild(controls);
     mount.appendChild(campaignField);
+
+    const statusBlock = document.createElement("div");
+    statusBlock.className = "note";
+    for (const line of formatCampaignStatusLines(state.campaign?.status)) {
+      const row = document.createElement("div");
+      row.textContent = line;
+      statusBlock.appendChild(row);
+    }
+    mount.appendChild(statusBlock);
 
     if (state.backend?.ready === false) {
       const note = document.createElement("div");

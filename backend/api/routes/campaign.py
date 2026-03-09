@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+from json import JSONDecodeError
 from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from backend.app.debug_resources import build_template_usage_debug
 from backend.app.turn_service import TurnService
+from backend.domain.models import Campaign
 from backend.infra.file_repo import FileRepo
 
 router = APIRouter(prefix="/campaign", tags=["campaign"])
@@ -60,12 +62,15 @@ class CampaignStatusMilestoneResponse(BaseModel):
     summary: str
 
 
-class CampaignStatusResponse(BaseModel):
-    campaign_id: str
+class CampaignStatusSnapshotResponse(BaseModel):
     ended: bool
     reason: Optional[str] = None
     ended_at: Optional[str] = None
     milestone: CampaignStatusMilestoneResponse
+
+
+class CampaignStatusResponse(CampaignStatusSnapshotResponse):
+    campaign_id: str
 
 
 class AdvanceMilestoneRequest(BaseModel):
@@ -87,6 +92,35 @@ class CampaignGetResponse(BaseModel):
     campaign_id: str
     selected: CampaignSelectedResponse
     actors: List[str] = Field(default_factory=list)
+    status: CampaignStatusSnapshotResponse
+
+
+def _load_campaign_for_get(repo: FileRepo, campaign_id: str) -> Campaign:
+    try:
+        return repo.get_campaign(campaign_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (JSONDecodeError, ValidationError, ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Campaign invalid: {campaign_id}",
+        ) from exc
+
+
+def _build_campaign_status_snapshot(campaign: Campaign) -> CampaignStatusSnapshotResponse:
+    return CampaignStatusSnapshotResponse(
+        ended=campaign.lifecycle.ended,
+        reason=campaign.lifecycle.reason,
+        ended_at=campaign.lifecycle.ended_at,
+        milestone=CampaignStatusMilestoneResponse(
+            current=campaign.milestone.current,
+            last_advanced_turn=campaign.milestone.last_advanced_turn,
+            turn_trigger_interval=campaign.milestone.turn_trigger_interval,
+            pressure=campaign.milestone.pressure,
+            pressure_threshold=campaign.milestone.pressure_threshold,
+            summary=campaign.milestone.summary,
+        ),
+    )
 
 
 @router.post("/create", response_model=CreateCampaignResponse)
@@ -140,10 +174,7 @@ def select_actor(request: SelectActorRequest) -> SelectActorResponse:
 @router.get("/get", response_model=CampaignGetResponse)
 def get_campaign(campaign_id: str) -> CampaignGetResponse:
     repo = FileRepo(Path.cwd() / "storage")
-    try:
-        campaign = repo.get_campaign(campaign_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    campaign = _load_campaign_for_get(repo, campaign_id)
     return CampaignGetResponse(
         campaign_id=campaign.id,
         selected=CampaignSelectedResponse(
@@ -151,29 +182,17 @@ def get_campaign(campaign_id: str) -> CampaignGetResponse:
             active_actor_id=campaign.selected.active_actor_id,
         ),
         actors=sorted(campaign.actors.keys()),
+        status=_build_campaign_status_snapshot(campaign),
     )
 
 
 @router.get("/status", response_model=CampaignStatusResponse)
 def campaign_status(campaign_id: str) -> CampaignStatusResponse:
     repo = FileRepo(Path.cwd() / "storage")
-    try:
-        campaign = repo.get_campaign(campaign_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    campaign = _load_campaign_for_get(repo, campaign_id)
     return CampaignStatusResponse(
         campaign_id=campaign.id,
-        ended=campaign.lifecycle.ended,
-        reason=campaign.lifecycle.reason,
-        ended_at=campaign.lifecycle.ended_at,
-        milestone=CampaignStatusMilestoneResponse(
-            current=campaign.milestone.current,
-            last_advanced_turn=campaign.milestone.last_advanced_turn,
-            turn_trigger_interval=campaign.milestone.turn_trigger_interval,
-            pressure=campaign.milestone.pressure,
-            pressure_threshold=campaign.milestone.pressure_threshold,
-            summary=campaign.milestone.summary,
-        ),
+        **_build_campaign_status_snapshot(campaign).model_dump(),
     )
 
 

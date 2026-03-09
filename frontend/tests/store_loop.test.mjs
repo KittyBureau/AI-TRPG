@@ -41,9 +41,24 @@ test("refreshCampaign syncs party and active actor from backend authority", asyn
   global.fetch = async (url) => {
     assert.match(String(url), /\/api\/v1\/campaign\/get\?/);
     return jsonResponse({
+      campaign_id: "camp_001",
       selected: {
         party_character_ids: ["pc_001", "pc_002"],
         active_actor_id: "pc_002",
+      },
+      actors: ["pc_001", "pc_002"],
+      status: {
+        ended: false,
+        reason: null,
+        ended_at: null,
+        milestone: {
+          current: "intro",
+          last_advanced_turn: 0,
+          turn_trigger_interval: 6,
+          pressure: 0,
+          pressure_threshold: 2,
+          summary: "",
+        },
       },
     });
   };
@@ -55,6 +70,183 @@ test("refreshCampaign syncs party and active actor from backend authority", asyn
   assert.deepEqual(store.getState().campaign.party_character_ids, ["pc_001", "pc_002"]);
   assert.equal(store.getState().campaign.active_actor_id, "pc_002");
   assert.equal(store.getState().campaignOptions[0].active_actor_id, "pc_002");
+  assert.deepEqual(store.getState().campaign.status, {
+    ended: false,
+    reason: null,
+    ended_at: null,
+    milestone: {
+      current: "intro",
+      last_advanced_turn: 0,
+      turn_trigger_interval: 6,
+      pressure: 0,
+      pressure_threshold: 2,
+      summary: "",
+    },
+  });
+});
+
+test("refreshCampaign keeps existing state when campaign get returns a missing-campaign error", async () => {
+  const store = await loadStoreModule();
+  global.fetch = async (url) => {
+    assert.match(String(url), /\/api\/v1\/campaign\/get\?/);
+    return jsonResponse({ detail: "Campaign not found: camp_missing" }, 404);
+  };
+
+  store.setCampaignOptions([{ id: "camp_001", active_actor_id: "pc_001" }]);
+  store.setCampaignId("camp_001");
+  store.setPartyActors(["pc_001", "pc_002"]);
+  store.getState().campaign.status = {
+    ended: false,
+    reason: null,
+    ended_at: null,
+    milestone: { current: "intro", last_advanced_turn: 0, turn_trigger_interval: 6, pressure: 0, pressure_threshold: 2, summary: "" },
+  };
+
+  const result = await store.refreshCampaign("camp_missing", "http://127.0.0.1:8000");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 404);
+  assert.deepEqual(store.getState().campaign.party_character_ids, ["pc_001", "pc_002"]);
+  assert.equal(store.getState().campaign.active_actor_id, "pc_001");
+  assert.equal(store.getState().campaign.status, null);
+  assert.match(store.getState().statusMessage, /Campaign not found: camp_missing/);
+});
+
+test("refreshCampaign rejects invalid authoritative payload without writing dirty state", async () => {
+  const store = await loadStoreModule();
+  global.fetch = async (url) => {
+    assert.match(String(url), /\/api\/v1\/campaign\/get\?/);
+    return jsonResponse({
+      campaign_id: "camp_001",
+      selected: {
+        active_actor_id: "pc_999",
+      },
+    });
+  };
+
+  store.setCampaignOptions([{ id: "camp_001", active_actor_id: "pc_001" }]);
+  store.setCampaignId("camp_001");
+  store.setPartyActors(["pc_001", "pc_002"]);
+  store.getState().campaign.status = {
+    ended: false,
+    reason: null,
+    ended_at: null,
+    milestone: { current: "intro", last_advanced_turn: 0, turn_trigger_interval: 6, pressure: 0, pressure_threshold: 2, summary: "" },
+  };
+
+  const result = await store.refreshCampaign("camp_001", "http://127.0.0.1:8000");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 200);
+  assert.equal(result.data.detail, "campaign/get returned invalid payload");
+  assert.deepEqual(store.getState().campaign.party_character_ids, ["pc_001", "pc_002"]);
+  assert.equal(store.getState().campaign.active_actor_id, "pc_001");
+  assert.equal(store.getState().campaign.status, null);
+  assert.match(store.getState().statusMessage, /invalid payload/i);
+});
+
+test("refreshCampaign tolerates missing status snapshot and leaves campaign status unavailable", async () => {
+  const store = await loadStoreModule();
+  global.fetch = async (url) => {
+    assert.match(String(url), /\/api\/v1\/campaign\/get\?/);
+    return jsonResponse({
+      campaign_id: "camp_001",
+      selected: {
+        party_character_ids: ["pc_001"],
+        active_actor_id: "pc_001",
+      },
+      actors: ["pc_001"],
+    });
+  };
+
+  store.setCampaignOptions([{ id: "camp_001", active_actor_id: "pc_001" }]);
+  const result = await store.refreshCampaign("camp_001", "http://127.0.0.1:8000");
+
+  assert.equal(result.ok, true);
+  assert.equal(store.getState().campaign.active_actor_id, "pc_001");
+  assert.equal(store.getState().campaign.status, null);
+});
+
+test("campaign switch clears stale status until the next authoritative refresh completes", async () => {
+  const store = await loadStoreModule();
+  global.fetch = async (url) => {
+    const requestUrl = String(url);
+    assert.match(requestUrl, /\/api\/v1\/campaign\/get\?/);
+    if (requestUrl.includes("campaign_id=camp_001")) {
+      return jsonResponse({
+        campaign_id: "camp_001",
+        selected: {
+          party_character_ids: ["pc_001"],
+          active_actor_id: "pc_001",
+        },
+        actors: ["pc_001"],
+        status: {
+          ended: false,
+          reason: null,
+          ended_at: null,
+          milestone: {
+            current: "intro",
+            last_advanced_turn: 0,
+            turn_trigger_interval: 6,
+            pressure: 0,
+            pressure_threshold: 2,
+            summary: "",
+          },
+        },
+      });
+    }
+    if (requestUrl.includes("campaign_id=camp_002")) {
+      return jsonResponse({
+        campaign_id: "camp_002",
+        selected: {
+          party_character_ids: ["pc_002"],
+          active_actor_id: "pc_002",
+        },
+        actors: ["pc_002"],
+        status: {
+          ended: true,
+          reason: "quest_resolved",
+          ended_at: "2026-03-09T00:00:00Z",
+          milestone: {
+            current: "milestone_2",
+            last_advanced_turn: 4,
+            turn_trigger_interval: 6,
+            pressure: 0,
+            pressure_threshold: 2,
+            summary: "final checkpoint reached",
+          },
+        },
+      });
+    }
+    throw new Error(`unexpected fetch: ${requestUrl}`);
+  };
+
+  store.setCampaignOptions([
+    { id: "camp_001", active_actor_id: "pc_001" },
+    { id: "camp_002", active_actor_id: "pc_002" },
+  ]);
+
+  await store.refreshCampaign("camp_001", "http://127.0.0.1:8000");
+  assert.equal(store.getState().campaign.status?.milestone.current, "intro");
+
+  store.setCampaignId("camp_002");
+  assert.equal(store.getState().campaign.status, null);
+
+  await store.refreshCampaign("camp_002", "http://127.0.0.1:8000");
+  assert.equal(store.getState().campaign.active_actor_id, "pc_002");
+  assert.deepEqual(store.getState().campaign.status, {
+    ended: true,
+    reason: "quest_resolved",
+    ended_at: "2026-03-09T00:00:00Z",
+    milestone: {
+      current: "milestone_2",
+      last_advanced_turn: 4,
+      turn_trigger_interval: 6,
+      pressure: 0,
+      pressure_threshold: 2,
+      summary: "final checkpoint reached",
+    },
+  });
 });
 
 test("selectActiveActor keeps campaign option and active actor in sync", async () => {
@@ -70,10 +262,12 @@ test("selectActiveActor keeps campaign option and active actor in sync", async (
     if (String(url).includes("/api/v1/campaign/get?")) {
       refreshCalls += 1;
       return jsonResponse({
+        campaign_id: "camp_001",
         selected: {
           party_character_ids: ["pc_001", "pc_002"],
           active_actor_id: "pc_002",
         },
+        actors: ["pc_001", "pc_002"],
       });
     }
     throw new Error(`unexpected fetch: ${String(url)}`);
@@ -145,10 +339,12 @@ test("selected item state stays isolated by actor and follows active actor switc
       refreshCalls += 1;
       const activeActorId = refreshCalls === 1 ? "pc_002" : "pc_001";
       return jsonResponse({
+        campaign_id: "camp_001",
         selected: {
           party_character_ids: ["pc_001", "pc_002"],
           active_actor_id: activeActorId,
         },
+        actors: ["pc_001", "pc_002"],
       });
     }
     throw new Error(`unexpected fetch: ${String(url)}`);
@@ -339,10 +535,12 @@ test("recoverFrontendSession reloads campaigns and active actor after backend be
     }
     if (String(url).includes("/api/v1/campaign/get?")) {
       return jsonResponse({
+        campaign_id: "camp_001",
         selected: {
           party_character_ids: ["pc_001", "pc_002"],
           active_actor_id: "pc_002",
         },
+        actors: ["pc_001", "pc_002"],
       });
     }
     throw new Error(`unexpected fetch: ${String(url)}`);

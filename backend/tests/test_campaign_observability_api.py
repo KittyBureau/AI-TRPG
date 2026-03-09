@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -80,3 +81,24 @@ def test_advance_milestone_endpoint_updates_campaign(
     assert body["campaign_id"] == campaign_id
     assert body["milestone"]["current"] == "milestone_1"
     assert body["milestone"]["summary"] == "manual checkpoint"
+
+
+def test_campaign_status_endpoint_defaults_missing_lifecycle_for_legacy_campaign(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    campaign_id = _create_campaign(tmp_path)
+    campaign_path = tmp_path / "storage" / "campaigns" / campaign_id / "campaign.json"
+    payload = json.loads(campaign_path.read_text(encoding="utf-8"))
+    payload.pop("lifecycle", None)
+    campaign_path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+
+    response = client.get("/api/v1/campaign/status", params={"campaign_id": campaign_id})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["campaign_id"] == campaign_id
+    assert body["ended"] is False
+    assert body["reason"] is None
+    assert body["ended_at"] is None
+    assert body["milestone"]["current"] == "intro"
