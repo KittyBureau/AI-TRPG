@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from backend.app.character_fact_generation import (
     CharacterFactGenerationRequest,
     CharacterFactGenerationService,
@@ -268,3 +270,51 @@ def test_generate_and_persist_llm_mode_injects_trimmed_party_context(
     assert len(by_id["pc_new"]["summary"]) == 240
     assert by_id["pc_new"]["tags"] == ["stealth", "verylongtagname_should_t"]
     assert any("conflicts with storage-authoritative data" in msg for msg in result.warnings)
+
+
+def test_persist_generated_batch_rolls_back_when_individual_write_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = FileRepo(tmp_path)
+    service = CharacterFactGenerationService(repo)
+    request = CharacterFactGenerationRequest(
+        campaign_id="camp_rollback",
+        request_id="req_rollback_001",
+        language="zh-CN",
+        tone_vocab_only=False,
+        count=2,
+        max_count=20,
+        id_policy="system",
+        constraints={"allowed_roles": ["scout", "guardian"]},
+    )
+    drafts = [
+        {
+            "character_id": "__AUTO_ID__",
+            "name": "First",
+            "role": "scout",
+            "tags": [],
+            "attributes": {},
+            "background": "",
+            "appearance": "",
+            "personality_tags": [],
+        }
+    ]
+
+    original_save = FileRepo.save_character_fact_draft
+    call_count = {"value": 0}
+
+    def _failing_save(self, campaign_id, character_file_id, payload):
+        call_count["value"] += 1
+        if call_count["value"] == 2:
+            raise OSError("disk full")
+        return original_save(self, campaign_id, character_file_id, payload)
+
+    monkeypatch.setattr(FileRepo, "save_character_fact_draft", _failing_save)
+
+    with pytest.raises(OSError):
+        service.persist_generated_batch(request, drafts)
+
+    generated_dir = tmp_path / "campaigns" / request.campaign_id / "characters" / "generated"
+    assert sorted(generated_dir.glob("batch_*.json")) == []
+    assert sorted(generated_dir.glob("*.fact.draft.json")) == []

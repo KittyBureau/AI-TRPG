@@ -278,6 +278,13 @@ runtime actor authority:
 - `storage/campaigns/{campaign_id}/characters/generated/{character_id}.fact.draft.json`
 - `storage/campaigns/{campaign_id}/characters/generated/{character_id}.fact.accepted.json`
 
+Rules:
+
+- generate/list/get paths read only from these generated artifacts and must not mutate `campaign.actors` or `selected.*`
+- duplicate `request_id` must not create a second batch or extra draft files
+- if batch write succeeds but individual draft persistence fails, generated files should be rolled back for that request
+- unreadable batch files may still appear in batch list summaries, but direct batch/fact reads should return explicit invalid-data errors when no valid fallback exists
+
 Batch payload shape:
 
 ```json

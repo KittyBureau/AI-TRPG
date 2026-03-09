@@ -26,6 +26,10 @@ class CharacterFactNotFoundError(FileNotFoundError):
     pass
 
 
+class CharacterFactDataError(RuntimeError):
+    pass
+
+
 class CharacterFactApiService:
     def __init__(
         self,
@@ -83,19 +87,29 @@ class CharacterFactApiService:
 
     def get_batch(self, campaign_id: str, request_id: str) -> Dict[str, Any]:
         self._require_campaign(campaign_id)
-        payload = self.repo.load_character_fact_batch(campaign_id, request_id)
-        if not isinstance(payload, dict):
+        batch_path = self.repo.find_character_fact_batch_path(campaign_id, request_id)
+        if batch_path is None:
             raise CharacterFactNotFoundError(
                 f"CharacterFact batch not found: campaign={campaign_id}, request_id={request_id}"
+            )
+        payload = self.repo.load_character_fact_batch(campaign_id, request_id)
+        if not isinstance(payload, dict):
+            raise CharacterFactDataError(
+                f"CharacterFact batch invalid: campaign={campaign_id}, request_id={request_id}"
             )
         return payload
 
     def get_fact(self, campaign_id: str, character_id: str) -> Dict[str, Any]:
         self._require_campaign(campaign_id)
+        draft_path = self.repo.character_fact_draft_path(campaign_id, character_id)
         payload = self.repo.load_character_fact_draft(campaign_id, character_id)
         if payload is None:
             payload = self.repo.load_character_fact_from_batches(campaign_id, character_id)
         if payload is None:
+            if draft_path.exists():
+                raise CharacterFactDataError(
+                    f"CharacterFact draft invalid: campaign={campaign_id}, character_id={character_id}"
+                )
             raise CharacterFactNotFoundError(
                 f"CharacterFact not found: campaign={campaign_id}, character_id={character_id}"
             )
@@ -213,3 +227,10 @@ def _read_draft_mode(campaign: Campaign) -> str:
     if value in {"deterministic", "llm"}:
         return value
     return "deterministic"
+
+
+__all__ = [
+    "CharacterFactApiService",
+    "CharacterFactDataError",
+    "CharacterFactNotFoundError",
+]

@@ -246,6 +246,12 @@ Checks:
 
 - batch + draft files created in `storage/campaigns/<campaign_id>/characters/generated/`
 - duplicate `request_id` returns `409`
+- duplicate `request_id` does not create additional batch or draft files
+- `GET /generated/batches` still returns summaries when an unreadable batch file exists
+- `GET /generated/batches/{request_id}` returns `404` for missing batches and explicit `500` for invalid persisted batch files
+- `GET /characters/facts/{character_id}` returns `404` when missing, falls back from unreadable draft to batch when available, and returns explicit `500` when only an invalid draft exists
+- generate failures during draft persistence do not leave partial batch/draft files behind
+- generate does not mutate runtime campaign actor authority
 - invalid request/payload returns expected `400/422`
 
 ## 7. Frontend-Related API Regression

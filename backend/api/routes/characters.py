@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from backend.app.character_fact_api_service import (
     CharacterFactApiService,
+    CharacterFactDataError,
     CharacterFactNotFoundError,
 )
 from backend.app.character_fact_generation import (
@@ -145,6 +146,8 @@ def get_generated_batch(campaign_id: str, request_id: str) -> Dict[str, Any]:
         return service.get_batch(campaign_id, request_id)
     except CharacterFactNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except CharacterFactDataError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/{campaign_id}/characters/facts/{character_id}")
@@ -154,6 +157,8 @@ def get_character_fact(campaign_id: str, character_id: str) -> Dict[str, Any]:
         return service.get_fact(campaign_id, character_id)
     except CharacterFactNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except CharacterFactDataError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     except CharacterFactValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

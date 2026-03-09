@@ -314,12 +314,16 @@ Non-goals for Playable v1:
 - Rollback: revert `party_load_service` metadata merge rules together with the added tests/docs.
 
 ### P1-06 Character fact generate flow reliability
-- Status: `TODO`
+- Status: `DONE`
 - Why: generated facts support rapid playable setup.
-- Scope: `backend/app/character_fact_generation.py`, `backend/app/character_fact_api_service.py`
+- Scope: `backend/app/character_fact_generation.py`, `backend/app/character_fact_api_service.py`, `backend/api/routes/characters.py`
 - Acceptance: generate/list/get paths remain deterministic in file outputs and errors.
 - Tests: `backend/tests/test_character_fact_api.py`, `backend/tests/test_character_fact_generation.py`
-- Rollback: revert generation API changes.
+- Verification Evidence:
+  - `pytest -q backend/tests/test_character_fact_api.py backend/tests/test_character_fact_generation.py` -> `21 passed`
+  - `backend/tests/test_character_fact_api.py` covers successful generate persistence, duplicate `request_id` conflict without extra writes, missing/invalid batch reads, draft fallback behavior, and generate preserving runtime campaign actor authority
+  - `backend/tests/test_character_fact_generation.py` covers service-level batch+draft persistence and rollback cleanup when individual draft persistence fails
+- Rollback: revert CharacterFact generate/read error handling and persistence rollback together.
 
 ### P1-07 Character fact adopt safety
 - Status: `TODO`

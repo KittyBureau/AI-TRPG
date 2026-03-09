@@ -125,6 +125,12 @@ def test_generate_returns_refs_and_writes_batch_and_individual(
         )
         assert fact_file.exists()
 
+    repo = FileRepo(tmp_path / "storage")
+    campaign = repo.get_campaign(campaign_id)
+    assert list(campaign.actors.keys()) == ["pc_001"]
+    assert campaign.selected.party_character_ids == ["pc_001"]
+    assert campaign.selected.active_actor_id == "pc_001"
+
 
 def test_generate_request_id_conflict_returns_409_without_new_file(
     tmp_path: Path,
@@ -144,6 +150,7 @@ def test_generate_request_id_conflict_returns_409_without_new_file(
         tmp_path / "storage" / "campaigns" / campaign_id / "characters" / "generated"
     )
     before = sorted(generated_dir.glob("batch_*.json"))
+    before_drafts = sorted(generated_dir.glob("*.fact.draft.json"))
 
     second = client.post(
         f"/api/v1/campaigns/{campaign_id}/characters/generate",
@@ -151,7 +158,9 @@ def test_generate_request_id_conflict_returns_409_without_new_file(
     )
     assert second.status_code == 409
     after = sorted(generated_dir.glob("batch_*.json"))
+    after_drafts = sorted(generated_dir.glob("*.fact.draft.json"))
     assert len(after) == len(before)
+    assert len(after_drafts) == len(before_drafts)
 
 
 def test_generate_missing_allowed_tones_returns_400(
@@ -275,6 +284,82 @@ def test_list_batches_and_get_batch_by_request_id(
     assert len(payload["items"]) == 3
 
 
+def test_list_batches_survives_unreadable_batch_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    campaign_id = _create_campaign(tmp_path)
+    request_id = "req_case_list_invalid_001"
+
+    created = client.post(
+        f"/api/v1/campaigns/{campaign_id}/characters/generate",
+        json=_payload(request_id),
+    )
+    assert created.status_code == 200
+
+    generated_dir = (
+        tmp_path / "storage" / "campaigns" / campaign_id / "characters" / "generated"
+    )
+    (generated_dir / "batch_20260309T000000Z_bad_only.json").write_text(
+        "{invalid",
+        encoding="utf-8",
+    )
+
+    listed = client.get(
+        f"/api/v1/campaigns/{campaign_id}/characters/generated/batches",
+        params={"limit": 20},
+    )
+    assert listed.status_code == 200
+    batches = listed.json()["batches"]
+    assert any(item["request_id"] == request_id for item in batches)
+    assert any(item["request_id"] == "bad_only" and item["count"] == 0 for item in batches)
+
+
+def test_get_batch_missing_returns_404(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    campaign_id = _create_campaign(tmp_path)
+
+    response = client.get(
+        f"/api/v1/campaigns/{campaign_id}/characters/generated/batches/req_missing"
+    )
+
+    assert response.status_code == 404
+    assert (
+        response.json()["detail"]
+        == f"CharacterFact batch not found: campaign={campaign_id}, request_id=req_missing"
+    )
+
+
+def test_get_batch_invalid_file_returns_500(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    campaign_id = _create_campaign(tmp_path)
+    generated_dir = (
+        tmp_path / "storage" / "campaigns" / campaign_id / "characters" / "generated"
+    )
+    generated_dir.mkdir(parents=True, exist_ok=True)
+    (generated_dir / "batch_20260309T000000Z_req_invalid_batch.json").write_text(
+        "{invalid",
+        encoding="utf-8",
+    )
+
+    response = client.get(
+        f"/api/v1/campaigns/{campaign_id}/characters/generated/batches/req_invalid_batch"
+    )
+
+    assert response.status_code == 500
+    assert (
+        response.json()["detail"]
+        == f"CharacterFact batch invalid: campaign={campaign_id}, request_id=req_invalid_batch"
+    )
+
+
 def test_get_fact_supports_individual_and_batch_fallback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -307,6 +392,22 @@ def test_get_fact_supports_individual_and_batch_fallback(
     assert fallback_read.json()["character_id"] == character_id
 
 
+def test_get_fact_missing_returns_404(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    campaign_id = _create_campaign(tmp_path)
+
+    response = client.get(f"/api/v1/campaigns/{campaign_id}/characters/facts/ch_missing")
+
+    assert response.status_code == 404
+    assert (
+        response.json()["detail"]
+        == f"CharacterFact not found: campaign={campaign_id}, character_id=ch_missing"
+    )
+
+
 def test_get_fact_unreadable_draft_falls_back_to_batch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -331,6 +432,30 @@ def test_get_fact_unreadable_draft_falls_back_to_batch(
     )
     assert fallback_read.status_code == 200
     assert fallback_read.json()["character_id"] == character_id
+
+
+def test_get_fact_unreadable_draft_without_batch_returns_500(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    campaign_id = _create_campaign(tmp_path)
+    generated = (
+        tmp_path / "storage" / "campaigns" / campaign_id / "characters" / "generated"
+    )
+    generated.mkdir(parents=True, exist_ok=True)
+    draft_path = generated / "ch_invalid_only.fact.draft.json"
+    draft_path.write_text("{invalid", encoding="utf-8")
+
+    response = client.get(
+        f"/api/v1/campaigns/{campaign_id}/characters/facts/ch_invalid_only"
+    )
+
+    assert response.status_code == 500
+    assert (
+        response.json()["detail"]
+        == f"CharacterFact draft invalid: campaign={campaign_id}, character_id=ch_invalid_only"
+    )
 
 
 def test_get_fact_schema_invalid_draft_returns_422_without_batch_fallback(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence
 from uuid import uuid4
 
@@ -261,14 +262,20 @@ class CharacterFactGenerationService:
             ) from exc
 
         individual_paths: List[str] = []
-        for item in validated_items:
-            character_id = item["character_id"]
-            path = self.repo.save_character_fact_draft(
-                request.campaign_id,
-                character_id,
-                item,
-            )
-            individual_paths.append(self.repo.to_storage_relative_path(path))
+        written_draft_paths: List[Path] = []
+        try:
+            for item in validated_items:
+                character_id = item["character_id"]
+                path = self.repo.save_character_fact_draft(
+                    request.campaign_id,
+                    character_id,
+                    item,
+                )
+                written_draft_paths.append(path)
+                individual_paths.append(self.repo.to_storage_relative_path(path))
+        except Exception:
+            self._cleanup_persist_failure(batch_path, written_draft_paths)
+            raise
 
         return CharacterFactBatchWriteResult(
             campaign_id=request.campaign_id,
@@ -281,6 +288,23 @@ class CharacterFactGenerationService:
             count_generated=len(validated_items),
             warnings=all_warnings,
         )
+
+    def _cleanup_persist_failure(
+        self,
+        batch_path: Path,
+        draft_paths: Sequence[Path],
+    ) -> None:
+        for path in draft_paths:
+            try:
+                if path.exists():
+                    path.unlink()
+            except OSError:
+                continue
+        try:
+            if batch_path.exists():
+                batch_path.unlink()
+        except OSError:
+            pass
 
     def generate_and_persist(
         self,

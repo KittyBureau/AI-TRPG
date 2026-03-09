@@ -42,6 +42,12 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
   - `POST /api/v1/characters/library` rejects invalid request payloads with validation errors and must not overwrite an existing valid fact on failure
   - `POST /api/v1/campaigns/{campaign_id}/party/load` is idempotent for the same `campaign_id + character_id`: no duplicate party ids, no duplicate actor records, and no reset of actor runtime authority fields
   - repeated `party/load` may refresh canonical `meta.profile` fields from library data and backfill missing metadata, but must not overwrite `position`, `hp`, `character_state`, or `inventory`
+- CharacterFact generate/read paths remain storage-authoritative draft artifacts only:
+  - `POST /api/v1/campaigns/{campaign_id}/characters/generate` must not mutate `campaign.actors`, `selected.party_character_ids`, or `selected.active_actor_id`
+  - duplicate CharacterFact `request_id` returns `409` without creating extra batch/draft files
+  - `GET /api/v1/campaigns/{campaign_id}/characters/generated/batches` must survive unreadable batch files
+  - `GET /api/v1/campaigns/{campaign_id}/characters/generated/batches/{request_id}` returns `404` for missing batches and `500` for invalid persisted batch files
+  - `GET /api/v1/campaigns/{campaign_id}/characters/facts/{character_id}` may fall back from unreadable draft to batch, returns `404` when missing, `500` when only an invalid draft exists, and `422` for schema-invalid fact payloads
 - Changes to `Campaign`, `TurnLogEntry`, or API payloads must update `docs/01_specs/storage_layout.md` and `docs/20_runtime/testing/api_test_guide.md`.
 **Checks**
 - Run the API test guide for any changed endpoints.
