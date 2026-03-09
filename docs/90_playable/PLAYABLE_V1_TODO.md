@@ -1,6 +1,6 @@
 ﻿# PLAYABLE v1 TODO (Development Mainline)
 
-Last updated: 2026-03-06
+Last updated: 2026-03-09
 
 ## Positioning
 
@@ -37,9 +37,9 @@ Non-goals for Playable v1:
 ## Item Counts
 
 - P0: 14 items (must-complete)
-- P1: 13 items
+- P1: 14 items
 - P2: 11 items
-- Total: 38 items
+- Total: 39 items
 
 ## TOC
 
@@ -358,9 +358,45 @@ Non-goals for Playable v1:
   - Ensure debug trace records prompt token counts.
   - Do not change current prompt building logic yet.
 - Status Note: Preparation only. No runtime changes.
+- Future Context Builder will include:
+  - selected item context
+  - selected entity context
+  - area tags
+  - persistent + transient tags
 - Acceptance: prep work is limited to optional schema/documentation/trace readiness and preserves current prompt assembly behavior.
 - Tests: docs review only until implementation is explicitly scheduled.
 - Rollback: remove unused prep hooks and trace notes if they create confusion before implementation.
+
+### P1-14 Player-selected item interaction model
+- Status: `TODO`
+- Why: Current inventory context requires the LLM to reason over the full inventory list. This increases token usage and introduces selection ambiguity.
+- Scope:
+  - frontend inventory UI (item selection)
+  - prompt/context builder injection
+  - prompt schema update
+- Design rules:
+  - Inventory storage format remains unchanged for now: `inventory: { item_id: quantity }`
+  - LLM should reason about how to use the selected item, not which item to use.
+  - Item usage interaction flow:
+    - `Player -> select item`
+    - `Context Builder`
+    - `Inject selected item block into prompt`
+    - `LLM decides action`
+    - `tool call if needed`
+  - Example prompt block:
+    - `Selected Item:`
+    - `- name: rusty key`
+    - `- description: an old iron key, possibly opens ancient locks`
+    - `- quantity: 1`
+- Acceptance:
+  - Item selection works in Play UI
+  - Prompt builder can inject selected item context
+  - LLM receives item description and quantity
+  - No change to inventory storage model yet
+- Tests:
+  - manual Play UI verification
+  - prompt debug trace inspection
+- Rollback: defer the explicit item-selection flow and keep current inventory-only context behavior until the Context Builder work is scheduled.
 
 ---
 
