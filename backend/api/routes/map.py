@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from backend.app.scene_entities import build_area_local_entity_views
 from backend.infra.file_repo import FileRepo
 
 router = APIRouter(prefix="/map", tags=["map"])
@@ -27,6 +28,7 @@ class SceneEntityView(BaseModel):
     label: str
     tags: List[str]
     verbs: List[str]
+    state: Dict[str, Any] = Field(default_factory=dict)
 
 
 class MapViewResponse(BaseModel):
@@ -80,15 +82,8 @@ def view_map(
         if actor_state.position == area_id
     )
     entities_in_area = [
-        SceneEntityView(
-            id=entity.id,
-            kind=entity.kind,
-            label=entity.label,
-            tags=list(entity.tags),
-            verbs=list(entity.verbs),
-        )
-        for entity in sorted(campaign.entities.values(), key=lambda item: item.id)
-        if entity.loc.type == "area" and entity.loc.id == area_id
+        SceneEntityView(**entity_payload)
+        for entity_payload in build_area_local_entity_views(campaign, area_id)
     ]
 
     return MapViewResponse(

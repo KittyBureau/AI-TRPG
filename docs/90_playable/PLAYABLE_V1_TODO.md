@@ -270,12 +270,15 @@ Non-goals for Playable v1:
 - Rollback: revert refresh integration.
 
 ### P1-03 Map view scene entities consistency
-- Status: `TODO`
+- Status: `DONE`
 - Why: scene interaction depends on area-local entity visibility.
-- Scope: `backend/api/routes/map.py`, `backend/app/turn_service.py`
-- Acceptance: `GET /map/view` entity list matches campaign entity state.
-- Tests: `backend/tests/test_map_view_scene_entities.py`
-- Rollback: restore previous map view payload builder.
+- Scope: `backend/api/routes/map.py`, `backend/app/scene_entities.py`, `backend/app/turn_service.py`
+- Acceptance: `GET /map/view` entity list matches current `campaign.entities` state for the actor's current area, including entity `state`.
+- Tests: `backend/tests/test_map_view_scene_entities.py`, `backend/tests/test_scene_action_turn_api.py`
+- Verification Evidence:
+  - `pytest -q backend/tests/test_map_view_scene_entities.py backend/tests/test_scene_action_turn_api.py` -> `5 passed`
+  - `backend/tests/test_map_view_scene_entities.py` covers current-area filtering, exclusion of other-area entities, and reflection of scene_action-driven state/location changes
+- Rollback: restore previous map view payload builder and inline scene-entity list assembly.
 
 ### P1-04 Character library robustness hardening
 - Status: `TODO`

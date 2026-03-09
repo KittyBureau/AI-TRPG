@@ -64,6 +64,7 @@ Stable API endpoints used by the current playable loop:
 - `POST /api/v1/runtime/unlock`
 - `GET /api/v1/campaign/list`
 - `GET /api/v1/characters/library`
+- `GET /api/v1/map/view`
 - `POST /api/v1/chat/turn`
 
 ### 3.1 Campaign create/list/get/select
@@ -136,7 +137,18 @@ Concurrency rule:
 
 - concurrent same-campaign turns may return `409` with "already running"
 
-### 3.3 Runtime readiness contract
+### 3.3 Map view contract
+
+Endpoint: `GET /api/v1/map/view?campaign_id=...&actor_id=...`
+
+Checks:
+
+- `entities_in_area` is built from current `campaign.entities`
+- only entities with `loc.type == "area"` and `loc.id == current_area.id` are returned
+- each returned entity includes `id`, `kind`, `label`, `tags`, `verbs`, and current `state`
+- entity state/location changes produced by existing tool paths are reflected on the next read
+
+### 3.4 Runtime readiness contract
 
 - `GET /api/v1/runtime/status`
 - `POST /api/v1/runtime/unlock` (local CLI path)
@@ -152,7 +164,7 @@ Checks:
 - after unlock, frontend should recover without full page refresh (polling or `Retry Connection`)
 - frontend polling/state refresh must not churn focused turn inputs while waiting for readiness changes
 
-### 3.4 Settings contract
+### 3.5 Settings contract
 
 - `GET /api/v1/settings/schema?campaign_id=...`
 - `POST /api/v1/settings/apply`

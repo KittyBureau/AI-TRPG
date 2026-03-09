@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 from backend.app.character_facade_factory import create_runtime_character_facade
 from backend.app.conflict_detector import detect_conflicts
 from backend.app.debug_resources import build_resources_payload
+from backend.app.scene_entities import build_area_local_entity_views
 from backend.app.tool_executor import execute_tool_calls
 from backend.domain.character_access import (
     CharacterState,
@@ -925,24 +926,9 @@ def _build_actor_prompt_payloads(
 def _scene_prompt_payload(campaign: Campaign, actor_id: str) -> Dict[str, object]:
     active_state = _CHARACTER_FACADE.get_state(campaign, actor_id)
     area_id = active_state.position if isinstance(active_state.position, str) else None
-    entities_in_area: List[Dict[str, object]] = []
-    if area_id is not None:
-        for entity in sorted(campaign.entities.values(), key=lambda item: item.id):
-            if entity.loc.type != "area" or entity.loc.id != area_id:
-                continue
-            entities_in_area.append(
-                {
-                    "id": entity.id,
-                    "kind": entity.kind,
-                    "label": entity.label,
-                    "tags": list(entity.tags),
-                    "verbs": list(entity.verbs),
-                    "state": dict(entity.state),
-                }
-            )
     return {
         "active_area_id": area_id,
-        "entities_in_area": entities_in_area,
+        "entities_in_area": build_area_local_entity_views(campaign, area_id),
     }
 
 

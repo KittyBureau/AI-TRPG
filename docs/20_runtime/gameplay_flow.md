@@ -63,7 +63,7 @@ Turn actor context:
 - `GET /api/v1/characters/library` (optional for library inspect)
 - `POST /api/v1/campaigns/{campaign_id}/party/load` (optional for deterministic party load)
 - `POST /api/v1/chat/turn`
-- `GET /api/v1/map/view` (optional for inspection)
+- `GET /api/v1/map/view` (optional for inspection; reflects current area-local `campaign.entities` state)
 - `GET /api/v1/campaigns/{campaign_id}/world` (optional for inspection)
 
 ## API Sequence (curl examples)

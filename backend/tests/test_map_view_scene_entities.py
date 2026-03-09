@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import backend.app.turn_service as turn_service_module
+
 from pathlib import Path
+from typing import Any, Dict
 
 import pytest
 
@@ -21,6 +24,56 @@ from backend.domain.models import (
     SettingsSnapshot,
 )
 from backend.infra.file_repo import FileRepo
+
+
+class _OpenCrateLLM:
+    def generate(
+        self,
+        system_prompt: str,
+        user_input: str,
+        debug_append: Any,
+    ) -> Dict[str, Any]:
+        return {
+            "assistant_text": "",
+            "dialog_type": "scene_description",
+            "tool_calls": [
+                {
+                    "id": "call_scene_open",
+                    "tool": "scene_action",
+                    "args": {
+                        "actor_id": "pc_001",
+                        "action": "open",
+                        "target_id": "crate_01",
+                        "params": {},
+                    },
+                }
+            ],
+        }
+
+
+class _TakeAppleLLM:
+    def generate(
+        self,
+        system_prompt: str,
+        user_input: str,
+        debug_append: Any,
+    ) -> Dict[str, Any]:
+        return {
+            "assistant_text": "",
+            "dialog_type": "scene_description",
+            "tool_calls": [
+                {
+                    "id": "call_scene_take",
+                    "tool": "scene_action",
+                    "args": {
+                        "actor_id": "pc_001",
+                        "action": "take",
+                        "target_id": "apple_01",
+                        "params": {},
+                    },
+                }
+            ],
+        }
 
 
 def _seed_campaign(tmp_path: Path, campaign_id: str) -> None:
@@ -47,14 +100,24 @@ def _seed_campaign(tmp_path: Path, campaign_id: str) -> None:
             "pc_001": ActorState(position="area_001", hp=10, character_state="alive", meta={})
         },
         entities={
-            "door_01": Entity(
-                id="door_01",
-                kind="object",
-                label="Door",
-                tags=["door"],
+            "apple_01": Entity(
+                id="apple_01",
+                kind="item",
+                label="Apple",
+                tags=["loot"],
                 loc=EntityLocation(type="area", id="area_001"),
-                verbs=["inspect", "open"],
+                verbs=["inspect", "take"],
                 state={},
+                props={},
+            ),
+            "crate_01": Entity(
+                id="crate_01",
+                kind="container",
+                label="Supply Crate",
+                tags=["container"],
+                loc=EntityLocation(type="area", id="area_001"),
+                verbs=["inspect", "open", "search"],
+                state={"opened": False},
                 props={},
             ),
             "coin_01": Entity(
@@ -72,14 +135,24 @@ def _seed_campaign(tmp_path: Path, campaign_id: str) -> None:
     repo.create_campaign(campaign)
 
 
-def test_map_view_includes_entities_in_current_area(
+def _client(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    llm_class: type | None = None,
+) -> TestClient:
+    monkeypatch.chdir(tmp_path)
+    if llm_class is not None:
+        monkeypatch.setattr(turn_service_module, "LLMClient", llm_class)
+    return TestClient(create_app())
+
+
+def test_map_view_returns_only_current_area_entities_from_campaign_authority(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     campaign_id = "camp_map_scene"
     _seed_campaign(tmp_path, campaign_id)
-    monkeypatch.chdir(tmp_path)
-    client = TestClient(create_app())
+    client = _client(tmp_path, monkeypatch)
 
     response = client.get(
         "/api/v1/map/view",
@@ -89,6 +162,66 @@ def test_map_view_includes_entities_in_current_area(
     payload = response.json()
     entities = payload["entities_in_area"]
     assert isinstance(entities, list)
-    assert len(entities) == 1
-    assert entities[0]["id"] == "door_01"
-    assert entities[0]["verbs"] == ["inspect", "open"]
+    assert [entity["id"] for entity in entities] == ["apple_01", "crate_01"]
+    assert entities[0]["state"] == {}
+    assert entities[1]["state"] == {"opened": False}
+    assert all(entity["id"] != "coin_01" for entity in entities)
+
+
+def test_map_view_reflects_entity_state_changes_from_scene_action_turn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    campaign_id = "camp_map_scene_state"
+    _seed_campaign(tmp_path, campaign_id)
+    client = _client(tmp_path, monkeypatch, _OpenCrateLLM)
+
+    turn_response = client.post(
+        "/api/v1/chat/turn",
+        json={
+            "campaign_id": campaign_id,
+            "user_input": "[UI_FLOW_STEP] open crate",
+            "execution": {"actor_id": "pc_001"},
+        },
+    )
+    assert turn_response.status_code == 200
+    assert turn_response.json()["applied_actions"][0]["tool"] == "scene_action"
+
+    map_response = client.get(
+        "/api/v1/map/view",
+        params={"campaign_id": campaign_id, "actor_id": "pc_001"},
+    )
+    assert map_response.status_code == 200
+    entities_by_id = {
+        entity["id"]: entity for entity in map_response.json()["entities_in_area"]
+    }
+    assert entities_by_id["crate_01"]["state"] == {"opened": True}
+
+
+def test_map_view_reflects_entity_location_changes_from_scene_action_turn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    campaign_id = "camp_map_scene_location"
+    _seed_campaign(tmp_path, campaign_id)
+    client = _client(tmp_path, monkeypatch, _TakeAppleLLM)
+
+    turn_response = client.post(
+        "/api/v1/chat/turn",
+        json={
+            "campaign_id": campaign_id,
+            "user_input": "[UI_FLOW_STEP] take apple",
+            "execution": {"actor_id": "pc_001"},
+        },
+    )
+    assert turn_response.status_code == 200
+    assert turn_response.json()["applied_actions"][0]["tool"] == "scene_action"
+
+    map_response = client.get(
+        "/api/v1/map/view",
+        params={"campaign_id": campaign_id, "actor_id": "pc_001"},
+    )
+    assert map_response.status_code == 200
+    assert [entity["id"] for entity in map_response.json()["entities_in_area"]] == [
+        "crate_01"
+    ]
