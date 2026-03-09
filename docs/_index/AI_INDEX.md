@@ -40,6 +40,8 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
   - `GET /api/v1/characters/library` must skip unreadable/invalid library files and still return valid entries
   - `GET /api/v1/characters/library/{character_id}` returns `404` for missing ids and `500` for invalid persisted library entries
   - `POST /api/v1/characters/library` rejects invalid request payloads with validation errors and must not overwrite an existing valid fact on failure
+  - `POST /api/v1/campaigns/{campaign_id}/party/load` is idempotent for the same `campaign_id + character_id`: no duplicate party ids, no duplicate actor records, and no reset of actor runtime authority fields
+  - repeated `party/load` may refresh canonical `meta.profile` fields from library data and backfill missing metadata, but must not overwrite `position`, `hp`, `character_state`, or `inventory`
 - Changes to `Campaign`, `TurnLogEntry`, or API payloads must update `docs/01_specs/storage_layout.md` and `docs/20_runtime/testing/api_test_guide.md`.
 **Checks**
 - Run the API test guide for any changed endpoints.

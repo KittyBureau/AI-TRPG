@@ -86,6 +86,36 @@ def test_campaign_get_reflects_party_load_and_select_actor(
     assert "ch_smoke_001" in body["actors"]
 
 
+def test_campaign_get_keeps_party_list_stable_after_repeated_party_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    campaign_id = _create_campaign(tmp_path, campaign_id="camp_get_repeat")
+
+    create_character_resp = client.post(
+        "/api/v1/characters/library",
+        json={"id": "ch_repeat_get", "name": "Repeat Get Hero"},
+    )
+    assert create_character_resp.status_code == 200
+
+    first_load = client.post(
+        f"/api/v1/campaigns/{campaign_id}/party/load",
+        json={"character_id": "ch_repeat_get"},
+    )
+    second_load = client.post(
+        f"/api/v1/campaigns/{campaign_id}/party/load",
+        json={"character_id": "ch_repeat_get"},
+    )
+    assert first_load.status_code == 200
+    assert second_load.status_code == 200
+
+    get_resp = client.get("/api/v1/campaign/get", params={"campaign_id": campaign_id})
+    assert get_resp.status_code == 200
+    body = get_resp.json()
+    assert body["selected"]["party_character_ids"].count("ch_repeat_get") == 1
+    assert body["actors"].count("ch_repeat_get") == 1
+
+
 def test_campaign_get_returns_404_for_missing_campaign(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -302,12 +302,16 @@ Non-goals for Playable v1:
 - Rollback: revert character-library invalid-entry handling in service/route/file-repo together.
 
 ### P1-05 Party load idempotency and metadata rules
-- Status: `TODO`
+- Status: `DONE`
 - Why: repeated load should not duplicate or corrupt party state.
 - Scope: `backend/app/party_load_service.py`, `backend/api/routes/character_library.py`
 - Acceptance: repeated party load is idempotent and profile write behavior remains stable.
 - Tests: `backend/tests/test_character_library_api.py`, `backend/tests/test_campaign_get_endpoint.py`
-- Rollback: restore previous party load path.
+- Verification Evidence:
+  - `pytest -q backend/tests/test_character_library_api.py backend/tests/test_campaign_get_endpoint.py` -> `18 passed`
+  - `backend/tests/test_character_library_api.py` covers first load metadata write, repeated load idempotency, preservation of actor runtime authority fields, legacy-actor metadata backfill, and stable failure semantics for missing/invalid library entries
+  - `backend/tests/test_campaign_get_endpoint.py` confirms repeated `party/load` still produces a de-duplicated `selected.party_character_ids` view through `campaign/get`
+- Rollback: revert `party_load_service` metadata merge rules together with the added tests/docs.
 
 ### P1-06 Character fact generate flow reliability
 - Status: `TODO`

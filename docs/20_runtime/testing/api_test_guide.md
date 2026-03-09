@@ -230,6 +230,9 @@ Checks:
 - `GET /characters/library/{character_id}` returns `404` for missing ids and explicit `500` for invalid persisted entries
 - invalid `POST /characters/library` payloads fail with validation (`400/422`) and do not overwrite an existing valid fact
 - `party/load` writes `actors[character_id].meta.profile`
+- repeated `party/load` does not duplicate `selected.party_character_ids`
+- repeated `party/load` does not reset `actors[character_id].position`, `hp`, `character_state`, or `inventory`
+- repeated `party/load` may backfill `meta.character_id` and canonical `meta.profile` keys while preserving unrelated actor metadata
 
 ### 6.2 Character Fact
 

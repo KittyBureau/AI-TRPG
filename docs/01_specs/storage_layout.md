@@ -266,6 +266,8 @@ Rules:
 - Invalid or unreadable library files are not authoritative:
   - list endpoints should skip them
   - direct get/load paths should return explicit invalid-entry errors rather than fallback success
+- `POST /campaigns/{campaign_id}/party/load` writes library metadata into `actors[{character_id}].meta.profile` and `actors[{character_id}].meta.character_id`.
+- Repeated `party/load` must be idempotent for `selected.party_character_ids` and must not reset actor runtime authority fields such as `position`, `hp`, `character_state`, or `inventory`.
 
 ## CharacterFact generated artifacts (temporary, non-authoritative)
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any, Dict
 
 from backend.app.character_library_service import (
@@ -35,7 +36,7 @@ class PartyLoadService:
         actor = ensure_actor(campaign, resolved_character_id)
         if not isinstance(actor.meta, dict):
             actor.meta = {}
-        actor.meta["profile"] = dict(fact)
+        actor.meta["profile"] = _merge_profile_metadata(actor.meta.get("profile"), fact)
         actor.meta["character_id"] = resolved_character_id
 
         if not isinstance(campaign.selected.party_character_ids, list):
@@ -57,6 +58,13 @@ class PartyLoadService:
             "party_character_ids": list(campaign.selected.party_character_ids),
             "active_actor_id": campaign.selected.active_actor_id,
         }
+
+
+def _merge_profile_metadata(existing_profile: object, fact: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(existing_profile) if isinstance(existing_profile, dict) else {}
+    for key, value in fact.items():
+        merged[key] = deepcopy(value)
+    return merged
 
 
 __all__ = ["PartyLoadService", "CharacterLibraryNotFoundError"]

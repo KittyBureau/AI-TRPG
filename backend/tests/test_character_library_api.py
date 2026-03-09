@@ -9,7 +9,15 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from backend.api.main import create_app
-from backend.domain.models import ActorState, Campaign, Goal, Milestone, Selected, SettingsSnapshot
+from backend.domain.models import (
+    ActorState,
+    Campaign,
+    Goal,
+    MapArea,
+    Milestone,
+    Selected,
+    SettingsSnapshot,
+)
 from backend.infra.file_repo import FileRepo
 
 
@@ -176,6 +184,7 @@ def test_party_load_adds_actor_and_party_keeps_non_empty_active_actor(
     actor_meta = campaign.actors["ch_hero001"].meta
     assert actor_meta["character_id"] == "ch_hero001"
     assert actor_meta["profile"]["name"] == "Hero One"
+    assert actor_meta["profile"]["id"] == "ch_hero001"
 
 
 def test_party_load_sets_active_actor_only_when_empty(
@@ -226,6 +235,124 @@ def test_party_load_returns_stable_500_when_character_library_entry_is_invalid(
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Character library fact invalid: ch_invalid"
+
+
+def test_party_load_returns_stable_404_for_missing_character_library_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    campaign_id = _create_campaign(tmp_path, campaign_id="camp_missing_load")
+
+    response = client.post(
+        f"/api/v1/campaigns/{campaign_id}/party/load",
+        json={"character_id": "ch_missing"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Character library fact not found: ch_missing"
+
+
+def test_party_load_is_idempotent_and_preserves_runtime_authority_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    campaign_id = _create_campaign(tmp_path, campaign_id="camp_repeat_load")
+
+    create_resp = client.post(
+        "/api/v1/characters/library",
+        json={"id": "ch_repeat", "name": "Repeat Hero", "summary": "stable profile"},
+    )
+    assert create_resp.status_code == 200
+
+    first_load = client.post(
+        f"/api/v1/campaigns/{campaign_id}/party/load",
+        json={"character_id": "ch_repeat"},
+    )
+    assert first_load.status_code == 200
+
+    repo = FileRepo(tmp_path / "storage")
+    campaign = repo.get_campaign(campaign_id)
+    campaign.map.areas["area_keep"] = MapArea(id="area_keep", name="Keep")
+    actor = campaign.actors["ch_repeat"]
+    actor.position = "area_keep"
+    actor.hp = 4
+    actor.character_state = "wounded"
+    actor.inventory = {"torch": 2}
+    actor.meta["profile"]["custom_note"] = "keep"
+    actor.meta["other_meta"] = "preserve"
+    repo.save_campaign(campaign)
+
+    second_load = client.post(
+        f"/api/v1/campaigns/{campaign_id}/party/load",
+        json={"character_id": "ch_repeat"},
+    )
+    assert second_load.status_code == 200
+    load_body = second_load.json()
+    assert load_body["party_character_ids"].count("ch_repeat") == 1
+
+    reloaded = repo.get_campaign(campaign_id)
+    repeated_actor = reloaded.actors["ch_repeat"]
+    assert reloaded.selected.party_character_ids.count("ch_repeat") == 1
+    assert repeated_actor.position == "area_keep"
+    assert repeated_actor.hp == 4
+    assert repeated_actor.character_state == "wounded"
+    assert repeated_actor.inventory == {"torch": 2}
+    assert repeated_actor.meta["character_id"] == "ch_repeat"
+    assert repeated_actor.meta["other_meta"] == "preserve"
+    assert repeated_actor.meta["profile"]["id"] == "ch_repeat"
+    assert repeated_actor.meta["profile"]["name"] == "Repeat Hero"
+    assert repeated_actor.meta["profile"]["custom_note"] == "keep"
+
+
+def test_party_load_backfills_profile_metadata_for_legacy_actor_without_resetting_runtime_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    campaign_id = _create_campaign(tmp_path, campaign_id="camp_legacy_load")
+
+    create_resp = client.post(
+        "/api/v1/characters/library",
+        json={"id": "ch_legacy", "name": "Legacy Hero", "summary": "old actor"},
+    )
+    assert create_resp.status_code == 200
+
+    repo = FileRepo(tmp_path / "storage")
+    campaign = repo.get_campaign(campaign_id)
+    campaign.map.areas["area_old"] = MapArea(id="area_old", name="Old Keep")
+    campaign.actors["ch_legacy"] = ActorState(
+        position="area_old",
+        hp=6,
+        character_state="tired",
+        inventory={"rope": 1},
+        meta={
+            "legacy_flag": True,
+            "profile": {"custom_note": "keep me"},
+        },
+    )
+    repo.save_campaign(campaign)
+
+    load_resp = client.post(
+        f"/api/v1/campaigns/{campaign_id}/party/load",
+        json={"character_id": "ch_legacy"},
+    )
+    assert load_resp.status_code == 200
+    assert load_resp.json()["party_character_ids"].count("ch_legacy") == 1
+
+    reloaded = repo.get_campaign(campaign_id)
+    actor = reloaded.actors["ch_legacy"]
+    assert actor.position == "area_old"
+    assert actor.hp == 6
+    assert actor.character_state == "tired"
+    assert actor.inventory == {"rope": 1}
+    assert actor.meta["legacy_flag"] is True
+    assert actor.meta["character_id"] == "ch_legacy"
+    assert actor.meta["profile"]["id"] == "ch_legacy"
+    assert actor.meta["profile"]["name"] == "Legacy Hero"
+    assert actor.meta["profile"]["summary"] == "old actor"
+    assert actor.meta["profile"]["custom_note"] == "keep me"
 
 
 def test_character_library_upsert_applies_template_defaults_when_missing_fields(
