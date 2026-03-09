@@ -1,4 +1,5 @@
 import {
+  createCampaign as createCampaignApi,
   createCharacter as createCharacterApi,
   getCampaign as getCampaignApi,
   getRuntimeStatus as getRuntimeStatusApi,
@@ -653,6 +654,121 @@ export async function createCharacter(baseUrl = state.baseUrl, payload = null) {
   state.character.error = null;
   emit();
   return result;
+}
+
+export async function createCampaignWithSelectedParty(
+  options = {},
+  baseUrl = state.baseUrl
+) {
+  const selectedCharacterIds = Array.isArray(options?.characterIds)
+    ? [...new Set(
+        options.characterIds
+          .filter((value) => typeof value === "string" && value.trim())
+          .map((value) => value.trim())
+      )]
+    : [];
+  if (!selectedCharacterIds.length) {
+    const message = "Select at least one character.";
+    state.statusMessage = message;
+    emit();
+    return {
+      ok: false,
+      status: 400,
+      data: { detail: message },
+      text: message,
+    };
+  }
+
+  const requestedActiveActorId =
+    typeof options?.activeActorId === "string" && options.activeActorId.trim()
+      ? options.activeActorId.trim()
+      : selectedCharacterIds[0];
+  const activeActorId = selectedCharacterIds.includes(requestedActiveActorId)
+    ? requestedActiveActorId
+    : selectedCharacterIds[0];
+
+  const createResult = await createCampaignApi(baseUrl, {
+    party_character_ids: selectedCharacterIds,
+  });
+  if (!createResult.ok || !createResult.data || typeof createResult.data.campaign_id !== "string") {
+    state.statusMessage = `Create campaign failed: ${parseApiError(createResult)}`;
+    emit();
+    return createResult;
+  }
+
+  const campaignId = createResult.data.campaign_id.trim();
+  if (!campaignId) {
+    const invalidResult = {
+      ok: false,
+      status: createResult.status || 500,
+      data: { detail: "campaign/create returned invalid payload" },
+      text: createResult.text,
+    };
+    state.statusMessage = `Create campaign failed: ${parseApiError(invalidResult)}`;
+    emit();
+    return invalidResult;
+  }
+
+  state.campaignId = campaignId;
+  emit();
+
+  const campaignsResult = await loadCampaignOptionsFromBackend(baseUrl, { silent: true });
+  if (!campaignsResult.ok) {
+    state.statusMessage = `Created campaign ${campaignId}, but campaign list refresh failed: ${parseApiError(campaignsResult)}`;
+    emit();
+    return {
+      ...campaignsResult,
+      campaign_id: campaignId,
+    };
+  }
+
+  for (const characterId of selectedCharacterIds) {
+    const loadResult = await loadCharacterToCampaign(campaignId, characterId, baseUrl);
+    if (!loadResult.ok) {
+      state.statusMessage = `Created campaign ${campaignId}, but party load failed for ${characterId}: ${parseApiError(loadResult)}`;
+      emit();
+      return {
+        ...loadResult,
+        campaign_id: campaignId,
+      };
+    }
+  }
+
+  if (activeActorId) {
+    const selectResult = await selectActiveActor(activeActorId, campaignId, baseUrl);
+    if (!selectResult.ok) {
+      state.statusMessage = `Created campaign ${campaignId}, but active actor select failed: ${parseApiError(selectResult)}`;
+      emit();
+      return {
+        ...selectResult,
+        campaign_id: campaignId,
+      };
+    }
+  }
+
+  const refreshResult = await refreshCampaign(campaignId, baseUrl);
+  if (!refreshResult.ok) {
+    state.statusMessage = `Created campaign ${campaignId}, but refresh failed: ${parseApiError(refreshResult)}`;
+    emit();
+    return {
+      ...refreshResult,
+      campaign_id: campaignId,
+    };
+  }
+
+  state.character.selected_character_id = activeActorId || selectedCharacterIds[0] || null;
+  state.statusMessage = `Created campaign ${campaignId} with ${selectedCharacterIds.length} selected character(s).`;
+  emit();
+  return {
+    ok: true,
+    status: createResult.status,
+    data: {
+      campaign_id: campaignId,
+      party_character_ids: [...state.campaign.party_character_ids],
+      active_actor_id: state.campaign.active_actor_id,
+    },
+    text: createResult.text,
+  };
 }
 
 export async function loadCharacterToCampaign(

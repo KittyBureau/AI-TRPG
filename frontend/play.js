@@ -1,5 +1,6 @@
 import {
   checkBackendReady,
+  createCampaignWithSelectedParty,
   createCharacter,
   getState,
   initializeStore,
@@ -73,6 +74,7 @@ async function initPlay() {
     checkBackendReady,
     recoverFrontendSession,
     createCharacter,
+    createCampaignWithSelectedParty,
     loadCharacterToCampaign,
     refreshCampaign,
     selectActiveActor,

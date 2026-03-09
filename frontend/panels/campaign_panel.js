@@ -30,6 +30,33 @@ export function initPanel(store) {
   if (!mount) {
     return;
   }
+  const uiState = {
+    selectedCharacterIds: [],
+    requestedActiveActorId: "",
+    submitting: false,
+  };
+
+  function getOrderedSelectedCharacterIds(library) {
+    const selected = new Set(uiState.selectedCharacterIds);
+    return library
+      .map((character) =>
+        character && typeof character.id === "string" ? character.id.trim() : ""
+      )
+      .filter((characterId) => characterId && selected.has(characterId));
+  }
+
+  function syncSelectedPartyState(library) {
+    const orderedIds = getOrderedSelectedCharacterIds(library);
+    uiState.selectedCharacterIds = orderedIds;
+    if (!orderedIds.length) {
+      uiState.requestedActiveActorId = "";
+      return orderedIds;
+    }
+    if (!orderedIds.includes(uiState.requestedActiveActorId)) {
+      uiState.requestedActiveActorId = orderedIds[0];
+    }
+    return orderedIds;
+  }
 
   async function refreshCampaigns({ silent = false } = {}) {
     const state = store.getState();
@@ -47,24 +74,69 @@ export function initPanel(store) {
   }
 
   async function createCampaignEntry() {
+    if (uiState.submitting) {
+      return;
+    }
+    uiState.submitting = true;
+    render();
     const state = store.getState();
     const result = await createCampaign(state.baseUrl, {});
-    if (!result.ok || !result.data || !result.data.campaign_id) {
-      store.setStatusMessage(`Create campaign failed (${result.status}).`);
+    try {
+      if (!result.ok || !result.data || !result.data.campaign_id) {
+        store.setStatusMessage(`Create campaign failed (${result.status}).`);
+        return;
+      }
+      await refreshCampaigns({ silent: true });
+      store.setCampaignId(result.data.campaign_id);
+      const refreshResult = await store.refreshCampaign(result.data.campaign_id, state.baseUrl);
+      if (!refreshResult.ok) {
+        store.setPartyActors([]);
+        store.setStatusMessage(
+          `Created campaign ${result.data.campaign_id}, but refresh failed (${refreshResult.status}).`
+        );
+        return;
+      }
+      store.setStatusMessage(`Created campaign ${result.data.campaign_id}.`);
+      store.setDebugResponseText(JSON.stringify(result.data, null, 2));
+    } finally {
+      uiState.submitting = false;
+      render();
+    }
+  }
+
+  async function createCampaignWithSelectedPartyEntry() {
+    if (uiState.submitting) {
       return;
     }
-    await refreshCampaigns({ silent: true });
-    store.setCampaignId(result.data.campaign_id);
-    const refreshResult = await store.refreshCampaign(result.data.campaign_id, state.baseUrl);
-    if (!refreshResult.ok) {
-      store.setPartyActors([]);
-      store.setStatusMessage(
-        `Created campaign ${result.data.campaign_id}, but refresh failed (${refreshResult.status}).`
+    const state = store.getState();
+    const library = Array.isArray(state.character?.library) ? state.character.library : [];
+    const selectedCharacterIds = syncSelectedPartyState(library);
+    if (!selectedCharacterIds.length) {
+      store.setStatusMessage("Select at least one character for explicit party create.");
+      render();
+      return;
+    }
+    uiState.submitting = true;
+    render();
+    try {
+      const result = await store.createCampaignWithSelectedParty(
+        {
+          characterIds: selectedCharacterIds,
+          activeActorId: uiState.requestedActiveActorId || selectedCharacterIds[0],
+        },
+        state.baseUrl
       );
-      return;
+      if (!result.ok || !result.data || !result.data.campaign_id) {
+        store.setStatusMessage(`Create campaign failed (${result.status}).`);
+        return;
+      }
+      await refreshCampaigns({ silent: true });
+      store.setCampaignId(result.data.campaign_id);
+      store.setDebugResponseText(JSON.stringify(result.data, null, 2));
+    } finally {
+      uiState.submitting = false;
+      render();
     }
-    store.setStatusMessage(`Created campaign ${result.data.campaign_id}.`);
-    store.setDebugResponseText(JSON.stringify(result.data, null, 2));
   }
 
   async function refreshCurrentCampaign() {
@@ -142,6 +214,8 @@ export function initPanel(store) {
   function render() {
     const state = store.getState();
     const focusSnapshot = captureFocusState();
+    const library = Array.isArray(state.character?.library) ? state.character.library : [];
+    const orderedSelectedCharacterIds = syncSelectedPartyState(library);
     mount.innerHTML = "";
 
     const title = document.createElement("h2");
@@ -212,15 +286,110 @@ export function initPanel(store) {
     const createButton = document.createElement("button");
     createButton.className = "primary";
     createButton.textContent = "Create Campaign";
+    createButton.disabled = uiState.submitting;
     createButton.addEventListener("click", createCampaignEntry);
+
+    const createWithPartyButton = document.createElement("button");
+    createWithPartyButton.textContent = "Create With Selected Party";
+    createWithPartyButton.disabled = uiState.submitting || !orderedSelectedCharacterIds.length;
+    createWithPartyButton.addEventListener("click", createCampaignWithSelectedPartyEntry);
 
     controls.appendChild(select);
     controls.appendChild(refreshButton);
     controls.appendChild(refreshCampaignButton);
     controls.appendChild(retryButton);
     controls.appendChild(createButton);
+    controls.appendChild(createWithPartyButton);
     campaignField.appendChild(controls);
     mount.appendChild(campaignField);
+
+    const explicitPartyTitle = document.createElement("h3");
+    explicitPartyTitle.textContent = "Explicit Party Create";
+    mount.appendChild(explicitPartyTitle);
+
+    const explicitPartyNote = document.createElement("div");
+    explicitPartyNote.className = "note";
+    explicitPartyNote.textContent =
+      "Selected library characters are created as the initial party, then loaded through the existing party/load chain to hydrate adopted profiles.";
+    mount.appendChild(explicitPartyNote);
+
+    const partySelectionList = document.createElement("div");
+    partySelectionList.className = "stack";
+    if (!library.length) {
+      const emptyLibrary = document.createElement("div");
+      emptyLibrary.className = "note";
+      emptyLibrary.textContent =
+        "No character library entries available yet. Use the default create path or create/load characters first.";
+      partySelectionList.appendChild(emptyLibrary);
+    } else {
+      for (const character of library) {
+        const characterId =
+          character && typeof character.id === "string" ? character.id.trim() : "";
+        if (!characterId) {
+          continue;
+        }
+        const label = document.createElement("label");
+        label.className = "row";
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = orderedSelectedCharacterIds.includes(characterId);
+        checkbox.addEventListener("change", () => {
+          const nextSelected = new Set(uiState.selectedCharacterIds);
+          if (checkbox.checked) {
+            nextSelected.add(characterId);
+          } else {
+            nextSelected.delete(characterId);
+          }
+          uiState.selectedCharacterIds = [...nextSelected];
+          syncSelectedPartyState(
+            Array.isArray(store.getState().character?.library)
+              ? store.getState().character.library
+              : []
+          );
+          render();
+        });
+        label.appendChild(checkbox);
+
+        const text = document.createElement("span");
+        const name =
+          character && typeof character.name === "string" && character.name.trim()
+            ? character.name.trim()
+            : characterId;
+        const summary =
+          character && typeof character.summary === "string" && character.summary.trim()
+            ? ` - ${character.summary.trim()}`
+            : "";
+        text.textContent = `${name} (${characterId})${summary}`;
+        label.appendChild(text);
+        partySelectionList.appendChild(label);
+      }
+    }
+    mount.appendChild(partySelectionList);
+
+    const activeActorField = document.createElement("label");
+    activeActorField.className = "field";
+    activeActorField.innerHTML = '<span class="field-label">Explicit Active Actor</span>';
+    const activeActorSelect = document.createElement("select");
+    activeActorSelect.setAttribute("data-focus-key", "explicit-create-active-actor");
+    const emptyActorOption = document.createElement("option");
+    emptyActorOption.value = "";
+    emptyActorOption.textContent = "First selected character";
+    activeActorSelect.appendChild(emptyActorOption);
+    for (const characterId of orderedSelectedCharacterIds) {
+      const option = document.createElement("option");
+      option.value = characterId;
+      option.textContent = characterId;
+      option.selected = characterId === uiState.requestedActiveActorId;
+      activeActorSelect.appendChild(option);
+    }
+    activeActorSelect.disabled = !orderedSelectedCharacterIds.length || uiState.submitting;
+    activeActorSelect.addEventListener("change", () => {
+      uiState.requestedActiveActorId = activeActorSelect.value.trim();
+      render();
+    });
+    activeActorField.appendChild(activeActorSelect);
+    mount.appendChild(activeActorField);
 
     const statusBlock = document.createElement("div");
     statusBlock.className = "note";

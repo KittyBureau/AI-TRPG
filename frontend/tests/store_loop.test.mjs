@@ -577,3 +577,109 @@ test("silent readiness polling does not emit repeatedly when backend state is un
   assert.equal(afterFirst, 1);
   assert.equal(emits, 1);
 });
+
+test("createCampaignWithSelectedParty creates, loads selected characters, then sets active actor", async () => {
+  const store = await loadStoreModule();
+  const calls = [];
+  let campaignGetCalls = 0;
+
+  global.fetch = async (url, options = {}) => {
+    const requestUrl = String(url);
+    calls.push({
+      url: requestUrl,
+      method: options.method || "GET",
+      body: options.body ? JSON.parse(String(options.body)) : null,
+    });
+    if (requestUrl.endsWith("/api/v1/campaign/create")) {
+      assert.deepEqual(JSON.parse(String(options.body)), {
+        party_character_ids: ["pc_002", "pc_003"],
+      });
+      return jsonResponse({ campaign_id: "camp_new" });
+    }
+    if (requestUrl.endsWith("/api/v1/campaign/list")) {
+      return jsonResponse({
+        campaigns: [{ id: "camp_new", active_actor_id: "pc_002" }],
+      });
+    }
+    if (requestUrl.endsWith("/api/v1/campaigns/camp_new/party/load")) {
+      const body = JSON.parse(String(options.body));
+      return jsonResponse({
+        ok: true,
+        campaign_id: "camp_new",
+        character_id: body.character_id,
+        party_character_ids: ["pc_002", "pc_003"],
+        active_actor_id: "pc_002",
+      });
+    }
+    if (requestUrl.endsWith("/api/v1/campaign/select_actor")) {
+      const body = JSON.parse(String(options.body));
+      assert.equal(body.campaign_id, "camp_new");
+      assert.equal(body.active_actor_id, "pc_003");
+      return jsonResponse({ active_actor_id: "pc_003" });
+    }
+    if (requestUrl.includes("/api/v1/campaign/get?")) {
+      campaignGetCalls += 1;
+      const activeActorId = campaignGetCalls >= 3 ? "pc_003" : "pc_002";
+      return jsonResponse({
+        campaign_id: "camp_new",
+        selected: {
+          party_character_ids: ["pc_002", "pc_003"],
+          active_actor_id: activeActorId,
+        },
+        actors: ["pc_002", "pc_003"],
+        status: {
+          ended: false,
+          reason: null,
+          ended_at: null,
+          milestone: {
+            current: "intro",
+            last_advanced_turn: 0,
+            turn_trigger_interval: 6,
+            pressure: 0,
+            pressure_threshold: 2,
+            summary: "",
+          },
+        },
+      });
+    }
+    throw new Error(`unexpected fetch: ${requestUrl}`);
+  };
+
+  const result = await store.createCampaignWithSelectedParty(
+    {
+      characterIds: ["pc_002", "pc_003"],
+      activeActorId: "pc_003",
+    },
+    "http://127.0.0.1:8000"
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(store.getState().campaignId, "camp_new");
+  assert.deepEqual(store.getState().campaign.party_character_ids, ["pc_002", "pc_003"]);
+  assert.equal(store.getState().campaign.active_actor_id, "pc_003");
+  assert.equal(store.getState().character.selected_character_id, "pc_003");
+  assert.equal(store.getState().campaignOptions[0].id, "camp_new");
+  assert.equal(store.getState().campaignOptions[0].active_actor_id, "pc_003");
+  assert.match(store.getState().statusMessage, /Created campaign camp_new with 2 selected character/);
+
+  const loadCalls = calls.filter((entry) =>
+    entry.url.endsWith("/api/v1/campaigns/camp_new/party/load")
+  );
+  assert.deepEqual(
+    loadCalls.map((entry) => entry.body.character_id),
+    ["pc_002", "pc_003"]
+  );
+});
+
+test("createCampaignWithSelectedParty rejects empty explicit selection", async () => {
+  const store = await loadStoreModule();
+
+  const result = await store.createCampaignWithSelectedParty(
+    { characterIds: [] },
+    "http://127.0.0.1:8000"
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 400);
+  assert.match(store.getState().statusMessage, /Select at least one character/i);
+});
