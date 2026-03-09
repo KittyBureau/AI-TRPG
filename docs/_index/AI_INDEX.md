@@ -23,6 +23,7 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - `/api/v1/chat/turn` omits top-level `debug` when trace is off; when trace is on, `debug.resources` is present and uses array categories.
 - `/api/v1/chat/turn` keeps `tool_calls` / `applied_actions` as arrays; `tool_feedback` and `conflict_report` may be `null` depending on turn outcome.
 - `/api/v1/chat/turn.state_summary` keeps stable v1 keys: `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, `inventories`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, `active_actor_inventory`.
+- `GET /api/v1/campaign/get` returns the authoritative selected/actors/status snapshot for a valid campaign; `status` carries lifecycle + milestone data from the current campaign snapshot, missing campaigns return `404`, and invalid persisted campaign payloads return `500` with a stable error detail.
 - `GET /api/v1/map/view` returns area context plus `entities_in_area` built directly from current `campaign.entities`, filtered to the actor's current area, with each entity's current `state`.
 - `/api/v1/chat/turn` actor context resolution uses `execution.actor_id` first, then top-level `actor_id`, then `campaign.selected.active_actor_id`; response includes `effective_actor_id`.
 - `/api/v1/chat/turn` accepts optional `context_hints.selected_item_id`; backend validates it against `actors[effective_actor_id].inventory` and injects `selected_item={id,quantity}` into turn context only when valid, with optional `name` / `description` when lightweight metadata is available.
@@ -36,6 +37,9 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
   - `GET /api/v1/characters/library/{character_id}`
   - `POST /api/v1/characters/library`
   - `POST /api/v1/campaigns/{campaign_id}/party/load`
+  - `GET /api/v1/characters/library` must skip unreadable/invalid library files and still return valid entries
+  - `GET /api/v1/characters/library/{character_id}` returns `404` for missing ids and `500` for invalid persisted library entries
+  - `POST /api/v1/characters/library` rejects invalid request payloads with validation errors and must not overwrite an existing valid fact on failure
 - Changes to `Campaign`, `TurnLogEntry`, or API payloads must update `docs/01_specs/storage_layout.md` and `docs/20_runtime/testing/api_test_guide.md`.
 **Checks**
 - Run the API test guide for any changed endpoints.
@@ -143,6 +147,7 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - Frontend gameplay flow UI/protocol changes require running `scripts/smoke_frontend_flow.ps1` and checking `frontend/README_frontend.md` + `docs/20_runtime/gameplay_flow.md` + `docs/20_runtime/frontend_entrypoints.md` for sync.
 - Frontend readiness gating must not blank the page: base panels mount first, `not ready` is stored as state, and recovery works via polling or the minimal retry action.
 - Frontend readiness polling must not churn focused input DOM; unchanged polling state should not trigger full input-panel re-render.
+- Frontend `refreshCampaign` must only write state from a valid authoritative `campaign/get` payload; failed or invalid responses must leave existing party/active state untouched, clear stale campaign status display, and surface a handleable failure.
 - Runtime unlock verification for local development uses `GET /api/v1/runtime/status` plus `python -m backend.tools.unlock_keyring`; startup `getpass()` prompts are no longer valid test expectations.
 - For play-panel actor selection consistency changes, also run the manual guide `docs/20_runtime/testing/active_actor_integration_smoke.md`.
 - For Play state convergence or refresh behavior changes, run `docs/20_runtime/testing/state_consistency_check.md`.

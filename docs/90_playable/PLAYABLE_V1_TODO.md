@@ -254,20 +254,30 @@ Non-goals for Playable v1:
 ## P1 (Important, Not Blocking v1 Launch)
 
 ### P1-01 Campaign status and milestone UX alignment
-- Status: `TODO`
+- Status: `DONE`
 - Why: lifecycle observability helps run stability.
-- Scope: `backend/api/routes/campaign.py`, `frontend/panels/campaign_panel.js`
+- Scope: `backend/api/routes/campaign.py`, `frontend/store/store.js`, `frontend/panels/campaign_panel.js`
 - Acceptance: status/milestone endpoints are visible and consistent in UI/API.
-- Tests: `backend/tests/test_campaign_observability_api.py`, manual Play panel check
-- Rollback: disable new UI wiring and keep API baseline.
+- Tests: `backend/tests/test_campaign_get_api.py`, `backend/tests/test_campaign_observability_api.py`, `frontend/tests/store_loop.test.mjs`, `frontend/tests/campaign_panel.test.mjs`
+- Verification Evidence:
+  - `pytest -q backend/tests/test_campaign_get_api.py backend/tests/test_campaign_observability_api.py backend/tests/test_campaign_get_endpoint.py` -> `8 passed`
+  - `node --experimental-default-type=module --test frontend/tests/store_loop.test.mjs frontend/tests/campaign_panel.test.mjs` -> `16 passed`
+  - `campaign/get` now returns `status={ended,reason,ended_at,milestone}` from the same authoritative campaign snapshot used by `/campaign/status`
+  - Play `Campaign Panel` renders lifecycle/milestone directly from `state.campaign.status` after authoritative refresh and falls back to an unavailable note when the snapshot is missing
+- Rollback: revert `campaign/get` status snapshot wiring plus the frontend store/panel display as one unit.
 
 ### P1-02 Campaign get endpoint robustness
-- Status: `TODO`
+- Status: `DONE`
 - Why: frontend refresh depends on authoritative campaign read.
 - Scope: `backend/api/routes/campaign.py`, `frontend/store/store.js`
 - Acceptance: refresh path handles missing/invalid campaigns predictably.
 - Tests: `backend/tests/test_campaign_get_endpoint.py`, `docs/20_runtime/testing/state_consistency_check.md`
-- Rollback: revert refresh integration.
+- Verification Evidence:
+  - `pytest -q backend/tests/test_campaign_get_endpoint.py backend/tests/test_campaign_get_api.py` -> `5 passed`
+  - `node --experimental-default-type=module --test frontend/tests/store_loop.test.mjs` -> `13 passed`
+  - `backend/tests/test_campaign_get_endpoint.py` covers valid campaign read, missing campaign `404`, and invalid persisted campaign `500`
+  - `frontend/tests/store_loop.test.mjs` verifies `refreshCampaign` preserves existing state on missing/invalid campaign-get results and only writes valid authoritative payloads
+- Rollback: revert `campaign/get` error normalization and the frontend `refreshCampaign` payload guard together.
 
 ### P1-03 Map view scene entities consistency
 - Status: `DONE`
@@ -281,12 +291,15 @@ Non-goals for Playable v1:
 - Rollback: restore previous map view payload builder and inline scene-entity list assembly.
 
 ### P1-04 Character library robustness hardening
-- Status: `TODO`
+- Status: `DONE`
 - Why: party bootstrapping should survive partial bad data.
-- Scope: `backend/app/character_library_service.py`, `backend/api/routes/character_library.py`
+- Scope: `backend/app/character_library_service.py`, `backend/api/routes/character_library.py`, `backend/infra/file_repo.py`
 - Acceptance: list/get/upsert handle malformed entries safely.
 - Tests: `backend/tests/test_character_library_api.py`
-- Rollback: revert stricter normalization/validation logic.
+- Verification Evidence:
+  - `pytest -q backend/tests/test_character_library_api.py` -> `11 passed`
+  - `backend/tests/test_character_library_api.py` covers list surviving invalid JSON/schema/filename entries, get `404` for missing ids, get `500` for invalid persisted entries, invalid upsert preserving valid files, and valid upsert/party-load baseline behavior
+- Rollback: revert character-library invalid-entry handling in service/route/file-repo together.
 
 ### P1-05 Party load idempotency and metadata rules
 - Status: `TODO`

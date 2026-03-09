@@ -176,6 +176,9 @@ class FileRepo:
         )
         return self.characters_library_root / f"{normalized_character_id}.json"
 
+    def character_library_path(self, character_id: str) -> Path:
+        return self._character_library_path(character_id)
+
     def _sanitize_request_id(self, request_id: str) -> str:
         cleaned = re.sub(r"[^a-zA-Z0-9_-]+", "_", request_id.strip())
         return cleaned or "req"

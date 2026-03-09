@@ -263,6 +263,9 @@ Rules:
 - `name` is required and non-empty.
 - `summary` and `tags` are optional on input; they normalize to `""` and `[]`.
 - Extra fields are allowed and preserved.
+- Invalid or unreadable library files are not authoritative:
+  - list endpoints should skip them
+  - direct get/load paths should return explicit invalid-entry errors rather than fallback success
 
 ## CharacterFact generated artifacts (temporary, non-authoritative)
 

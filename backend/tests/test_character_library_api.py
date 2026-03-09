@@ -93,12 +93,18 @@ def test_character_library_create_list_get_and_skip_invalid_json(
     library_dir = tmp_path / "storage" / "characters_library"
     bad_path = library_dir / "broken.json"
     bad_path.write_text("{invalid", encoding="utf-8")
+    missing_name_path = library_dir / "ch_missing_name.json"
+    missing_name_path.write_text(json.dumps({"id": "ch_missing_name"}), encoding="utf-8")
+    invalid_filename_path = library_dir / "bad id.json"
+    invalid_filename_path.write_text(json.dumps({"name": "Bad Stem"}), encoding="utf-8")
 
     list_resp = client.get("/api/v1/characters/library")
     assert list_resp.status_code == 200
     listed = list_resp.json()
     assert any(item["id"] == character_id for item in listed)
     assert not any(item["id"] == "broken" for item in listed)
+    assert not any(item["id"] == "ch_missing_name" for item in listed)
+    assert not any(item["name"] == "Bad Stem" for item in listed)
 
     get_resp = client.get(f"/api/v1/characters/library/{character_id}")
     assert get_resp.status_code == 200
@@ -107,6 +113,36 @@ def test_character_library_create_list_get_and_skip_invalid_json(
     assert get_body["name"] == "Rin"
     assert get_body["summary"] == "A quiet scout."
     assert get_body["meta"]["origin"] == "manual"
+
+
+def test_character_library_get_returns_stable_404_for_missing_character(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+
+    response = client.get("/api/v1/characters/library/ch_missing")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Character library fact not found: ch_missing"
+
+
+def test_character_library_get_returns_stable_500_for_invalid_persisted_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    library_dir = tmp_path / "storage" / "characters_library"
+    library_dir.mkdir(parents=True, exist_ok=True)
+    (library_dir / "ch_broken.json").write_text(
+        json.dumps({"id": "ch_broken", "summary": "missing name"}),
+        encoding="utf-8",
+    )
+
+    response = client.get("/api/v1/characters/library/ch_broken")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Character library fact invalid: ch_broken"
 
 
 def test_party_load_adds_actor_and_party_keeps_non_empty_active_actor(
@@ -170,6 +206,28 @@ def test_party_load_sets_active_actor_only_when_empty(
     assert profile["id"] == "ch_hero002"
 
 
+def test_party_load_returns_stable_500_when_character_library_entry_is_invalid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    campaign_id = _create_campaign(tmp_path, campaign_id="camp_invalid_load")
+    library_dir = tmp_path / "storage" / "characters_library"
+    library_dir.mkdir(parents=True, exist_ok=True)
+    (library_dir / "ch_invalid.json").write_text(
+        json.dumps({"id": "ch_invalid", "summary": "missing name"}),
+        encoding="utf-8",
+    )
+
+    response = client.post(
+        f"/api/v1/campaigns/{campaign_id}/party/load",
+        json={"character_id": "ch_invalid"},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Character library fact invalid: ch_invalid"
+
+
 def test_character_library_upsert_applies_template_defaults_when_missing_fields(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -202,6 +260,57 @@ def test_character_library_upsert_applies_template_defaults_when_missing_fields(
     assert fact["tags"] == ["seed"]
     assert fact["meta"] == {"origin": "tmpl"}
     assert body.get("debug") is None
+
+
+def test_character_library_upsert_invalid_payload_does_not_overwrite_valid_fact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+
+    create_resp = client.post(
+        "/api/v1/characters/library",
+        json={
+            "id": "ch_guarded",
+            "name": "Guarded Hero",
+            "summary": "kept intact",
+            "tags": ["valid"],
+        },
+    )
+    assert create_resp.status_code == 200
+
+    invalid_resp = client.post(
+        "/api/v1/characters/library",
+        json={"id": "ch_guarded", "name": "   "},
+    )
+    assert invalid_resp.status_code == 400
+    assert invalid_resp.json()["detail"] == "name is required."
+
+    repo = FileRepo(tmp_path / "storage")
+    reloaded = repo.load_character_library_fact("ch_guarded")
+    assert reloaded == {
+        "id": "ch_guarded",
+        "name": "Guarded Hero",
+        "summary": "kept intact",
+        "tags": ["valid"],
+        "meta": None,
+    }
+
+
+def test_character_library_upsert_missing_required_name_returns_422_without_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+
+    response = client.post(
+        "/api/v1/characters/library",
+        json={"id": "ch_missing_name"},
+    )
+
+    assert response.status_code == 422
+    repo = FileRepo(tmp_path / "storage")
+    assert repo.load_character_library_fact("ch_missing_name") is None
 
 
 def test_character_library_upsert_does_not_override_user_fields_with_template(

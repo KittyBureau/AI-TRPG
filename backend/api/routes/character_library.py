@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.app.character_library_service import (
+    CharacterLibraryDataError,
     CharacterLibraryNotFoundError,
     CharacterLibraryService,
     CharacterLibraryValidationError,
@@ -90,6 +91,8 @@ def get_character_library_fact(character_id: str) -> Dict[str, Any]:
         return service.get_fact(character_id)
     except CharacterLibraryNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except CharacterLibraryDataError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     except CharacterLibraryValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -133,6 +136,8 @@ def load_character_to_party(
         )
     except CharacterLibraryNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except CharacterLibraryDataError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except CharacterLibraryValidationError as exc:

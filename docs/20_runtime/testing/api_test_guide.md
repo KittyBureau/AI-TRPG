@@ -79,6 +79,10 @@ Checks:
 - created campaign persisted under `storage/campaigns/<id>/campaign.json`
 - `selected.party_character_ids` and `selected.active_actor_id` remain consistent
 - `GET /campaign/get` returns actor id list from `campaign.actors`
+- `GET /campaign/get` returns `status.ended` plus `status.milestone.current` from the same authoritative campaign snapshot used by `/campaign/status`
+- missing `campaign_id` returns `404` with explicit not-found detail
+- invalid persisted campaign payload returns `500` with explicit invalid-campaign detail
+- legacy campaign payloads missing `lifecycle` still return stable default status values instead of crashing
 
 ### 3.2 Chat turn contract
 
@@ -222,6 +226,9 @@ Legacy mirrors (`positions/hp/character_states/state.positions*`) are compatibil
 Checks:
 
 - library files under `storage/characters_library/*.json`
+- `GET /characters/library` still returns valid entries when one or more library files are unreadable or schema-invalid
+- `GET /characters/library/{character_id}` returns `404` for missing ids and explicit `500` for invalid persisted entries
+- invalid `POST /characters/library` payloads fail with validation (`400/422`) and do not overwrite an existing valid fact
 - `party/load` writes `actors[character_id].meta.profile`
 
 ### 6.2 Character Fact

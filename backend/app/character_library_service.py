@@ -18,6 +18,10 @@ class CharacterLibraryValidationError(ValueError):
     pass
 
 
+class CharacterLibraryDataError(RuntimeError):
+    pass
+
+
 class CharacterLibraryService:
     def __init__(self, repo: FileRepo) -> None:
         self.repo = repo
@@ -25,13 +29,9 @@ class CharacterLibraryService:
     def list_facts(self) -> List[Dict[str, Any]]:
         summaries: List[Dict[str, Any]] = []
         for path in self.repo.list_character_library_paths():
-            payload = self.repo.load_character_library_fact_by_path(path)
-            if payload is None:
-                logger.warning("Skip invalid character library JSON: %s", path)
-                continue
             try:
-                normalized = self._normalize_fact(payload, expected_id=path.stem)
-            except CharacterLibraryValidationError as exc:
+                normalized = self._load_and_normalize_fact_from_path(path)
+            except CharacterLibraryDataError as exc:
                 logger.warning(
                     "Skip invalid character library entry: %s (%s)",
                     path,
@@ -50,12 +50,17 @@ class CharacterLibraryService:
 
     def get_fact(self, character_id: str) -> Dict[str, Any]:
         normalized_id = self._normalize_character_id(character_id)
-        payload = self.repo.load_character_library_fact(normalized_id)
-        if payload is None:
+        path = self.repo.character_library_path(normalized_id)
+        if not path.exists():
             raise CharacterLibraryNotFoundError(
                 f"Character library fact not found: {normalized_id}"
             )
-        return self._normalize_fact(payload, expected_id=normalized_id)
+        try:
+            return self._load_and_normalize_fact_from_path(path)
+        except CharacterLibraryDataError as exc:
+            raise CharacterLibraryDataError(
+                f"Character library fact invalid: {normalized_id}"
+            ) from exc
 
     def upsert_fact(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         fact, _ = self.upsert_fact_with_template_usage(payload)
@@ -90,7 +95,7 @@ class CharacterLibraryService:
     def _allocate_character_id(self) -> str:
         for _ in range(256):
             candidate = f"ch_{uuid4().hex[:8]}"
-            if self.repo.load_character_library_fact(candidate) is None:
+            if not self.repo.character_library_path(candidate).exists():
                 return candidate
         raise RuntimeError("Failed to allocate character_id.")
 
@@ -103,6 +108,20 @@ class CharacterLibraryService:
                 f"invalid character_id: {character_id}"
             )
         return normalized
+
+    def _load_and_normalize_fact_from_path(self, path) -> Dict[str, Any]:
+        try:
+            expected_id = self._normalize_character_id(path.stem)
+        except CharacterLibraryValidationError as exc:
+            raise CharacterLibraryDataError("character library filename is invalid.") from exc
+
+        payload = self.repo.load_character_library_fact_by_path(path)
+        if payload is None:
+            raise CharacterLibraryDataError("character library file is unreadable.")
+        try:
+            return self._normalize_fact(payload, expected_id=expected_id)
+        except CharacterLibraryValidationError as exc:
+            raise CharacterLibraryDataError(str(exc)) from exc
 
     def _normalize_fact(self, payload: Dict[str, Any], *, expected_id: str) -> Dict[str, Any]:
         raw_name = payload.get("name")
@@ -209,3 +228,11 @@ def _is_storage_safe_id(value: str) -> bool:
             continue
         return False
     return True
+
+
+__all__ = [
+    "CharacterLibraryDataError",
+    "CharacterLibraryNotFoundError",
+    "CharacterLibraryService",
+    "CharacterLibraryValidationError",
+]
