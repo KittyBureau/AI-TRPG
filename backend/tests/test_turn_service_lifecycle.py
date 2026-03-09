@@ -203,6 +203,33 @@ def test_compress_enabled_uses_compressed_prompt_context(
     assert '"context_mode": "compressed"' in llm.system_prompt
 
 
+def test_move_options_turn_gets_narrative_fallback_when_llm_returns_empty_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    _create_campaign(repo, "camp_move_options_fallback")
+    service.llm = _StubLLM(
+        {
+            "assistant_text": "",
+            "dialog_type": "scene_description",
+            "tool_calls": [
+                {
+                    "id": "call_move_options_001",
+                    "tool": "move_options",
+                    "args": {},
+                }
+            ],
+        }
+    )
+
+    result = service.submit_turn("camp_move_options_fallback", "Where can I go?")
+
+    assert result["applied_actions"][0]["tool"] == "move_options"
+    assert result["narrative_text"] == (
+        "No movement happened yet. Reachable areas: Side Room (area_002)."
+    )
+
+
 def test_repeat_illegal_request_suppression_after_three_turns(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

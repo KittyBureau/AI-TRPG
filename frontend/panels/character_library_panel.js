@@ -5,6 +5,42 @@ function toTagsInput(value) {
   return value.filter((item) => typeof item === "string" && item.trim()).join(", ");
 }
 
+function captureFocusState(root) {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || !root.contains(active)) {
+    return null;
+  }
+  const key = active.getAttribute("data-focus-key");
+  if (!key) {
+    return null;
+  }
+  return {
+    key,
+    selectionStart:
+      typeof active.selectionStart === "number" ? active.selectionStart : null,
+    selectionEnd:
+      typeof active.selectionEnd === "number" ? active.selectionEnd : null,
+  };
+}
+
+function restoreFocusState(root, snapshot) {
+  if (!snapshot) {
+    return;
+  }
+  const target = root.querySelector(`[data-focus-key="${snapshot.key}"]`);
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  target.focus();
+  if (
+    typeof snapshot.selectionStart === "number" &&
+    typeof snapshot.selectionEnd === "number" &&
+    "setSelectionRange" in target
+  ) {
+    target.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+  }
+}
+
 export function initPanel(store) {
   const mount = document.getElementById("characterLibraryPanel");
   if (!mount) {
@@ -55,6 +91,7 @@ export function initPanel(store) {
 
   function render() {
     const state = store.getState();
+    const focusSnapshot = captureFocusState(mount);
     const library = Array.isArray(state.character?.library)
       ? state.character.library
       : [];
@@ -129,6 +166,7 @@ export function initPanel(store) {
     nameField.className = "field";
     nameField.innerHTML = '<span class="field-label">Name</span>';
     const nameInput = document.createElement("input");
+    nameInput.setAttribute("data-focus-key", "character-name");
     nameInput.value = createForm.name || "";
     nameInput.addEventListener("input", () => {
       store.setCharacterCreateForm({ name: nameInput.value });
@@ -140,6 +178,7 @@ export function initPanel(store) {
     summaryField.className = "field";
     summaryField.innerHTML = '<span class="field-label">Summary</span>';
     const summaryInput = document.createElement("textarea");
+    summaryInput.setAttribute("data-focus-key", "character-summary");
     summaryInput.rows = 2;
     summaryInput.value = createForm.summary || "";
     summaryInput.addEventListener("input", () => {
@@ -152,6 +191,7 @@ export function initPanel(store) {
     tagsField.className = "field";
     tagsField.innerHTML = '<span class="field-label">Tags (comma separated)</span>';
     const tagsInput = document.createElement("input");
+    tagsInput.setAttribute("data-focus-key", "character-tags");
     tagsInput.value = createForm.tags || "";
     tagsInput.addEventListener("input", () => {
       store.setCharacterCreateForm({ tags: tagsInput.value });
@@ -164,6 +204,8 @@ export function initPanel(store) {
     createButton.textContent = "Create";
     createButton.addEventListener("click", createCharacter);
     mount.appendChild(createButton);
+
+    restoreFocusState(mount, focusSnapshot);
   }
 
   render();

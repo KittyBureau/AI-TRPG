@@ -1265,9 +1265,52 @@ def _build_success_response(
         "conflict_report": conflict_report_payload,
         "state_summary": state_summary,
     }
+    _apply_move_options_narrative_fallback(response)
     if debug_payload:
         response["debug"] = dict(debug_payload)
     return response
+
+
+def _apply_move_options_narrative_fallback(response: Dict[str, object]) -> None:
+    if not isinstance(response, dict):
+        return
+    narrative_text = response.get("narrative_text")
+    if isinstance(narrative_text, str) and narrative_text.strip():
+        return
+    tool_feedback = response.get("tool_feedback")
+    if tool_feedback is not None:
+        return
+    applied_actions = response.get("applied_actions")
+    if not isinstance(applied_actions, list) or len(applied_actions) != 1:
+        return
+    only_action = applied_actions[0]
+    if not isinstance(only_action, dict) or only_action.get("tool") != "move_options":
+        return
+    result = only_action.get("result")
+    if not isinstance(result, dict):
+        return
+    options = result.get("options")
+    if not isinstance(options, list):
+        return
+    labels = []
+    for option in options:
+        if not isinstance(option, dict):
+            continue
+        area_id = option.get("to_area_id")
+        name = option.get("name")
+        if isinstance(area_id, str) and area_id.strip():
+            if isinstance(name, str) and name.strip():
+                labels.append(f"{name.strip()} ({area_id.strip()})")
+            else:
+                labels.append(area_id.strip())
+    if labels:
+        response["narrative_text"] = (
+            "No movement happened yet. Reachable areas: " + ", ".join(labels) + "."
+        )
+    else:
+        response["narrative_text"] = (
+            "No movement happened yet. No reachable areas are available from the current position."
+        )
 
 
 def _build_failure_response(
