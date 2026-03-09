@@ -3,17 +3,12 @@ export const RESOURCE_CATEGORIES = [
   "flows",
   "schemas",
   "templates",
+  "policies",
   "template_usage",
 ];
 
 function emptyResources() {
-  return {
-    prompts: [],
-    flows: [],
-    schemas: [],
-    templates: [],
-    template_usage: [],
-  };
+  return Object.fromEntries(RESOURCE_CATEGORIES.map((category) => [category, []]));
 }
 
 function toList(value) {
@@ -24,6 +19,13 @@ function toList(value) {
     return [value];
   }
   return [];
+}
+
+function toResourceCategoryList(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item) => item && typeof item === "object");
 }
 
 function toStringValue(value) {
@@ -70,13 +72,19 @@ function normalizeTemplateUsageEntry(entry) {
 }
 
 function normalizeResources(resources) {
-  return {
-    prompts: toList(resources.prompts).map(normalizePromptEntry),
-    flows: toList(resources.flows).map(normalizeSimpleEntry),
-    schemas: toList(resources.schemas).map(normalizeSimpleEntry),
-    templates: toList(resources.templates).map(normalizeSimpleEntry),
-    template_usage: toList(resources.template_usage).map(normalizeTemplateUsageEntry),
-  };
+  const source =
+    resources && typeof resources === "object" && !Array.isArray(resources) ? resources : {};
+  return Object.fromEntries(
+    RESOURCE_CATEGORIES.map((category) => {
+      const normalizer =
+        category === "prompts"
+          ? normalizePromptEntry
+          : category === "template_usage"
+            ? normalizeTemplateUsageEntry
+            : normalizeSimpleEntry;
+      return [category, toResourceCategoryList(source[category]).map(normalizer)];
+    })
+  );
 }
 
 function buildLegacyResources(debug) {
@@ -105,6 +113,7 @@ function buildLegacyResources(debug) {
     flows: flowEntry && (flowEntry.name || flowEntry.version) ? [flowEntry] : [],
     schemas: debug.schemas,
     templates: debug.templates,
+    policies: [],
     template_usage: debug.template_usage,
   });
 }

@@ -354,11 +354,12 @@ Non-goals for Playable v1:
 - Rollback: restore previous prompt context assembly.
 
 ### P1-10 Frontend debug resources rendering parity
-- Status: `TODO`
+- Status: `DONE` (2026-03-09)
 - Why: troubleshooting requires stable debug visual contract.
 - Scope: `frontend/utils/debug_resources.js`, `frontend/debug.js`
 - Acceptance: debug page can render both `debug.resources` and legacy debug fields consistently.
-- Tests: manual debug page check + targeted API trace checks
+- Tests: `frontend/tests/debug_resources.test.mjs`, `frontend/tests/store_loop.test.mjs`, `frontend/tests/campaign_panel.test.mjs`, `backend/tests/test_trace_gate_api.py`, `backend/tests/test_turn_service_lifecycle.py`, `backend/tests/test_debug_resources_contract_schema.py`, `scripts/smoke_full_gameplay.ps1`
+- Evidence: frontend debug resources renderer now includes `policies` parity with backend `debug.resources`, keeps legacy fallback stable, and ignores malformed category payloads without crashing.
 - Rollback: revert debug renderer changes.
 
 ### P1-11 Smoke script diagnostics quality
