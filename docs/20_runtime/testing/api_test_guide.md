@@ -252,6 +252,9 @@ Checks:
 - `GET /characters/facts/{character_id}` returns `404` when missing, falls back from unreadable draft to batch when available, and returns explicit `500` when only an invalid draft exists
 - generate failures during draft persistence do not leave partial batch/draft files behind
 - generate does not mutate runtime campaign actor authority
+- `POST /characters/facts/{character_id}/adopt` updates profile metadata only and does not reset actor `position`, `hp`, `character_state`, or `inventory`
+- repeated adopt with the same source/accepted_by remains stable (`profile_changed=false`, `acceptance_changed=false`)
+- invalid accepted sidecar returns explicit `500` instead of being silently overwritten
 - invalid request/payload returns expected `400/422`
 
 ## 7. Frontend-Related API Regression

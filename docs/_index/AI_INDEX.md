@@ -48,6 +48,8 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
   - `GET /api/v1/campaigns/{campaign_id}/characters/generated/batches` must survive unreadable batch files
   - `GET /api/v1/campaigns/{campaign_id}/characters/generated/batches/{request_id}` returns `404` for missing batches and `500` for invalid persisted batch files
   - `GET /api/v1/campaigns/{campaign_id}/characters/facts/{character_id}` may fall back from unreadable draft to batch, returns `404` when missing, `500` when only an invalid draft exists, and `422` for schema-invalid fact payloads
+  - `POST /api/v1/campaigns/{campaign_id}/characters/facts/{character_id}/adopt` may update actor metadata/profile only; it must not overwrite actor `position`, `hp`, `character_state`, or `inventory`
+  - adopt keeps accepted sidecar writes stable; missing facts return `404`, schema-invalid facts return `422`, and invalid accepted sidecars return `500`
 - Changes to `Campaign`, `TurnLogEntry`, or API payloads must update `docs/01_specs/storage_layout.md` and `docs/20_runtime/testing/api_test_guide.md`.
 **Checks**
 - Run the API test guide for any changed endpoints.

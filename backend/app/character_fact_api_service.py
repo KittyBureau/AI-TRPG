@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -131,17 +132,11 @@ class CharacterFactApiService:
         if not isinstance(actor.meta, dict):
             actor.meta = {}
         profile_before = actor.meta.get("profile")
-        actor.meta["profile"] = dict(fact)
+        actor.meta["profile"] = _merge_adopted_profile(profile_before, fact)
         profile_changed = profile_before != actor.meta["profile"]
 
-        draft_path = self.repo.character_fact_draft_path(campaign_id, character_id)
-        if draft_path.exists():
-            source_ref = self.repo.to_storage_relative_path(draft_path)
-        else:
-            source_ref = "batch_fallback"
-        acceptance_before = self.repo.load_character_fact_acceptance(
-            campaign_id, character_id
-        )
+        source_ref = self._resolve_fact_source_ref(campaign_id, character_id)
+        acceptance_before = self._load_acceptance_state(campaign_id, character_id)
         normalized_accepted_by = accepted_by.strip() or "system"
         accepted_at = datetime.now(timezone.utc).isoformat()
         if (
@@ -175,6 +170,25 @@ class CharacterFactApiService:
             "profile_changed": profile_changed,
             "acceptance_changed": acceptance_changed,
         }
+
+    def _resolve_fact_source_ref(self, campaign_id: str, character_id: str) -> str:
+        draft_path = self.repo.character_fact_draft_path(campaign_id, character_id)
+        if draft_path.exists():
+            return self.repo.to_storage_relative_path(draft_path)
+        return "batch_fallback"
+
+    def _load_acceptance_state(
+        self,
+        campaign_id: str,
+        character_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        acceptance_path = self.repo.character_fact_acceptance_path(campaign_id, character_id)
+        acceptance_before = self.repo.load_character_fact_acceptance(campaign_id, character_id)
+        if acceptance_before is None and acceptance_path.exists():
+            raise CharacterFactDataError(
+                f"CharacterFact acceptance invalid: campaign={campaign_id}, character_id={character_id}"
+            )
+        return acceptance_before
 
     def _require_campaign(self, campaign_id: str) -> Campaign:
         try:
@@ -227,6 +241,13 @@ def _read_draft_mode(campaign: Campaign) -> str:
     if value in {"deterministic", "llm"}:
         return value
     return "deterministic"
+
+
+def _merge_adopted_profile(existing_profile: object, fact: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(existing_profile) if isinstance(existing_profile, dict) else {}
+    for key, value in fact.items():
+        merged[key] = deepcopy(value)
+    return merged
 
 
 __all__ = [

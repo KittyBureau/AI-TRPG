@@ -327,6 +327,8 @@ Rules:
 - `__AUTO_ID__` is never written to disk; IDs are allocated before batch/individual writes.
 - Adoption status is sidecar-based and does not mutate CharacterFact schema:
   - sidecar keys: `character_id`, `accepted_at`, `accepted_by`, `source_draft_ref`.
+- adopt writes accepted sidecar state and actor `meta.profile`, but must not overwrite runtime authority fields on `actors[{character_id}]` such as `position`, `hp`, `character_state`, or `inventory`.
+- repeated adopt with the same accepted sidecar inputs should preserve the existing `accepted_at` timestamp; unreadable accepted sidecars should surface as explicit invalid-data errors instead of being silently replaced.
 - Turn/tool request-response contracts remain unchanged.
 
 Behavior source-of-truth note:

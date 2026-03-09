@@ -181,6 +181,8 @@ def adopt_character_fact(
         )
     except CharacterFactNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except CharacterFactDataError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     except CharacterFactValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return CharacterFactAdoptResponse(**result)

@@ -326,12 +326,15 @@ Non-goals for Playable v1:
 - Rollback: revert CharacterFact generate/read error handling and persistence rollback together.
 
 ### P1-07 Character fact adopt safety
-- Status: `TODO`
+- Status: `DONE`
 - Why: adopting facts must not break runtime actor authority.
-- Scope: `backend/app/character_fact_api_service.py`, `backend/domain/character_access.py`
+- Scope: `backend/app/character_fact_api_service.py`, `backend/api/routes/characters.py`
 - Acceptance: adoption updates profile metadata without changing actor runtime authority fields.
 - Tests: `backend/tests/test_character_fact_api.py`, `backend/tests/test_character_facade.py`
-- Rollback: restore previous adoption merge logic.
+- Verification Evidence:
+  - `pytest -q backend/tests/test_character_fact_api.py backend/tests/test_character_facade.py` -> `25 passed`
+  - `backend/tests/test_character_fact_api.py` covers successful adopt metadata merge, preservation of actor runtime authority fields, missing/invalid fact errors, invalid accepted sidecar `500`, repeated adopt stability, and legacy actor metadata backfill
+- Rollback: revert CharacterFact adopt merge/sidecar error handling together with the added tests/docs.
 
 ### P1-08 Conflict detector false-positive reduction
 - Status: `TODO`
