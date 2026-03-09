@@ -363,11 +363,12 @@ Non-goals for Playable v1:
 - Rollback: revert debug renderer changes.
 
 ### P1-11 Smoke script diagnostics quality
-- Status: `TODO`
+- Status: `DONE` (2026-03-09)
 - Why: fast failure localization reduces fix time.
 - Scope: `scripts/smoke_full_gameplay.ps1`, `scripts/smoke_frontend_flow.ps1`, `scripts/smoke_world_generate.ps1`
 - Acceptance: script failures report actionable location/field details.
-- Tests: controlled negative runs + rerun smoke scripts
+- Tests: `scripts/smoke_full_gameplay.ps1`, `backend/tests/test_trace_gate_api.py`, `backend/tests/test_turn_service_lifecycle.py`
+- Evidence: `smoke_full_gameplay.ps1` now prints `STEP N/8` labels, preserves PASS summary output, and emits clearer HTTP / JSON parse / assertion / persistence diagnostics with method, URL, status, response body, expected, and actual details.
 - Rollback: restore prior smoke scripts.
 
 ### P1-12 Docs sync gate discipline
