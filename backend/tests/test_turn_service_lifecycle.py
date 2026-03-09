@@ -263,6 +263,46 @@ def test_turn_prompt_has_adopted_profiles_block_without_profile_duplication(
     assert "profile" not in context["actors"]["pc_001"]["meta"]
 
 
+def test_turn_prompt_hygiene_keeps_adopted_profile_and_selected_item_but_filters_internal_actor_meta(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_0007_hygiene")
+    campaign.actors["pc_001"].inventory = {"rusty_key": 1}
+    campaign.actors["pc_001"].meta = {
+        "name": "Fallback Name",
+        "summary": "fallback-summary",
+        "character_id": "pc_001",
+        "accepted_at": "2026-03-09T00:00:00Z",
+        "source_draft_ref": "req_001:pc_001",
+        "internal_note": "hide me",
+        "profile": {
+            "character_id": "pc_001",
+            "name": "Adopted Name",
+            "role": "scout",
+            "tags": ["stealth"],
+        },
+    }
+    repo.save_campaign(campaign)
+    llm = _StubLLM(
+        {
+            "assistant_text": "ok",
+            "dialog_type": "scene_description",
+            "tool_calls": [],
+        }
+    )
+    service.llm = llm
+
+    service.submit_turn("camp_0007_hygiene", "use the key", selected_item_id="rusty_key")
+    context = _extract_prompt_context(llm.system_prompt)
+    assert context["adopted_profiles_by_actor"]["pc_001"]["name"] == "Adopted Name"
+    assert context["selected_item"] == {"id": "rusty_key", "quantity": 1}
+    assert context["actors"]["pc_001"]["meta"] == {
+        "name": "Fallback Name",
+        "summary": "fallback-summary",
+    }
+
+
 def test_turn_profile_trace_debug_gated_by_setting(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

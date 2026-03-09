@@ -345,11 +345,12 @@ Non-goals for Playable v1:
 - Rollback: revert detector heuristic changes.
 
 ### P1-09 Prompt context payload hygiene
-- Status: `TODO`
+- Status: `DONE` (2026-03-09)
 - Why: reduce token waste and metadata leakage.
 - Scope: `backend/app/turn_service.py`
 - Acceptance: adopted profile usage remains intact while actor meta redundancy is controlled.
-- Tests: `backend/tests/test_turn_service_lifecycle.py`
+- Tests: `backend/tests/test_turn_service_lifecycle.py`, `backend/tests/test_turn_selected_item_context.py`, `backend/tests/test_trace_gate_api.py`, `backend/tests/test_turn_execution_actor_context.py`, `scripts/smoke_full_gameplay.ps1`
+- Evidence: filtered internal actor-meta keys from turn prompt payload while keeping adopted profile usage, selected-item context, turn response contract, and gameplay smoke stable.
 - Rollback: restore previous prompt context assembly.
 
 ### P1-10 Frontend debug resources rendering parity

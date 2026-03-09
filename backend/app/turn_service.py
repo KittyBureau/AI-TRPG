@@ -909,7 +909,7 @@ def _build_actor_prompt_payloads(
     for actor_id in sorted(campaign.actors.keys()):
         actor = campaign.actors[actor_id]
         actor_meta = actor.meta if isinstance(actor.meta, dict) else {}
-        meta_payload = {key: value for key, value in actor_meta.items() if key != "profile"}
+        meta_payload = _sanitize_actor_meta_for_prompt(actor_meta)
         actors_payload[actor_id] = {
             "position": actor.position,
             "hp": actor.hp,
@@ -921,6 +921,45 @@ def _build_actor_prompt_payloads(
         if isinstance(profile_payload, dict):
             adopted_profiles_by_actor[actor_id] = dict(profile_payload)
     return actors_payload, adopted_profiles_by_actor
+
+
+_PROMPT_INTERNAL_META_KEYS = {
+    "accepted_at",
+    "accepted_by",
+    "character_id",
+    "created_at",
+    "debug",
+    "diagnostics",
+    "profile_hash",
+    "request_id",
+    "schema_version",
+    "source_draft_ref",
+    "trace",
+    "updated_at",
+}
+_PROMPT_INTERNAL_META_PREFIXES = ("debug_", "diag_", "diagnostic_", "internal_", "sidecar_", "trace_")
+_PROMPT_INTERNAL_META_SUFFIXES = ("_at", "_hash")
+
+
+def _sanitize_actor_meta_for_prompt(actor_meta: Dict[str, object]) -> Dict[str, object]:
+    payload: Dict[str, object] = {}
+    for key, value in actor_meta.items():
+        if key == "profile":
+            continue
+        if not isinstance(key, str):
+            payload[key] = value
+            continue
+        normalized = key.strip().lower()
+        if not normalized:
+            continue
+        if normalized in _PROMPT_INTERNAL_META_KEYS:
+            continue
+        if any(normalized.startswith(prefix) for prefix in _PROMPT_INTERNAL_META_PREFIXES):
+            continue
+        if any(normalized.endswith(suffix) for suffix in _PROMPT_INTERNAL_META_SUFFIXES):
+            continue
+        payload[key] = value
+    return payload
 
 
 def _scene_prompt_payload(campaign: Campaign, actor_id: str) -> Dict[str, object]:
