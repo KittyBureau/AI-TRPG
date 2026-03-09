@@ -381,22 +381,36 @@ Non-goals for Playable v1:
 - Rollback: revert docs gating edits and restore previous manifest/index mapping.
 
 ### P1-13 Preparation for Future Context System
-- Status: `TODO`
-- Why: prepare data shape and observability for future context optimization without changing current runtime behavior.
-- Scope: future data model hooks and prompt trace observability only; no current prompt builder changes.
-- Tasks:
-  - Allow entities/areas to optionally contain a lightweight `tags` field (unused for now).
-  - Ensure debug trace records prompt token counts.
-  - Do not change current prompt building logic yet.
-- Status Note: Preparation only. No runtime changes.
-- Future Context Builder will include:
-  - selected item context
-  - selected entity context
-  - area tags
-  - persistent + transient tags
-- Acceptance: prep work is limited to optional schema/documentation/trace readiness and preserves current prompt assembly behavior.
-- Tests: docs review only until implementation is explicitly scheduled.
-- Rollback: remove unused prep hooks and trace notes if they create confusion before implementation.
+- Status: `DONE` (2026-03-09)
+- Why: prepare a future context integration boundary without changing current runtime behavior.
+- Scope:
+  - preparation only
+  - no behavior change
+  - documentation-only boundary clarification for future context integration
+- Completion Notes:
+  - current source of truth remains the existing turn payload assembly in `turn_service.py`
+  - future hook point is before `_build_system_prompt()` inside `TurnService.submit_turn()`
+  - any future system must feed the existing payload builder and must not bypass runtime authority
+  - current reusable prompt inputs remain the existing authoritative sources: adopted profiles, selected item, scene, positions, hp, character states, inventory, goal, milestone, lifecycle, and map/map_summary
+  - `state_summary`, debug payloads, recent turn suppression data, and internal metadata are not current prompt context sources
+- Non-goals:
+  - no context compression
+  - no context layering
+  - no tag/state memory system
+  - no area-scoped archive/store
+  - no recent history prompt injection
+  - no new manager/module
+  - no new storage persistence
+  - no prompt builder refactor
+- Acceptance:
+  - P1-13 is closed as preparation only
+  - no runtime behavior or contract changes were introduced
+  - future context work is explicitly routed through the existing turn payload assembly path
+- Tests:
+  - regression run only
+  - `powershell -ExecutionPolicy Bypass -File scripts/smoke_full_gameplay.ps1`
+  - `pytest -q backend/tests/test_turn_service_lifecycle.py backend/tests/test_trace_gate_api.py`
+- Rollback: revert the documentation-only boundary notes if future implementation planning changes direction.
 
 ### P1-14 Player-selected item interaction model
 - Status: `DONE`

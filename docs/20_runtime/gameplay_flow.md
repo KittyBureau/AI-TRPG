@@ -314,6 +314,26 @@ Notes:
 - When metadata is available, turn context enriches `selected_item` with `name` and `description`; otherwise it falls back to Phase B shape `{id, quantity}`.
 - When trace is enabled and selected item validation succeeds, the turn response may include `debug.selected_item = { id, has_metadata }`.
 
+Current prompt context source chain:
+
+- authoritative campaign/runtime state loaded for the turn
+- effective actor resolution inside `TurnService.submit_turn()`
+- validated `selected_item` resolution when a request hint is present
+- actor payload assembly and scene payload assembly in `turn_service.py`
+- final rendered system prompt from `_build_system_prompt()`
+
+Future context preparation boundary:
+
+- any future context selection/preparation layer should attach before `_build_system_prompt()`
+- that layer must not replace or bypass current authority sources
+- its output should still flow through the existing prompt payload assembly path
+
+Current gameplay flow non-goals:
+
+- no long-term context system is implemented in the current runtime flow
+- recent turn log data is not a current prompt context source; it is only used for repeat-illegal suppression
+- `state_summary` is a response/log summary and is not a current prompt payload source
+
 ## Frontend lightweight regression script
 
 Use this script to validate the frontend gameplay flow protocol quickly (without browser automation):

@@ -29,6 +29,35 @@ world state is summarized through tags and area states instead of replaying full
 dialogue history. This is a future context-optimization direction only and does
 not change current runtime behavior.
 
+Current source of truth remains the existing turn payload assembly inside
+`TurnService.submit_turn()` and `_build_system_prompt()`. A future context
+system is not an implemented architecture module in Playable v1.
+
+If a future context selection/preparation layer is added, it should attach
+inside `TurnService.submit_turn()` after authoritative runtime inputs are
+resolved and before `_build_system_prompt()` assembles the final prompt payload.
+That layer must still feed the existing payload builder rather than creating a
+second runtime path.
+
+Any future context extension must not bypass:
+
+- `campaign.actors`
+- `campaign.entities`
+- `selected`
+- `map`
+- `settings_snapshot`
+- the current runtime authority chain already enforced by `turn_service.py`
+
+Non-goals for P1-13:
+
+- no context compression
+- no context layering or memory split
+- no tag/state memory system
+- no area-scoped archive/store
+- no new context manager or builder module
+- no new storage persistence for context artifacts
+- no prompt builder refactor
+
 ## Stage 1 Data Flow
 
 1. `/api/v1/chat/turn` receives `campaign_id` and `user_input` (`actor_id` optional).
