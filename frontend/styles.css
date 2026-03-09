@@ -119,6 +119,17 @@ button.primary {
   color: #fff;
 }
 
+button.inventory-item {
+  width: 100%;
+  text-align: left;
+}
+
+button.inventory-item.selected {
+  background: #dff3ed;
+  border-color: var(--accent);
+  color: var(--text);
+}
+
 .inline {
   display: flex;
   gap: 8px;

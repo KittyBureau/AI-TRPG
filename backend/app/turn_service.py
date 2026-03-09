@@ -5,6 +5,7 @@ import hashlib
 import threading
 from copy import deepcopy
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from backend.app.character_facade_factory import create_runtime_character_facade
@@ -41,6 +42,7 @@ from backend.domain.state_utils import (
     DEFAULT_HP,
 )
 from backend.infra.file_repo import FileRepo
+from backend.infra.item_catalog import load_item_catalog
 from backend.infra.llm_client import LLMClient
 from backend.infra.resource_loader import (
     LoadedFlow,
@@ -74,6 +76,13 @@ class CampaignBusyError(RuntimeError):
 
 
 def _normalize_actor_id(value: Optional[str]) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _normalize_item_id(value: Optional[str]) -> Optional[str]:
     if not isinstance(value, str):
         return None
     normalized = value.strip()
@@ -495,6 +504,7 @@ class TurnService:
         actor_id: Optional[str] = None,
         *,
         execution_actor_id: Optional[str] = None,
+        selected_item_id: Optional[str] = None,
     ) -> Dict[str, object]:
         campaign_lock = _CAMPAIGN_TURN_LOCKS.try_acquire(campaign_id)
         if campaign_lock is None:
@@ -516,10 +526,19 @@ class TurnService:
             if _mark_ended_if_needed(campaign):
                 self.repo.save_campaign(campaign)
             _assert_turn_writable(campaign, effective_actor_id)
+            selected_item = _resolve_selected_item_context(
+                campaign,
+                effective_actor_id,
+                selected_item_id=selected_item_id,
+                repo_root=self.repo.storage_root.parent,
+            )
             turn_prompt = _load_turn_prompt(self.repo)
             turn_flow = _load_turn_flow(self.repo)
             system_prompt = _build_system_prompt(
-                campaign, effective_actor_id, prompt_template=str(turn_prompt["text"])
+                campaign,
+                effective_actor_id,
+                prompt_template=str(turn_prompt["text"]),
+                selected_item=selected_item,
             )
             turn_prompt["rendered_hash"] = hashlib.sha256(
                 system_prompt.encode("utf-8")
@@ -556,6 +575,7 @@ class TurnService:
                     turn_schemas,
                     turn_templates,
                     turn_policies,
+                    selected_item=selected_item,
                 )
                 if campaign.settings_snapshot.dialog.turn_profile_trace_enabled
                 else None
@@ -927,7 +947,11 @@ def _scene_prompt_payload(campaign: Campaign, actor_id: str) -> Dict[str, object
 
 
 def _build_system_prompt(
-    campaign: Campaign, effective_actor_id: str, *, prompt_template: str
+    campaign: Campaign,
+    effective_actor_id: str,
+    *,
+    prompt_template: str,
+    selected_item: Optional[Dict[str, object]] = None,
 ) -> str:
     positions, _, _, hp, character_states = _derive_character_state_maps(campaign)
     actors_payload, adopted_profiles_by_actor = _build_actor_prompt_payloads(campaign)
@@ -1000,6 +1024,8 @@ def _build_system_prompt(
                 "tool_calls": "array of tool calls",
             },
         }
+    if selected_item:
+        payload["selected_item"] = dict(selected_item)
     context_json = json.dumps(payload, ensure_ascii=False)
     try:
         return render_prompt(
@@ -1025,6 +1051,7 @@ def _build_turn_debug_payload(
     schema_resources: List[Dict[str, object]],
     template_resources: List[Dict[str, object]],
     policy_resources: List[Dict[str, object]],
+    selected_item: Optional[Dict[str, object]] = None,
 ) -> Dict[str, object]:
     _, adopted_profiles_by_actor = _build_actor_prompt_payloads(campaign)
     encoded = json.dumps(
@@ -1124,7 +1151,27 @@ def _build_turn_debug_payload(
         version = active_profile.get("schema_version")
         if isinstance(version, str) and version.strip():
             payload["used_profile_version"] = version
+    selected_item_debug = _build_selected_item_debug(selected_item)
+    if selected_item_debug is not None:
+        payload["selected_item"] = selected_item_debug
     return payload
+
+
+def _build_selected_item_debug(
+    selected_item: Optional[Dict[str, object]],
+) -> Optional[Dict[str, object]]:
+    if not isinstance(selected_item, dict):
+        return None
+    item_id = selected_item.get("id")
+    if not isinstance(item_id, str) or not item_id.strip():
+        return None
+    return {
+        "id": item_id.strip(),
+        "has_metadata": bool(
+            isinstance(selected_item.get("name"), str)
+            or isinstance(selected_item.get("description"), str)
+        ),
+    }
 
 
 def _build_debug_append(conflicts: List[object], campaign: Campaign) -> str:
@@ -1270,6 +1317,35 @@ def _active_actor_inventory(campaign: Campaign, actor_id: str) -> Dict[str, int]
             continue
         inventory[normalized_id] = qty
     return inventory
+
+
+def _resolve_selected_item_context(
+    campaign: Campaign,
+    effective_actor_id: str,
+    *,
+    selected_item_id: Optional[str],
+    repo_root: Path,
+) -> Optional[Dict[str, object]]:
+    normalized_item_id = _normalize_item_id(selected_item_id)
+    if not normalized_item_id:
+        return None
+    inventory = _active_actor_inventory(campaign, effective_actor_id)
+    quantity = inventory.get(normalized_item_id)
+    if not isinstance(quantity, int) or quantity <= 0:
+        return None
+    selected_item = {
+        "id": normalized_item_id,
+        "quantity": quantity,
+    }
+    item_metadata = load_item_catalog(repo_root).get(normalized_item_id, {})
+    if isinstance(item_metadata, dict):
+        name = item_metadata.get("name")
+        description = item_metadata.get("description")
+        if isinstance(name, str) and name.strip():
+            selected_item["name"] = name.strip()
+        if isinstance(description, str) and description.strip():
+            selected_item["description"] = description.strip()
+    return selected_item
 
 
 def _all_actor_inventories(campaign: Campaign) -> Dict[str, Dict[str, int]]:

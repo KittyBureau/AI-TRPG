@@ -38,6 +38,8 @@ const state = {
   roundState: "idle",
   roundNumber: 0,
   stateSummary: null,
+  inventoryByActor: {},
+  selectedItemIdByActor: {},
   mapView: null,
   turnHistory: [],
   debug: {
@@ -80,6 +82,100 @@ function syncCampaignOption(campaignId, patch = {}) {
     ...current,
     ...patch,
   };
+}
+
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function normalizeActorId(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function normalizeItemId(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function normalizeInventory(rawInventory) {
+  const normalized = {};
+  if (!rawInventory || typeof rawInventory !== "object" || Array.isArray(rawInventory)) {
+    return normalized;
+  }
+  for (const [rawItemId, rawQuantity] of Object.entries(rawInventory)) {
+    const itemId = normalizeItemId(rawItemId);
+    const quantity = Number(rawQuantity);
+    if (!itemId || !Number.isInteger(quantity) || quantity <= 0) {
+      continue;
+    }
+    normalized[itemId] = quantity;
+  }
+  return normalized;
+}
+
+function normalizeInventoriesByActor(rawInventories) {
+  const normalized = {};
+  if (!rawInventories || typeof rawInventories !== "object" || Array.isArray(rawInventories)) {
+    return normalized;
+  }
+  for (const [rawActorId, rawInventory] of Object.entries(rawInventories)) {
+    const actorId = normalizeActorId(rawActorId);
+    if (!actorId) {
+      continue;
+    }
+    normalized[actorId] = normalizeInventory(rawInventory);
+  }
+  return normalized;
+}
+
+function reconcileSelectedItemsWithInventory() {
+  let changed = false;
+  const nextSelections = {
+    ...state.selectedItemIdByActor,
+  };
+  for (const [rawActorId, rawItemId] of Object.entries(nextSelections)) {
+    const actorId = normalizeActorId(rawActorId);
+    if (!actorId) {
+      delete nextSelections[rawActorId];
+      changed = true;
+      continue;
+    }
+    const itemId = normalizeItemId(rawItemId);
+    if (!itemId) {
+      if (nextSelections[actorId] !== null) {
+        nextSelections[actorId] = null;
+        changed = true;
+      }
+      continue;
+    }
+    if (
+      hasOwn(state.inventoryByActor, actorId) &&
+      !hasOwn(state.inventoryByActor[actorId], itemId)
+    ) {
+      nextSelections[actorId] = null;
+      changed = true;
+    }
+  }
+  if (changed) {
+    state.selectedItemIdByActor = nextSelections;
+  }
+  return changed;
+}
+
+function replaceInventoryByActor(rawInventories) {
+  state.inventoryByActor = normalizeInventoriesByActor(rawInventories);
+  reconcileSelectedItemsWithInventory();
+}
+
+function patchInventoryForActor(actorId, rawInventory) {
+  const normalizedActorId = normalizeActorId(actorId);
+  if (!normalizedActorId) {
+    return;
+  }
+  state.inventoryByActor = {
+    ...state.inventoryByActor,
+    [normalizedActorId]: normalizeInventory(rawInventory),
+  };
+  reconcileSelectedItemsWithInventory();
 }
 
 function applyPartyActorsToState(actorIds) {
@@ -168,6 +264,33 @@ export function setCampaignId(campaignId) {
 export function setPartyActors(actorIds) {
   applyPartyActorsToState(actorIds);
   emit();
+}
+
+export function setSelectedItemForActor(actorId, itemId) {
+  const normalizedActorId = normalizeActorId(actorId);
+  if (!normalizedActorId) {
+    return false;
+  }
+  const normalizedItemId = normalizeItemId(itemId);
+  if (!normalizedItemId) {
+    state.selectedItemIdByActor = {
+      ...state.selectedItemIdByActor,
+      [normalizedActorId]: null,
+    };
+    emit();
+    return true;
+  }
+  const inventory = state.inventoryByActor[normalizedActorId];
+  if (!inventory || !hasOwn(inventory, normalizedItemId)) {
+    return false;
+  }
+  const currentItemId = normalizeItemId(state.selectedItemIdByActor[normalizedActorId]);
+  state.selectedItemIdByActor = {
+    ...state.selectedItemIdByActor,
+    [normalizedActorId]: currentItemId === normalizedItemId ? null : normalizedItemId,
+  };
+  emit();
+  return true;
 }
 
 export function setCharacterCreateForm(nextForm) {
@@ -583,6 +706,7 @@ export async function refreshCampaign(
   state.campaignId = resolvedCampaignId;
   state.campaign.active_actor_id = backendActiveActorId;
   syncCampaignOption(resolvedCampaignId, { active_actor_id: backendActiveActorId });
+  reconcileSelectedItemsWithInventory();
   state.statusMessage = `Campaign refreshed from backend: active=${state.campaign.active_actor_id || "none"}, party=${state.campaign.party_character_ids.length}.`;
   emit();
   return result;
@@ -593,14 +717,19 @@ export function recordTurnResult(responseData, rawText = "") {
     responseData && typeof responseData === "object" && !Array.isArray(responseData)
       ? responseData
       : null;
+  const effectiveActorId =
+    typeof payload?.effective_actor_id === "string" ? payload.effective_actor_id.trim() : "";
   if (payload?.state_summary && typeof payload.state_summary === "object") {
     state.stateSummary = payload.state_summary;
+    if (payload.state_summary.inventories && typeof payload.state_summary.inventories === "object") {
+      replaceInventoryByActor(payload.state_summary.inventories);
+    } else if (effectiveActorId && payload.state_summary.active_actor_inventory) {
+      patchInventoryForActor(effectiveActorId, payload.state_summary.active_actor_inventory);
+    }
   }
   if (typeof rawText === "string") {
     state.debug.responseText = rawText;
   }
-  const effectiveActorId =
-    typeof payload?.effective_actor_id === "string" ? payload.effective_actor_id.trim() : "";
   if (effectiveActorId) {
     state.campaign.active_actor_id = effectiveActorId;
     syncCampaignOption(state.campaignId, { active_actor_id: effectiveActorId });

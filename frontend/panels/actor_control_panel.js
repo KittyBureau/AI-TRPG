@@ -57,6 +57,31 @@ function restoreFocusState(root, snapshot) {
   }
 }
 
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function getActorInventoryView(state, actorId) {
+  const inventoryByActor =
+    state?.inventoryByActor && typeof state.inventoryByActor === "object"
+      ? state.inventoryByActor
+      : {};
+  if (!actorId || !hasOwn(inventoryByActor, actorId)) {
+    return {
+      known: false,
+      entries: [],
+    };
+  }
+  const inventory =
+    inventoryByActor[actorId] && typeof inventoryByActor[actorId] === "object"
+      ? inventoryByActor[actorId]
+      : {};
+  return {
+    known: true,
+    entries: Object.entries(inventory).sort(([left], [right]) => left.localeCompare(right)),
+  };
+}
+
 export function initPanel(store) {
   const mount = document.getElementById("actorControlPanel");
   if (!mount) {
@@ -119,6 +144,15 @@ export function initPanel(store) {
       user_input: userInput,
       execution: { actor_id: actorId },
     };
+    const selectedItemId =
+      state.selectedItemIdByActor && typeof state.selectedItemIdByActor === "object"
+        ? state.selectedItemIdByActor[actorId]
+        : null;
+    if (typeof selectedItemId === "string" && selectedItemId.trim()) {
+      payload.context_hints = {
+        selected_item_id: selectedItemId.trim(),
+      };
+    }
     const result = await chatTurn(state.baseUrl, payload);
     if (!result.ok || !result.data) {
       store.setStatusMessage(`Turn failed: ${parseApiError(result)}`);
@@ -190,6 +224,11 @@ export function initPanel(store) {
     const party = getPartyActorIds(state);
     const actingActorId = resolveActingActorId(state);
     const canAct = Boolean(actingActorId);
+    const inventoryView = getActorInventoryView(state, actingActorId);
+    const selectedItemId =
+      actingActorId && state.selectedItemIdByActor
+        ? state.selectedItemIdByActor[actingActorId] || null
+        : null;
 
     mount.innerHTML = "";
 
@@ -238,6 +277,57 @@ export function initPanel(store) {
       emptyHint.className = "note";
       emptyHint.textContent = "Party empty / no actor selected.";
       mount.appendChild(emptyHint);
+    }
+
+    const inventoryTitle = document.createElement("h3");
+    inventoryTitle.textContent = "Inventory";
+    mount.appendChild(inventoryTitle);
+
+    const selectionRow = document.createElement("div");
+    selectionRow.className = "note";
+    selectionRow.textContent = `Selected item: ${selectedItemId || "none"}`;
+    mount.appendChild(selectionRow);
+
+    const inventoryNote = document.createElement("div");
+    inventoryNote.className = "note";
+    inventoryNote.textContent =
+      "Selection is stored per actor in the frontend and sent as an optional selected-item hint on turn requests.";
+    mount.appendChild(inventoryNote);
+
+    if (!canAct) {
+      const inventoryEmpty = document.createElement("div");
+      inventoryEmpty.className = "note";
+      inventoryEmpty.textContent = "Select an actor to inspect inventory.";
+      mount.appendChild(inventoryEmpty);
+    } else if (!inventoryView.known) {
+      const inventoryUnknown = document.createElement("div");
+      inventoryUnknown.className = "note";
+      inventoryUnknown.textContent =
+        "Inventory snapshot unavailable yet. It will appear after a successful turn response.";
+      mount.appendChild(inventoryUnknown);
+    } else if (!inventoryView.entries.length) {
+      const inventoryNone = document.createElement("div");
+      inventoryNone.className = "note";
+      inventoryNone.textContent = "No items in inventory.";
+      mount.appendChild(inventoryNone);
+    } else {
+      const inventoryList = document.createElement("div");
+      inventoryList.className = "stack";
+      for (const [itemId, quantity] of inventoryView.entries) {
+        const itemButton = document.createElement("button");
+        itemButton.type = "button";
+        itemButton.className =
+          itemId === selectedItemId ? "inventory-item selected" : "inventory-item";
+        itemButton.textContent = `${itemId} x${quantity}`;
+        itemButton.addEventListener("click", () => {
+          const selected = store.setSelectedItemForActor(actingActorId, itemId);
+          if (!selected) {
+            store.setStatusMessage(`Failed to select item: ${itemId}`);
+          }
+        });
+        inventoryList.appendChild(itemButton);
+      }
+      mount.appendChild(inventoryList);
     }
 
     const turnField = document.createElement("label");

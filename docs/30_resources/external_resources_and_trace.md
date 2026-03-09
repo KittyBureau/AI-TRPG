@@ -92,6 +92,12 @@ Legacy compatibility fields are still emitted:
 - `debug.used_prompt_*`, `debug.used_flow_*`
 - `debug.prompt`, `debug.flow`, `debug.schemas`, `debug.templates`
 
+Selected-item observability is also implemented as an additive, trace-gated field:
+
+- `debug.selected_item = { id, has_metadata }`
+- omitted when there is no valid selected item
+- omitted together with top-level `debug` when trace is off
+
 ### 6. Template-usage debug in create/upsert paths
 
 Implemented for endpoints that apply templates:
@@ -100,6 +106,20 @@ Implemented for endpoints that apply templates:
 - `POST /api/v1/characters/library`
 
 Debug payload uses `resources.template_usage` and keeps legacy `debug.template_usage` compatibility field.
+
+### 7. Lightweight auxiliary data files
+
+Implemented as non-manifest, runtime-safe resource data under `resources/data/` for optional metadata that must not break turns when unavailable.
+
+Current example:
+
+- `resources/data/items_catalog_v1.json`
+
+Rules:
+
+- not part of the strict prompt/flow/schema/template/policy loader path
+- missing or malformed file must fall back safely
+- intended for lightweight enrichment only, not new authority layers
 
 ## Example debug.resources shape (trace enabled)
 

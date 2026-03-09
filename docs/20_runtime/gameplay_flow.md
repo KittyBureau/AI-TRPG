@@ -293,7 +293,10 @@ Each step calls `/api/v1/chat/turn` sequentially with:
 {
   "campaign_id": "camp_0001",
   "user_input": "actor action input",
-  "execution": { "actor_id": "pc_001" }
+  "execution": { "actor_id": "pc_001" },
+  "context_hints": {
+    "selected_item_id": "torch"
+  }
 }
 ```
 
@@ -302,6 +305,10 @@ Notes:
 - `party/load` only auto-sets active actor when current active is empty.
 - To force a switch, use `Party Panel -> Set Active` (calls `/api/v1/campaign/select_actor`).
 - Turn response `effective_actor_id` is the source of truth for execution identity.
+- `context_hints.selected_item_id` is optional and sent only when the Play UI has a selected item for the acting actor.
+- Backend validates the selected item against the effective actor inventory; invalid or stale item ids are ignored without failing the turn.
+- When metadata is available, turn context enriches `selected_item` with `name` and `description`; otherwise it falls back to Phase B shape `{id, quantity}`.
+- When trace is enabled and selected item validation succeeds, the turn response may include `debug.selected_item = { id, has_metadata }`.
 
 ## Frontend lightweight regression script
 
@@ -340,6 +347,7 @@ Optional:
   - `tool_feedback` may be `null` when no failed calls occurred
   - `conflict_report` may be `null` when no conflict retry exhaustion occurred
   - `debug` must be absent, not `null`, when trace is disabled
+  - `debug.selected_item` is optional and only appears for a valid selected item when trace is enabled
 - optional files:
   - `storage/campaigns/<campaign_id>/campaign.json`
   - `storage/campaigns/<campaign_id>/turn_log.jsonl`

@@ -368,12 +368,14 @@ Non-goals for Playable v1:
 - Rollback: remove unused prep hooks and trace notes if they create confusion before implementation.
 
 ### P1-14 Player-selected item interaction model
-- Status: `TODO`
+- Status: `DONE`
 - Why: Current inventory context requires the LLM to reason over the full inventory list. This increases token usage and introduces selection ambiguity.
 - Scope:
   - frontend inventory UI (item selection)
+  - turn request selected-item hint
   - prompt/context builder injection
-  - prompt schema update
+  - trace-gated observability closure
+- Status Note: Phase A frontend runtime-only item selection, Phase B optional request hint + minimal selected_item context injection, Phase C metadata enrichment, and Phase D trace-gated observability are complete. Verified on 2026-03-09 with `pytest -q`, `node --experimental-default-type=module --test frontend/tests/store_loop.test.mjs`, `scripts/smoke_full_gameplay.ps1`, and `scripts/smoke_frontend_flow.ps1`.
 - Design rules:
   - Inventory storage format remains unchanged for now: `inventory: { item_id: quantity }`
   - LLM should reason about how to use the selected item, not which item to use.
@@ -393,10 +395,11 @@ Non-goals for Playable v1:
   - Prompt builder can inject selected item context
   - LLM receives item description and quantity
   - No change to inventory storage model yet
+  - Trace-enabled turns can expose minimal selected-item observability without changing the trace gate contract
 - Tests:
   - manual Play UI verification
   - prompt debug trace inspection
-- Rollback: defer the explicit item-selection flow and keep current inventory-only context behavior until the Context Builder work is scheduled.
+- Rollback: remove the selected-item request hint/context injection path and fall back to inventory-only context behavior if a regression appears.
 
 ---
 

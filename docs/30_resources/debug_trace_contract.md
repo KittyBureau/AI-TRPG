@@ -39,6 +39,22 @@ For `POST /api/v1/chat/turn`, when trace is enabled:
 
 All categories are arrays (possibly empty).
 
+## Additive Selected Item Debug
+
+When trace is enabled and `POST /api/v1/chat/turn` receives a valid
+`context_hints.selected_item_id`, runtime may also emit:
+
+- `debug.selected_item.id`
+- `debug.selected_item.has_metadata`
+
+Rules:
+
+- the field is additive and does not replace `debug.resources`
+- the field is omitted when no valid selected item is available
+- the field is omitted together with the rest of `debug` when trace is off
+- `has_metadata=true` means the injected turn-context `selected_item`
+  included at least one metadata field (`name` or `description`)
+
 ## Legacy Compatibility Fields (Still Emitted)
 
 Runtime still emits legacy fields for backward compatibility:

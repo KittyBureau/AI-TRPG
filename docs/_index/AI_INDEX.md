@@ -25,6 +25,8 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - `/api/v1/chat/turn.state_summary` keeps stable v1 keys: `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, `inventories`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, `active_actor_inventory`.
 - `GET /api/v1/map/view` returns area context plus `entities_in_area` (backend-authoritative scene entities for current area).
 - `/api/v1/chat/turn` actor context resolution uses `execution.actor_id` first, then top-level `actor_id`, then `campaign.selected.active_actor_id`; response includes `effective_actor_id`.
+- `/api/v1/chat/turn` accepts optional `context_hints.selected_item_id`; backend validates it against `actors[effective_actor_id].inventory` and injects `selected_item={id,quantity}` into turn context only when valid, with optional `name` / `description` when lightweight metadata is available.
+- When trace is enabled and selected-item validation succeeds, `/api/v1/chat/turn.debug.selected_item` may expose minimal observability as `{id, has_metadata}`; top-level `debug` remains omitted when trace is off.
 - `/api/v1/chat/turn` runs under a per-campaign serial lock; concurrent same-campaign turns return `409`.
 - `GET /api/v1/runtime/status` returns `ready` + `reason` for keyring/config readiness, and frontend play/debug uses it before sending turn requests.
 - `POST /api/v1/runtime/unlock` is a local-only runtime unlock path used by `python -m backend.tools.unlock_keyring`; the frontend must not collect passphrases.

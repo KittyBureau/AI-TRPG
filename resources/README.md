@@ -13,6 +13,21 @@ This document defines the low-risk process for version switching and rollback of
    - `enabled` (set `false` first)
 4. Keep only one `enabled: true` entry for each resource name.
 
+## Lightweight Data Files
+
+Auxiliary runtime-safe data that should not use the strict manifest loader can live under `resources/data/`.
+
+Current example:
+
+- `resources/data/items_catalog_v1.json`
+
+Rules:
+
+1. Keep the file lightweight and JSON-only.
+2. Do not treat it as an authority layer for persistent game state.
+3. Missing or malformed files must degrade safely at runtime.
+4. Prefer this path only for optional metadata enrichment, not prompt/flow/schema/template/policy resources.
+
 ## Switch Active Version
 
 1. Set old entry `enabled: false`.

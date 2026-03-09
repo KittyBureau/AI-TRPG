@@ -18,11 +18,20 @@ def _service() -> TurnService:
     return TurnService(repo)
 
 
+class TurnExecutionContext(BaseModel):
+    actor_id: Optional[str] = None
+
+
+class TurnContextHints(BaseModel):
+    selected_item_id: Optional[str] = None
+
+
 class TurnRequest(BaseModel):
     campaign_id: str
     user_input: str
     actor_id: Optional[str] = None
-    execution: Optional[Dict[str, Any]] = None
+    execution: Optional[TurnExecutionContext] = None
+    context_hints: Optional[TurnContextHints] = None
 
 
 class TurnResponse(BaseModel):
@@ -45,10 +54,9 @@ def submit_turn(request: TurnRequest) -> TurnResponse:
             request.campaign_id,
             request.user_input,
             actor_id=request.actor_id,
-            execution_actor_id=(
-                request.execution.get("actor_id")
-                if isinstance(request.execution, dict)
-                else None
+            execution_actor_id=request.execution.actor_id if request.execution else None,
+            selected_item_id=(
+                request.context_hints.selected_item_id if request.context_hints else None
             ),
         )
     except FileNotFoundError as exc:

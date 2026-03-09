@@ -1,0 +1,10 @@
+{
+  "rusty_key": {
+    "name": "rusty key",
+    "description": "an old iron key, possibly opens ancient locks"
+  },
+  "torch": {
+    "name": "torch",
+    "description": "a simple handheld torch for lighting dark areas"
+  }
+}

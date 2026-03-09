@@ -133,6 +133,138 @@ test("recordTurnResult stores applied_actions and effective actor for panels", a
   assert.equal(state.debug.responseText, "{\"ok\":true}");
 });
 
+test("selected item state stays isolated by actor and follows active actor switching", async () => {
+  const store = await loadStoreModule();
+  let refreshCalls = 0;
+  global.fetch = async (url, options = {}) => {
+    if (String(url).endsWith("/api/v1/campaign/select_actor")) {
+      const body = JSON.parse(String(options.body));
+      return jsonResponse({ active_actor_id: body.active_actor_id });
+    }
+    if (String(url).includes("/api/v1/campaign/get?")) {
+      refreshCalls += 1;
+      const activeActorId = refreshCalls === 1 ? "pc_002" : "pc_001";
+      return jsonResponse({
+        selected: {
+          party_character_ids: ["pc_001", "pc_002"],
+          active_actor_id: activeActorId,
+        },
+      });
+    }
+    throw new Error(`unexpected fetch: ${String(url)}`);
+  };
+
+  store.setCampaignOptions([{ id: "camp_001", active_actor_id: "pc_001" }]);
+  store.setCampaignId("camp_001");
+  store.setPartyActors(["pc_001", "pc_002"]);
+  store.recordTurnResult({
+    effective_actor_id: "pc_001",
+    state_summary: {
+      active_actor_id: "pc_001",
+      inventories: {
+        pc_001: { torch: 1, rope: 1 },
+        pc_002: { potion: 2 },
+      },
+    },
+  });
+
+  assert.equal(store.setSelectedItemForActor("pc_001", "torch"), true);
+  assert.equal(store.setSelectedItemForActor("pc_002", "potion"), true);
+  assert.deepEqual(store.getState().selectedItemIdByActor, {
+    pc_001: "torch",
+    pc_002: "potion",
+  });
+
+  const switchToSecond = await store.selectActiveActor(
+    "pc_002",
+    "camp_001",
+    "http://127.0.0.1:8000"
+  );
+  assert.equal(switchToSecond.ok, true);
+  assert.equal(store.getState().campaign.active_actor_id, "pc_002");
+  assert.equal(
+    store.getState().selectedItemIdByActor[store.getState().campaign.active_actor_id],
+    "potion"
+  );
+
+  const switchBack = await store.selectActiveActor(
+    "pc_001",
+    "camp_001",
+    "http://127.0.0.1:8000"
+  );
+  assert.equal(switchBack.ok, true);
+  assert.equal(store.getState().campaign.active_actor_id, "pc_001");
+  assert.equal(
+    store.getState().selectedItemIdByActor[store.getState().campaign.active_actor_id],
+    "torch"
+  );
+});
+
+test("recordTurnResult clears selected item when inventory snapshot removes it", async () => {
+  const store = await loadStoreModule();
+  store.setCampaignOptions([{ id: "camp_001", active_actor_id: "pc_001" }]);
+  store.setCampaignId("camp_001");
+
+  store.recordTurnResult({
+    effective_actor_id: "pc_001",
+    state_summary: {
+      active_actor_id: "pc_001",
+      inventories: {
+        pc_001: { torch: 1, rope: 1 },
+      },
+    },
+  });
+  assert.equal(store.setSelectedItemForActor("pc_001", "torch"), true);
+  assert.equal(store.getState().selectedItemIdByActor.pc_001, "torch");
+
+  store.recordTurnResult({
+    effective_actor_id: "pc_001",
+    state_summary: {
+      active_actor_id: "pc_001",
+      inventories: {
+        pc_001: { rope: 1 },
+      },
+    },
+  });
+
+  assert.deepEqual(store.getState().inventoryByActor, {
+    pc_001: { rope: 1 },
+  });
+  assert.equal(store.getState().selectedItemIdByActor.pc_001, null);
+});
+
+test("recordTurnResult clears selected item when inventory becomes empty", async () => {
+  const store = await loadStoreModule();
+  store.setCampaignOptions([{ id: "camp_001", active_actor_id: "pc_001" }]);
+  store.setCampaignId("camp_001");
+
+  store.recordTurnResult({
+    effective_actor_id: "pc_001",
+    state_summary: {
+      active_actor_id: "pc_001",
+      inventories: {
+        pc_001: { torch: 1 },
+      },
+    },
+  });
+  assert.equal(store.setSelectedItemForActor("pc_001", "torch"), true);
+
+  store.recordTurnResult({
+    effective_actor_id: "pc_001",
+    state_summary: {
+      active_actor_id: "pc_001",
+      inventories: {
+        pc_001: {},
+      },
+    },
+  });
+
+  assert.deepEqual(store.getState().inventoryByActor, {
+    pc_001: {},
+  });
+  assert.equal(store.getState().selectedItemIdByActor.pc_001, null);
+});
+
 test("checkBackendReady stores not-ready reason and prompt message", async () => {
   const store = await loadStoreModule();
   global.fetch = async (url) => {

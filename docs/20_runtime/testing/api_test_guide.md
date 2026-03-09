@@ -83,6 +83,16 @@ Checks:
 
 Endpoint: `POST /api/v1/chat/turn`
 
+Optional request hint:
+
+- `context_hints.selected_item_id`
+- when present, backend validates it against `actors[effective_actor_id].inventory`
+- valid hint injects `selected_item` into turn context
+- `selected_item` always includes `id` and `quantity`
+- `selected_item` may also include `name` and `description` when item metadata is available
+- metadata miss/load failure falls back to `{id, quantity}`
+- invalid/missing hint is ignored silently and must not fail the turn
+
 Response required keys:
 
 - `effective_actor_id`
@@ -98,6 +108,10 @@ Stable response semantics:
 
 - top-level `debug` is omitted when trace is off
 - top-level `debug` is present only when trace is on
+- when trace is on and selected item validation succeeds, `debug.selected_item`
+  may be present with minimal observability fields:
+  - `id`
+  - `has_metadata`
 - `tool_feedback` may be `null` when there are no failed calls
 - `conflict_report` may be `null` when no retry-exhausted conflict occurred
 - `tool_calls` and `applied_actions` are always arrays
