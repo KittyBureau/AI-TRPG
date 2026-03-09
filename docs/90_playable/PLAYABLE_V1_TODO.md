@@ -372,11 +372,12 @@ Non-goals for Playable v1:
 - Rollback: restore prior smoke scripts.
 
 ### P1-12 Docs sync gate discipline
-- Status: `TODO`
+- Status: `DONE` (2026-03-09)
 - Why: keep docs aligned with runtime behavior across iterations.
 - Scope: `docs/_index/AI_INDEX.md`, `docs/_index/ai_index_manifest.json`, `docs/01_specs/TODO_DOCS_ALIGNMENT.md`
 - Acceptance: any contract-impacting changes include docs update or TODO defer record.
-- Tests: review checklist + path consistency scan in `docs/00_overview/DOCS_PATH_MAPPING.md`
+- Tests: `scripts/check_docs_sync.ps1` simulated PASS/FAIL scenarios, `scripts/smoke_full_gameplay.ps1`
+- Evidence: minimal executable docs sync gate added at `scripts/check_docs_sync.ps1`; it enforces docs presence for backend/frontend changes, protects AI_INDEX sync for critical backend paths, and requires `P1-` task reference when PLAYABLE_V1_TODO changes.
 - Rollback: revert docs gating edits and restore previous manifest/index mapping.
 
 ### P1-13 Preparation for Future Context System
