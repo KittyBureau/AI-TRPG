@@ -39,14 +39,41 @@ function Invoke-Rclone {
         [string[]]$Arguments
     )
 
-    $output = & $script:RclonePath @Arguments 2>&1
-    $output = @($output)
+    $stdoutFile = [System.IO.Path]::GetTempFileName()
+    $stderrFile = [System.IO.Path]::GetTempFileName()
 
-    if ($LASTEXITCODE -ne 0) {
+    try {
+        $process = Start-Process -FilePath $script:RclonePath `
+            -ArgumentList $Arguments `
+            -NoNewWindow `
+            -Wait `
+            -PassThru `
+            -RedirectStandardOutput $stdoutFile `
+            -RedirectStandardError $stderrFile
+
+        $stdout = if (Test-Path -LiteralPath $stdoutFile) {
+            Get-Content -LiteralPath $stdoutFile
+        } else {
+            @()
+        }
+        $stderr = if (Test-Path -LiteralPath $stderrFile) {
+            Get-Content -LiteralPath $stderrFile
+        } else {
+            @()
+        }
+    } finally {
+        Remove-Item -LiteralPath $stdoutFile -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $stderrFile -ErrorAction SilentlyContinue
+    }
+
+    $output = @($stdout) + @($stderr)
+    $exitCode = if ($null -ne $process) { $process.ExitCode } else { $LASTEXITCODE }
+
+    if ($exitCode -ne 0) {
         if ($output.Count -gt 0) {
             $output | ForEach-Object { Write-Host $_ }
         }
-        throw "rclone exited with code $LASTEXITCODE."
+        throw "rclone exited with code $exitCode."
     }
 
     return $output
@@ -82,7 +109,10 @@ $FileMappings = @(
     [pscustomobject]@{ RelativePath = "docs/00_overview/DOCS_PATH_MAPPING.md" },
     [pscustomobject]@{ RelativePath = "docs/01_specs/architecture.md" },
     [pscustomobject]@{ RelativePath = "docs/20_runtime/storage_authority.md" },
-    [pscustomobject]@{ RelativePath = "docs/90_playable/PLAYABLE_V1_TODO.md" }
+    [pscustomobject]@{ RelativePath = "docs/90_playable/PLAYABLE_V1_TODO.md" },
+    [pscustomobject]@{ RelativePath = "docs/90_playable/P2_RUNTIME_CONTEXT_DEVELOPER_REFERENCE.md" },
+    [pscustomobject]@{ RelativePath = "docs/90_playable/P2_RUNTIME_CONTEXT_ARCHITECTURE_OVERVIEW.md" },
+    [pscustomobject]@{ RelativePath = "docs/90_playable/P2_CONTEXT_BUILDER_IMPLEMENTATION_PREP.md" }
 )
 
 Write-Host "Repo root: $RepoRoot"
