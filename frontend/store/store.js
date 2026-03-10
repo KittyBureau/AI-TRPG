@@ -3,6 +3,7 @@ import {
   createCharacter as createCharacterApi,
   generateWorld as generateWorldApi,
   getCampaign as getCampaignApi,
+  getCampaignWorld as getCampaignWorldApi,
   getRuntimeStatus as getRuntimeStatusApi,
   listCampaigns as listCampaignsApi,
   listCharacters,
@@ -26,6 +27,7 @@ const state = {
     map: {
       areas: {},
     },
+    world: null,
   },
   character: {
     library: [],
@@ -284,6 +286,7 @@ export function setCampaignId(campaignId) {
     state.campaign.status = null;
     state.campaign.actors = {};
     state.campaign.map = { areas: {} };
+    state.campaign.world = null;
   }
   emit();
 }
@@ -430,6 +433,24 @@ function normalizeCampaignMap(rawMap) {
     };
   }
   return normalized;
+}
+
+function normalizeCampaignWorld(rawWorld) {
+  if (!rawWorld || typeof rawWorld !== "object" || Array.isArray(rawWorld)) {
+    return null;
+  }
+  const worldId = normalizeStringId(rawWorld.world_id);
+  if (!worldId) {
+    return null;
+  }
+  return {
+    world_id: worldId,
+    name: typeof rawWorld.name === "string" ? rawWorld.name.trim() : "",
+    world_description:
+      typeof rawWorld.world_description === "string" ? rawWorld.world_description.trim() : "",
+    objective: typeof rawWorld.objective === "string" ? rawWorld.objective.trim() : "",
+    start_area: normalizeStringId(rawWorld.start_area),
+  };
 }
 
 function normalizeCampaignGetPayload(payload) {
@@ -1063,6 +1084,42 @@ export async function refreshCampaign(
   reconcileSelectedItemsWithInventory();
   state.statusMessage = `Campaign refreshed from backend: active=${state.campaign.active_actor_id || "none"}, party=${state.campaign.party_character_ids.length}.`;
   emit();
+  return result;
+}
+
+export async function refreshCampaignWorldPreview(
+  campaignId = state.campaignId,
+  baseUrl = state.baseUrl,
+  options = {}
+) {
+  const resolvedCampaignId =
+    typeof campaignId === "string" && campaignId.trim() ? campaignId.trim() : "";
+  if (!resolvedCampaignId) {
+    state.campaign.world = null;
+    if (options.emit !== false) {
+      emit();
+    }
+    return {
+      ok: false,
+      status: 400,
+      data: null,
+      text: "campaign_id is required",
+    };
+  }
+
+  const result = await getCampaignWorldApi(baseUrl, resolvedCampaignId);
+  if (!result.ok || !result.data) {
+    state.campaign.world = null;
+    if (options.emit !== false) {
+      emit();
+    }
+    return result;
+  }
+
+  state.campaign.world = normalizeCampaignWorld(result.data);
+  if (options.emit !== false) {
+    emit();
+  }
   return result;
 }
 

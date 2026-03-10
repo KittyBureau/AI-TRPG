@@ -8,6 +8,7 @@ import {
   loadCharacterLibrary,
   loadCharacterToCampaign,
   loadCampaignOptionsFromBackend,
+  refreshCampaignWorldPreview,
   refreshWorlds,
   recoverFrontendSession,
   refreshCampaign,
@@ -28,6 +29,7 @@ import {
 import { initPanel as initCampaignPanel } from "./panels/campaign_panel.js";
 import { initPanel as initCharacterLibraryPanel } from "./panels/character_library_panel.js";
 import { initPanel as initWorldPanel } from "./panels/world_panel.js";
+import { initPanel as initWorldPreviewPanel } from "./panels/world_preview_panel.js";
 import { initPanel as initPartyPanel } from "./panels/party_panel.js";
 import { initPanel as initMapPanel } from "./panels/map_panel.js";
 import { initPanel as initActorControlPanel } from "./panels/actor_control_panel.js";
@@ -81,6 +83,7 @@ async function initPlay() {
     generateWorldResource,
     createCampaignWithSelectedParty,
     loadCharacterToCampaign,
+    refreshCampaignWorldPreview,
     refreshWorlds,
     refreshCampaign,
     selectActiveActor,
@@ -114,6 +117,7 @@ async function initPlay() {
   initStatusLine(store);
   initCampaignPanel(store);
   initWorldPanel(store);
+  initWorldPreviewPanel(store);
   initCharacterLibraryPanel(store);
   initPartyPanel(store);
   initMapPanel(store);

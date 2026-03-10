@@ -103,6 +103,9 @@ export function initPanel(store) {
       store.setStatusMessage(`Refresh campaign failed: ${parseApiError(refreshResult)}`);
       return false;
     }
+    if (typeof store.refreshCampaignWorldPreview === "function") {
+      await store.refreshCampaignWorldPreview(campaignId, state.baseUrl, { emit: true });
+    }
     return true;
   }
 

@@ -22,6 +22,7 @@ Play page panels:
 
 - Campaign Panel
 - World Panel
+- World Preview Panel
 - Character Library Panel
 - Party Panel
 - Map Panel

@@ -604,6 +604,55 @@ test("recoverFrontendSession reloads campaigns and active actor after backend be
   assert.equal(calls.length, 3);
 });
 
+test("refreshCampaignWorldPreview stores read-only world snapshot for the active campaign", async () => {
+  const store = await loadStoreModule();
+  global.fetch = async (url) => {
+    assert.match(String(url), /\/api\/v1\/campaigns\/camp_001\/world$/);
+    return jsonResponse({
+      world_id: "world_alpha",
+      name: "World Alpha",
+      world_description: "A frontier under tension.",
+      objective: "Reach the signal tower.",
+      start_area: "area_start",
+    });
+  };
+
+  store.setCampaignId("camp_001");
+  const result = await store.refreshCampaignWorldPreview("camp_001", "http://127.0.0.1:8000");
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(store.getState().campaign.world, {
+    world_id: "world_alpha",
+    name: "World Alpha",
+    world_description: "A frontier under tension.",
+    objective: "Reach the signal tower.",
+    start_area: "area_start",
+  });
+});
+
+test("refreshCampaignWorldPreview clears world snapshot when world lookup fails", async () => {
+  const store = await loadStoreModule();
+  global.fetch = async (url) => {
+    assert.match(String(url), /\/api\/v1\/campaigns\/camp_001\/world$/);
+    return jsonResponse({ detail: "campaign has no world_id: camp_001" }, 409);
+  };
+
+  store.setCampaignId("camp_001");
+  store.getState().campaign.world = {
+    world_id: "world_old",
+    name: "Old World",
+    world_description: "Old",
+    objective: "Old objective",
+    start_area: "area_old",
+  };
+
+  const result = await store.refreshCampaignWorldPreview("camp_001", "http://127.0.0.1:8000");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 409);
+  assert.equal(store.getState().campaign.world, null);
+});
+
 test("silent readiness polling does not emit repeatedly when backend state is unchanged", async () => {
   const store = await loadStoreModule();
   let emits = 0;

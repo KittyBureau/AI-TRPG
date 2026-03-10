@@ -173,6 +173,9 @@ export function initPanel(store) {
       store.setStatusMessage(`Refresh campaign failed (${result.status}).`);
       return;
     }
+    if (typeof store.refreshCampaignWorldPreview === "function") {
+      await store.refreshCampaignWorldPreview(state.campaignId, state.baseUrl, { emit: true });
+    }
     store.setStatusMessage(`Refreshed campaign ${state.campaignId} from backend authoritative state.`);
     if (result.data) {
       store.setDebugResponseText(JSON.stringify(result.data, null, 2));
@@ -191,6 +194,9 @@ export function initPanel(store) {
       store.setPartyActors([]);
       store.setStatusMessage(`Selected campaign ${campaignId}, but refresh failed (${result.status}).`);
       return;
+    }
+    if (typeof store.refreshCampaignWorldPreview === "function") {
+      await store.refreshCampaignWorldPreview(campaignId, store.getState().baseUrl, { emit: true });
     }
     if (result.data) {
       store.setDebugResponseText(JSON.stringify(result.data, null, 2));

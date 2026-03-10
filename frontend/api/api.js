@@ -68,6 +68,18 @@ async function getCampaign(baseUrl, campaignId) {
   return request(baseUrl, `/api/v1/campaign/get?${params.toString()}`);
 }
 
+async function getCampaignWorld(baseUrl, campaignId) {
+  if (!campaignId) {
+    return {
+      ok: false,
+      status: 400,
+      data: null,
+      text: "campaign_id is required",
+    };
+  }
+  return request(baseUrl, `/api/v1/campaigns/${encodeURIComponent(campaignId)}/world`);
+}
+
 async function chatTurn(baseUrl, payload) {
   return request(baseUrl, "/api/v1/chat/turn", {
     method: "POST",
@@ -164,6 +176,7 @@ export {
   createCampaign,
   createCharacter,
   getCampaign,
+  getCampaignWorld,
   getMapView,
   getRuntimeStatus,
   generateWorld,
