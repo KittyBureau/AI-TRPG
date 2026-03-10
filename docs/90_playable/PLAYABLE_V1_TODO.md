@@ -41,9 +41,9 @@ At milestone or phase wrap-up, refresh the lightweight ChatGPT web reference-doc
 ## Item Counts
 
 - P0: 14 items (must-complete)
-- P1: 20 items
+- P1: 21 items
 - P2: 12 items
-- Total: 46 items
+- Total: 47 items
 
 ## TOC
 
@@ -263,6 +263,7 @@ Current P1 closure focus:
 - minimal narrative continuity when tools dominate a turn
 - key blocking Play UI issues
 - playable regression/docs closure
+- Playable v1 baseline closed on 2026-03-10; remaining open P1 items are post-baseline polish only
 
 Explicitly out of current P1 closure:
 
@@ -469,35 +470,51 @@ Explicitly out of current P1 closure:
 - Rollback: revert the `campaign/get` snapshot expansion and Play panel/store wiring as one unit.
 
 ### P1-16 Tool-response narrative fallback
-- Status: `TODO`
+- Status: `DONE` (2026-03-10)
 - Why: tool-heavy turns still need minimal readable narrative continuity in Play.
-- Scope: `backend/app/turn_service.py`, `backend/api/routes/chat.py`, `frontend/panels/actor_control_panel.js`
-- Acceptance: when a turn succeeds mainly through tools and narrative output is thin/empty, Play still shows a minimal readable result summary without changing tool authority.
-- Tests: `backend/tests/test_turn_response_contract_api.py`, `frontend/tests/store_loop.test.mjs`, `scripts/smoke_full_gameplay.ps1`
+- Scope: `backend/app/turn_service.py`
+- Acceptance: when a turn succeeds through at least one tool call and `narrative_text` would otherwise be empty, the backend returns a minimal readable fallback string without changing tool authority or API shape.
+- Tests: `backend/tests/test_turn_response_contract_api.py`, `backend/tests/test_turn_service_lifecycle.py`
+- Verification Evidence:
+  - `python -m pytest backend/tests/test_turn_response_contract_api.py backend/tests/test_turn_service_lifecycle.py` -> `27 passed`
+  - Fallback is injected in the final success-response assembly path only when `narrative_text` is blank and at least one applied tool action succeeded
+  - Existing move-options-specific fallback remains authoritative when present; failed-tool-only and narrative-present cases remain unchanged
 - Rollback: revert fallback rendering/response shaping if it obscures tool truth.
 
 ### P1-17 World preview minimal read-only visibility
-- Status: `TODO`
+- Status: `DONE` (2026-03-10)
 - Why: campaign/world selection is more usable when the current world binding can be inspected without leaving Play.
-- Scope: `backend/api/routes/world.py`, `frontend/panels/world_panel.js`, `frontend/store/store.js`
-- Acceptance: Play exposes minimal read-only world information for the selected/current world without turning World Panel into a management system.
-- Tests: `backend/tests/test_world_api.py`, `frontend/tests/store_loop.test.mjs`, `scripts/smoke_frontend_flow.ps1`
+- Scope: `backend/api/routes/world.py`, `frontend/api/api.js`, `frontend/store/store.js`, `frontend/play.js`, `frontend/play.html`, `frontend/panels/world_preview_panel.js`, `frontend/panels/campaign_panel.js`, `frontend/panels/actor_control_panel.js`
+- Acceptance: Play exposes read-only `world_id`, `name`, `world_description`, `objective`, and `start_area` for the selected/current campaign world from shared store data without turning World Panel into a management system.
+- Tests: `frontend/tests/store_loop.test.mjs`, `frontend/tests/world_preview_panel.test.mjs`
+- Verification Evidence:
+  - Existing backend route `GET /api/v1/campaigns/{campaign_id}/world` already provided the needed world snapshot; no new backend API was required
+  - Play now keeps a shared-store `campaign.world` snapshot and renders a dedicated read-only `World Preview` panel instead of introducing panel-local authority
+  - `node --test frontend/tests/*.mjs` -> `33 passed`
 - Rollback: remove preview-only display and keep world list/generate behavior unchanged.
 
 ### P1-18 Character Library input focus bug
-- Status: `TODO`
+- Status: `DONE` (2026-03-10)
 - Why: focus churn in Character Library blocks smooth party setup on the Play page.
-- Scope: `frontend/panels/character_library_panel.js`, `frontend/play.js`, `frontend/store/store.js`
+- Scope: `frontend/panels/character_library_panel.js`
 - Acceptance: typing/selecting in Character Library remains stable during normal Play page refresh/re-render paths.
-- Tests: `scripts/smoke_frontend_flow.ps1`, targeted frontend panel/store regression tests
+- Tests: `frontend/tests/character_library_panel.test.mjs`, `frontend/tests/*.mjs`
+- Verification Evidence:
+  - Character Library no longer recreates the form inputs on every store emit; the static shell stays mounted while list/status updates rerender separately
+  - `node --test frontend/tests/character_library_panel.test.mjs` -> `3 passed`
+  - `node --test frontend/tests/*.mjs` -> `33 passed`
 - Rollback: revert the focus-preservation change if it destabilizes panel state.
 
 ### P1-19 Manual playable regression and docs closure
-- Status: `TODO`
+- Status: `DONE` (2026-03-10)
 - Why: P1 should close with repeatable human-readable verification, not only partial targeted tests.
 - Scope: `docs/02_guides/testing/playable_v1_manual_test.md`, `docs/20_runtime/testing/active_actor_integration_smoke.md`, `docs/20_runtime/testing/state_consistency_check.md`, `scripts/smoke_frontend_flow.ps1`
 - Acceptance: current Playable v1 closure path is documented, runnable, and reflects the actual world -> campaign -> play loop plus current-situation visibility checks.
 - Tests: manual guide rerun + deterministic smoke rerun
+- Verification Evidence:
+  - Current docs now reflect the closed Playable v1 baseline: world generation, explicit world-bound campaign creation, shared-store World Preview, authoritative Map Panel, backend narrative fallback, and stable Character Library typing
+  - Manual playable regression for the current finished baseline was reported functionally normal on 2026-03-10
+  - Remaining open P1 items are intentionally limited to post-baseline polish: `P1-20` null-position actor closure and `P1-21` current-turn result visibility cleanup
 - Rollback: revert closure-doc edits if the verification path is found inaccurate.
 
 ### P1-20 Actor initial-position closure for loaded/null-position actors

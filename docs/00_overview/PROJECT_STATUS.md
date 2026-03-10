@@ -1,5 +1,12 @@
 # AI-TRPG Project Status (Playable v1)
 
+## 0. Baseline Closure
+
+- Playable v1 baseline closed on 2026-03-10.
+- Closed baseline coverage: world generation, explicit world-aware campaign creation, repeatable play loop, read-only World Preview, authoritative Map Panel, backend narrative fallback for successful tool-only turns, and stable Character Library typing during Play-page rerenders.
+- Remaining tracked follow-up items are post-baseline polish only: null-position actor closure and current-turn result visibility cleanup.
+- Current baseline is suitable as the next-stage starting point without reopening the closed playable loop.
+
 ## 1. Architecture Overview
 
 Backend:
@@ -15,7 +22,7 @@ Frontend:
 - `play.html` for the playable loop
 - `debug.html` for request/trace inspection
 - shared API layer, store, and panel modules
-- Play page currently includes Campaign, World, Character Library, Party, Map, Actor Control, and Debug panels
+- Play page currently includes Campaign, World, World Preview, Character Library, Party, Map, Actor Control, and Debug panels
 
 Storage:
 
@@ -69,10 +76,15 @@ Runtime system:
 
 ## 6. Current Stable Capabilities
 
+- world generation and world listing from Play
+- explicit world-aware campaign creation
 - playable gameplay loop from campaign selection to turn execution
 - campaign load and authoritative refresh
 - active actor control and switching
+- read-only World Preview derived from shared campaign/world snapshot state
 - read-only current-situation Map Panel derived from authoritative campaign snapshot state
+- successful tool-only turns keep readable `narrative_text` via backend fallback
+- Character Library typing remains stable during normal rerender/refresh paths
 - move / inventory / scene action flow
 - runtime unlock flow via status + explicit CLI
 - frontend recovery from not-ready backend

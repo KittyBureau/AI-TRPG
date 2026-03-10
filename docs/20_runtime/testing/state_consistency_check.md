@@ -14,9 +14,12 @@ It rewrites frontend state from response `selected`:
 
 - `state.campaign.party_character_ids`
 - `state.campaign.active_actor_id`
+- `state.campaign.actors`
+- `state.campaign.map`
 - `state.campaign.status`
 
 No local party repair is performed beyond lightweight normalization (trim empty values, dedupe).
+Current world preview context is refreshed separately through the existing campaign-world endpoint and stored at `state.campaign.world`.
 
 ## Auto Refresh Triggers
 
@@ -38,6 +41,8 @@ This keeps Party/Active display and next action actor resolution consistent with
 6. Verify:
    - Party panel equals backend `selected.party_character_ids`
    - Active actor equals backend `selected.active_actor_id`
+   - Map Panel equals backend-authoritative `actors` + `map` snapshot for the active actor
+   - World Preview equals backend-authoritative campaign-world snapshot
    - Campaign panel lifecycle/milestone display equals backend `status`
    - Actor Control `Acting as` follows `resolveActingActorId(state)`
 

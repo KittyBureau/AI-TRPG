@@ -4,9 +4,12 @@
 
 This smoke guide verifies only the `play.html` panel architecture:
 
+- World Panel
+- World Preview Panel
 - Campaign Panel
 - Character Library Panel
 - Party Panel
+- Map Panel
 - Actor Control Panel
 - Debug Panel
 
@@ -20,13 +23,24 @@ Out of scope for this smoke: `frontend/debug.html` + `frontend/debug.js` and dep
 
 ## Target Flow
 
-1. Create or select campaign
-2. Create library character
-3. Load character to campaign
-4. Set active actor
-5. Move
-6. Turn
-7. Refresh page and verify consistency
+1. Generate or confirm world availability
+2. Create or select campaign
+3. Create library character
+4. Load character to campaign
+5. Set active actor
+6. Move
+7. Turn
+8. Refresh page and verify consistency
+
+### 0) Generate/Confirm World
+
+- In **World Panel**, refresh or generate a world resource if needed.
+- In **World Preview Panel**, confirm the selected/current campaign world exposes read-only world context after campaign selection.
+
+Expected state/UI:
+
+- current world resource is available for campaign binding
+- World Preview shows `world_id`, `name`, `world_description`, `objective`, and `start_area` when the campaign has a world binding
 
 ## Step-by-step
 
@@ -135,7 +149,7 @@ Expected state/UI:
 - status shows `Turn completed as <actor_id>.`
 - no mismatch between displayed `Acting as` and request `execution.actor_id`.
 
-### 7) Refresh Campaign Consistency
+### 8) Refresh Campaign Consistency
 
 - In **Campaign Panel**, click `Refresh Campaign`.
 
@@ -147,6 +161,7 @@ Expected state/UI (authoritative from backend):
 
 - Party panel shows latest `active_actor_id`.
 - Party panel shows latest `party_character_ids`.
+- Map Panel shows current actor/location context from refreshed campaign snapshot state.
 - Actor Control resolves `Acting as` by rule:
   - use `state.campaign.active_actor_id` when it is in party
   - otherwise fallback to first party actor
@@ -157,4 +172,5 @@ Expected state/UI (authoritative from backend):
 1. After Party Panel switch, Actor Control `Acting as` changes to same actor.
 2. Move/Turn requests always use `execution.actor_id` equal to displayed `Acting as`.
 3. No state where Party shows one active actor while Actor Control acts with another.
-4. When party is empty, Actor Control shows `Party empty / no actor selected` and disables action buttons.
+4. World Preview and Map Panel remain aligned with the latest shared-store campaign/world snapshot after refresh.
+5. When party is empty, Actor Control shows `Party empty / no actor selected` and disables action buttons.

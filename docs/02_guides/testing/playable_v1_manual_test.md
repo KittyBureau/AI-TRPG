@@ -1,8 +1,21 @@
 ﻿# Playable v1 Manual Test
 
-Last updated: 2026-03-05
+Last updated: 2026-03-10
 
 This guide provides repeatable manual verification for Playable v1.
+
+## Closure Note (2026-03-10)
+
+Latest playable-baseline manual regression status: PASS (functionally normal).
+
+Closure observations for the current baseline:
+
+- world generation and explicit world-bound campaign creation remained usable
+- Play `World Preview` showed current world premise/objective context
+- Play `Map Panel` showed active actor, current area, and reachable areas from authoritative campaign snapshot state
+- successful tool-only turns retained readable `narrative_text` through backend fallback
+- Character Library typing remained stable during normal Play-page rerender/refresh behavior
+- remaining follow-up items are tracked separately as post-baseline polish in `PLAYABLE_V1_TODO.md`
 
 ## Test Set A: Deterministic Regression (Primary)
 
@@ -66,6 +79,7 @@ Expected observations:
   - `narrative_text`
   - `state_summary`
   - no applied actions
+- current Play page can also expose read-only World Preview and Map Panel state from shared store refresh paths after campaign/world selection
 
 ### A3. World generate deterministic smoke (optional but recommended)
 
@@ -140,6 +154,7 @@ Per-turn expected observations:
 - response includes required keys:
   - `effective_actor_id`, `narrative_text`, `dialog_type`, `state_summary`
 - if tool is intended, corresponding `applied_actions[*].tool` is present
+- if a tool-driven success would otherwise return blank `narrative_text`, the response still includes the minimal fallback text
 - actor mismatch requests are rejected with `actor_context_mismatch`
 - no impossible state jumps in storage (`actors` is authority)
 
