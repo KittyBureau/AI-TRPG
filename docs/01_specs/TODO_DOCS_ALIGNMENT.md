@@ -19,3 +19,18 @@ TODOs across docs.
     behavior for GET fact and generate error precedence.
   - `docs/20_runtime/testing/api_test_guide.md` includes the same matrices with explicit
     test file line references.
+
+## Tool-success narrative fallback alignment (2026-03-10)
+- Status: deferred doc wording update.
+- Scope:
+  - backend now injects minimal `narrative_text = "The action was performed."`
+    when a turn has at least one successful applied action and the model returned
+    empty assistant text.
+  - current response shape is unchanged; only the success-path empty-text behavior
+    was hardened for Playable v1 closure.
+- Recommendation:
+  - fold this behavior into `docs/20_runtime/testing/api_test_guide.md` and any
+    matching runtime contract wording during the next P1 docs closure pass.
+- Evidence:
+  - `backend/app/turn_service.py`
+  - `backend/tests/test_turn_response_contract_api.py`

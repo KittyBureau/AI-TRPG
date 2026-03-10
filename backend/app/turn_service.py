@@ -1266,6 +1266,7 @@ def _build_success_response(
         "state_summary": state_summary,
     }
     _apply_move_options_narrative_fallback(response)
+    _apply_success_tool_narrative_fallback(response)
     if debug_payload:
         response["debug"] = dict(debug_payload)
     return response
@@ -1311,6 +1312,18 @@ def _apply_move_options_narrative_fallback(response: Dict[str, object]) -> None:
         response["narrative_text"] = (
             "No movement happened yet. No reachable areas are available from the current position."
         )
+
+
+def _apply_success_tool_narrative_fallback(response: Dict[str, object]) -> None:
+    if not isinstance(response, dict):
+        return
+    narrative_text = response.get("narrative_text")
+    if isinstance(narrative_text, str) and narrative_text.strip():
+        return
+    applied_actions = response.get("applied_actions")
+    if not isinstance(applied_actions, list) or not applied_actions:
+        return
+    response["narrative_text"] = "The action was performed."
 
 
 def _build_failure_response(

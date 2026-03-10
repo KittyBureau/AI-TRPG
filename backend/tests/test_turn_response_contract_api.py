@@ -64,6 +64,46 @@ class _MixedToolLLM:
         }
 
 
+class _NarrativeAndToolSuccessLLM:
+    def generate(
+        self,
+        system_prompt: str,
+        user_input: str,
+        debug_append: Any,
+    ) -> Dict[str, Any]:
+        return {
+            "assistant_text": "Existing narration.",
+            "dialog_type": "scene_description",
+            "tool_calls": [
+                {
+                    "id": "call_inventory_ok",
+                    "tool": "inventory_add",
+                    "args": {"item_id": "torch", "quantity": 1},
+                }
+            ],
+        }
+
+
+class _FailedToolOnlyLLM:
+    def generate(
+        self,
+        system_prompt: str,
+        user_input: str,
+        debug_append: Any,
+    ) -> Dict[str, Any]:
+        return {
+            "assistant_text": "",
+            "dialog_type": "scene_description",
+            "tool_calls": [
+                {
+                    "id": "call_move_invalid",
+                    "tool": "move",
+                    "args": {"actor_id": "pc_001", "to_area_id": "area_001"},
+                }
+            ],
+        }
+
+
 class _ConflictMoveLLM:
     def generate(
         self,
@@ -268,6 +308,52 @@ def test_chat_turn_tool_response_contract_keeps_applied_actions_and_tool_feedbac
     assert payload["conflict_report"] is None
     assert payload["state_summary"]["active_actor_inventory"] == {"torch": 1}
     assert payload["state_summary"]["inventories"] == {"pc_001": {"torch": 1}}
+    assert payload["narrative_text"] == "The action was performed."
+
+
+def test_chat_turn_keeps_existing_narrative_when_tool_success_also_occurs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _create_campaign(tmp_path, "camp_contract_tool_with_text")
+    client = _client(tmp_path, monkeypatch, _NarrativeAndToolSuccessLLM)
+
+    response = client.post(
+        "/api/v1/chat/turn",
+        json={"campaign_id": "camp_contract_tool_with_text", "user_input": "Do the thing."},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["applied_actions"]) == 1
+    assert payload["applied_actions"][0]["tool"] == "inventory_add"
+    assert payload["narrative_text"] == "Existing narration."
+
+
+def test_chat_turn_failed_tool_only_keeps_empty_narrative_without_success_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _create_campaign(tmp_path, "camp_contract_failed_tool_only")
+    client = _client(tmp_path, monkeypatch, _FailedToolOnlyLLM)
+
+    response = client.post(
+        "/api/v1/chat/turn",
+        json={"campaign_id": "camp_contract_failed_tool_only", "user_input": "Move nowhere."},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["applied_actions"] == []
+    assert payload["tool_feedback"]["failed_calls"] == [
+        {
+            "id": "call_move_invalid",
+            "tool": "move",
+            "status": "error",
+            "reason": "invalid_args",
+        }
+    ]
+    assert payload["narrative_text"] == ""
 
 
 def test_chat_turn_conflict_response_contract_is_stable_and_not_logged(
