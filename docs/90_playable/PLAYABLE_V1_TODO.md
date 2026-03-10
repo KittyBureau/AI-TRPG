@@ -42,8 +42,8 @@ At milestone or phase wrap-up, refresh the lightweight ChatGPT web reference-doc
 
 - P0: 14 items (must-complete)
 - P1: 21 items
-- P2: 12 items
-- Total: 47 items
+- P2: 22 items
+- Total: 57 items
 
 ## TOC
 
@@ -617,24 +617,126 @@ Explicitly out of current P1 closure:
 - Tests: manual manifest toggle rehearsal + `pytest -q`
 - Rollback: revert manifest toggle and changelog entry per playbook.
 
-### P2-11 Context Architecture Optimization (Queued)
+### P2-11 Runtime Context Architecture (Architecture Overview)
 - Status: `TODO`
 - STATUS: queued for P2 (not implemented).
-- Why: future improvement to support long play sessions with stable world consistency and lower token usage.
-- Core idea:
-  - Build prompts from **state + area context** instead of long dialogue history.
-  - Current area: full description + entity tags.
-  - Nearby areas: summarized state.
-  - Distant world: compressed world facts.
-  - Recent dialogue: short rolling window only.
-- Subtasks:
-  - Implement a **Context Builder** module responsible for constructing prompts.
-  - Introduce **persistent tags** and **transient tags (TTL)** for entities and areas.
-  - Replace long dialogue history with **state-derived summaries**.
-  - Add token monitoring and heuristics to trigger compression.
-- Acceptance: design and implementation, when scheduled, preserve world consistency while reducing token growth in long sessions.
-- Tests: future long-session regression coverage and prompt-size observability checks after implementation is approved.
-- Rollback: keep the current history-oriented prompt assembly if the optimization proves unstable.
+- Why: support long-running TRPG sessions under context window limits while preserving the existing P1 gameplay pipeline, authoritative runtime state, tool execution flow, prompt simplicity, and controllable context size.
+- Scope:
+  - umbrella architecture entry for P2 runtime context work
+  - implementation split tracked by `P2-11A` through `P2-11J`
+  - developer guidance reference: `docs/90_playable/P2_RUNTIME_CONTEXT_DEVELOPER_REFERENCE.md`
+  - runtime flow overview: `docs/90_playable/P2_RUNTIME_CONTEXT_ARCHITECTURE_OVERVIEW.md`
+  - builder boundary prep note: `docs/90_playable/P2_CONTEXT_BUILDER_IMPLEMENTATION_PREP.md`
+- Architecture invariants:
+  - authoritative runtime state remains the single source of truth
+  - structured memory is advisory recall only and must never override runtime authority
+  - context builder output is projected prompt context only
+  - fallback recall is rescue-only and must not become default per-turn behavior
+  - memory writing remains deterministic and rule-driven in initial P2
+- Recommended implementation order:
+  1. `P2-11A Context Builder Infrastructure`
+  2. `P2-11B Recent History Window`
+  3. `P2-11D Structured Memory Framework`
+  4. `P2-11E State Memory`
+  5. `P2-11F Event Memory`
+  6. `P2-11G Memory Update Pipeline`
+  7. `P2-11C Focus Layer`
+  8. `P2-11H Fallback Recall System`
+  9. `P2-11I Context Token Budget Policy`
+  10. `P2-11J Context Builder Observability and Regression`
+- Acceptance:
+  - P2 runtime context work is split into implementation-ready subtasks without changing current runtime behavior
+  - architecture boundaries remain explicit across all `P2-11*` tasks
+  - P1 runtime authority and turn flow remain the baseline compatibility target for later implementation
+- Tests: future integration and regression coverage after `P2-11A` through `P2-11J` are implemented
+- Rollback: keep the current history-oriented prompt assembly if the P2 runtime context rollout proves unstable.
+- Reserved for later roadmap only:
+  - embedding or semantic retrieval
+  - more advanced reranking
+  - LLM-assisted retrieval planning enhancements
+  - richer event chain modeling
+  - history summarization or compression layers beyond the initial recent-history policy
+  - memory maintenance, archive, cleanup, and aging strategies beyond minimum inactive or superseded handling
+
+### P2-11A Context Builder Infrastructure
+- Status: `TODO`
+- Why: P2 needs a stable before-turn integration layer before adding memory or recall features.
+- Scope: future context builder runtime layer in `backend/app/` plus the `backend/app/turn_service.py` integration boundary before `_build_system_prompt()`.
+- Acceptance: builder input/output contract is defined; output remains advisory projected prompt context only; authoritative runtime state remains outside the builder; no second turn execution path is introduced.
+- Tests: future turn-lifecycle integration checks, projected-context determinism checks, and P1 compatibility regression coverage.
+- Rollback: keep prompt assembly in the current `turn_service.py` path without the new builder layer.
+
+### P2-11B Recent History Window
+- Status: `TODO`
+- Why: short-term continuity needs a bounded and deterministic history source before long-session recall is added.
+- Scope: recent-turn record shape, bounded window selection, clipping rules, and prompt-projection integration inside the future context builder path.
+- Acceptance: recent history stays non-authoritative; window policy is deterministic under the same inputs; overflow behavior is documented and testable.
+- Tests: future recent-history selection tests, long-session window clipping checks, and projected-context determinism scenarios.
+- Rollback: fall back to current runtime behavior without recent-history prompt injection.
+
+### P2-11C Focus Layer
+- Status: `TODO`
+- Why: current-turn interpretation needs lightweight reference tracking without creating a new truth layer.
+- Scope: short-lived focus signals for referenced actors, areas, quests, entities, pronouns, and recent topic markers inside the context-preparation path.
+- Acceptance: focus output remains lightweight, rebuildable, and non-persistent; focus supports interpretation and disambiguation only; focus does not become authoritative truth.
+- Tests: future pronoun-resolution scenarios, reference disambiguation checks, and conservative ambiguity handling tests.
+- Rollback: disable focus projection and rely on core state plus recent history only.
+
+### P2-11D Structured Memory Framework
+- Status: `TODO`
+- Why: state memory and event memory need a shared framework before category-specific logic is implemented.
+- Scope: structured memory boundaries, category conventions, scope conventions, storage direction, and rule-based candidate selection inputs for recall.
+- Acceptance: framework is limited to `state memory` and `event memory`; structured memory remains advisory recall data only; quest-related facts remain represented through scope or category rather than a third memory system.
+- Tests: future schema-loading checks, category-boundary tests, and candidate-selection contract coverage.
+- Rollback: keep long-session support limited to runtime state and recent history only.
+
+### P2-11E State Memory
+- Status: `TODO`
+- Why: persistent currently-relevant facts need a dedicated structured form without duplicating runtime authority.
+- Scope: state-memory schema direction, scope or subject or key-value representation, correction handling, supersession handling, and retrieval rules for currently relevant facts.
+- Acceptance: state memory supports stable upsert and supersession handling; corrected records remain traceable; state memory never overrides or mirrors full authoritative campaign state.
+- Tests: future state-memory upsert tests, supersession tests, and authority-conflict regression checks.
+- Rollback: disable state-memory reads and writes while keeping the structured-memory framework intact.
+
+### P2-11F Event Memory
+- Status: `TODO`
+- Why: long-session historical recall needs selective event retention beyond the recent-history window.
+- Scope: event-memory schema direction, deterministic write thresholds, `caused_state_changes` handling direction, recall projection shape, and old-event candidate selection rules.
+- Acceptance: event memory is selective rather than every-turn; write thresholds remain deterministic and rule-driven; recalled event recap stays narrow enough for prompt budget control.
+- Tests: future event-write threshold tests, old-event recall scenarios, cross-area recall scenarios, and recap-size checks.
+- Rollback: disable event-memory reads and writes while keeping other context layers active.
+
+### P2-11G Memory Update Pipeline
+- Status: `TODO`
+- Why: structured memory needs a deterministic after-turn write path that does not interfere with authority resolution.
+- Scope: after-turn memory update hook, lifecycle ordering after tool execution and state update, no-write cases, and inactive or superseded handling direction.
+- Acceptance: pipeline derives structured records only after authoritative turn resolution; pipeline does not mutate authoritative runtime state; not every turn creates long-term memory.
+- Tests: future after-turn lifecycle tests, deterministic write-suppression checks, and growth-control regression coverage.
+- Rollback: bypass the memory update hook and keep runtime behavior unchanged apart from any read-only context layers.
+
+### P2-11H Fallback Recall System
+- Status: `TODO`
+- Why: some old or ambiguous references will fall outside the default prompt view even after structured memory is added.
+- Scope: fallback-only same-turn recall path, unresolved-reference trigger rules, lightweight recall-criteria translation contract, candidate selection, context rebuild path, and conservative failure behavior.
+- Acceptance: fallback recall remains rescue-only; it does not become default per-turn double-LLM behavior; recall failure or ambiguity yields conservative responses instead of invented certainty.
+- Tests: future old-reference recall scenarios, ambiguous reference fallback tests, same-turn rebuild checks, and overuse-guard regression coverage.
+- Rollback: disable fallback recall and rely on default context projection only.
+
+### P2-11I Context Token Budget Policy
+- Status: `TODO`
+- Why: P2 needs predictable prompt size control before recall-heavy layers can remain stable in long sessions.
+- Scope: layer caps, truncation order, degradation order, and budget enforcement rules for core state, recent history, structured memory, and recalled recap.
+- Acceptance: budget policy is deterministic under the same inputs; truncation rules preserve authority-first projection; later layers cannot crowd out required core state.
+- Tests: future prompt-budget stress tests, layer-cap regression checks, and projected-context determinism scenarios under fixed budgets.
+- Rollback: fall back to the current prompt assembly path without P2 layer budgeting.
+
+### P2-11J Context Builder Observability and Regression
+- Status: `TODO`
+- Why: context selection bugs will be difficult to diagnose without trace-gated observability from the start.
+- Scope: trace for layer contributions, selected and skipped structured records, recall trigger decisions, recall results, token budget decisions, and regression coverage planning for deterministic projected-context behavior.
+- Acceptance: observability is trace-gated; enough data is exposed to diagnose projection and recall errors deterministically; projected-context determinism is part of the regression target; no debug-only alternate logic path is introduced.
+- Tests: future trace-gate API regression checks, context-selection trace validation, deterministic projection diagnostics coverage, and projected-context determinism scenarios.
+- Rollback: disable added trace fields and keep existing observability contracts only.
 
 ### P2-12 Conflict detector false-positive reduction
 - Status: `TODO`
