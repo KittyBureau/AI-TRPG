@@ -5,40 +5,136 @@ function toTagsInput(value) {
   return value.filter((item) => typeof item === "string" && item.trim()).join(", ");
 }
 
-function captureFocusState(root) {
-  const active = document.activeElement;
-  if (!(active instanceof HTMLElement) || !root.contains(active)) {
-    return null;
-  }
-  const key = active.getAttribute("data-focus-key");
-  if (!key) {
-    return null;
-  }
-  return {
-    key,
-    selectionStart:
-      typeof active.selectionStart === "number" ? active.selectionStart : null,
-    selectionEnd:
-      typeof active.selectionEnd === "number" ? active.selectionEnd : null,
-  };
+function toInputText(value) {
+  return typeof value === "string" ? value : "";
 }
 
-function restoreFocusState(root, snapshot) {
-  if (!snapshot) {
+export function syncFormFieldValue(field, value) {
+  if (!(field instanceof HTMLElement)) {
     return;
   }
-  const target = root.querySelector(`[data-focus-key="${snapshot.key}"]`);
-  if (!(target instanceof HTMLElement)) {
+  const nextValue = toInputText(value);
+  if (document.activeElement === field) {
     return;
   }
-  target.focus();
-  if (
-    typeof snapshot.selectionStart === "number" &&
-    typeof snapshot.selectionEnd === "number" &&
-    "setSelectionRange" in target
-  ) {
-    target.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+  if (field.value !== nextValue) {
+    field.value = nextValue;
   }
+}
+
+function renderLibraryList(container, library, loadToCampaign) {
+  container.innerHTML = "";
+  if (!library.length) {
+    const empty = document.createElement("div");
+    empty.className = "row note";
+    empty.textContent = "No character templates.";
+    container.appendChild(empty);
+    return;
+  }
+
+  for (const character of library) {
+    const row = document.createElement("div");
+    row.className = "row";
+
+    const summary = document.createElement("div");
+    const name = character?.name || character?.id || "Unnamed";
+    const desc = character?.summary ? ` - ${character.summary}` : "";
+    summary.textContent = `${name}${desc}`;
+    row.appendChild(summary);
+
+    const tags = document.createElement("div");
+    tags.className = "note";
+    tags.textContent = `id=${character.id} | tags=${toTagsInput(character.tags) || "-"}`;
+    row.appendChild(tags);
+
+    const actions = document.createElement("div");
+    actions.className = "inline";
+    const loadButton = document.createElement("button");
+    loadButton.className = "primary";
+    loadButton.textContent = "Load to Campaign";
+    loadButton.addEventListener("click", () => loadToCampaign(character.id));
+    actions.appendChild(loadButton);
+    row.appendChild(actions);
+
+    container.appendChild(row);
+  }
+}
+
+function buildShell(mount, store, actions) {
+  mount.innerHTML = "";
+
+  const title = document.createElement("h2");
+  title.className = "panel-title";
+  title.textContent = "Character Library";
+  mount.appendChild(title);
+
+  const topActions = document.createElement("div");
+  topActions.className = "inline";
+  const refreshButton = document.createElement("button");
+  refreshButton.textContent = "Refresh";
+  refreshButton.addEventListener("click", actions.refreshLibrary);
+  topActions.appendChild(refreshButton);
+  mount.appendChild(topActions);
+
+  const status = document.createElement("div");
+  status.className = "note";
+  mount.appendChild(status);
+
+  const list = document.createElement("div");
+  list.className = "stack";
+  mount.appendChild(list);
+
+  const createTitle = document.createElement("h3");
+  createTitle.textContent = "Create Character";
+  mount.appendChild(createTitle);
+
+  const nameField = document.createElement("label");
+  nameField.className = "field";
+  nameField.innerHTML = '<span class="field-label">Name</span>';
+  const nameInput = document.createElement("input");
+  nameInput.setAttribute("data-focus-key", "character-name");
+  nameInput.addEventListener("input", () => {
+    store.setCharacterCreateForm({ name: nameInput.value });
+  });
+  nameField.appendChild(nameInput);
+  mount.appendChild(nameField);
+
+  const summaryField = document.createElement("label");
+  summaryField.className = "field";
+  summaryField.innerHTML = '<span class="field-label">Summary</span>';
+  const summaryInput = document.createElement("textarea");
+  summaryInput.setAttribute("data-focus-key", "character-summary");
+  summaryInput.rows = 2;
+  summaryInput.addEventListener("input", () => {
+    store.setCharacterCreateForm({ summary: summaryInput.value });
+  });
+  summaryField.appendChild(summaryInput);
+  mount.appendChild(summaryField);
+
+  const tagsField = document.createElement("label");
+  tagsField.className = "field";
+  tagsField.innerHTML = '<span class="field-label">Tags (comma separated)</span>';
+  const tagsInput = document.createElement("input");
+  tagsInput.setAttribute("data-focus-key", "character-tags");
+  tagsInput.addEventListener("input", () => {
+    store.setCharacterCreateForm({ tags: tagsInput.value });
+  });
+  tagsField.appendChild(tagsInput);
+  mount.appendChild(tagsField);
+
+  const createButton = document.createElement("button");
+  createButton.className = "primary";
+  createButton.textContent = "Create";
+  createButton.addEventListener("click", actions.createCharacter);
+  mount.appendChild(createButton);
+
+  return {
+    status,
+    list,
+    nameInput,
+    summaryInput,
+    tagsInput,
+  };
 }
 
 export function initPanel(store) {
@@ -89,123 +185,27 @@ export function initPanel(store) {
     store.setDebugResponseText(JSON.stringify(result.data, null, 2));
   }
 
+  const refs = buildShell(mount, store, {
+    refreshLibrary,
+    createCharacter,
+  });
+
   function render() {
     const state = store.getState();
-    const focusSnapshot = captureFocusState(mount);
     const library = Array.isArray(state.character?.library)
       ? state.character.library
       : [];
     const createForm = state.character?.create_form || {};
 
-    mount.innerHTML = "";
-
-    const title = document.createElement("h2");
-    title.className = "panel-title";
-    title.textContent = "Character Library";
-    mount.appendChild(title);
-
-    const topActions = document.createElement("div");
-    topActions.className = "inline";
-    const refreshButton = document.createElement("button");
-    refreshButton.textContent = "Refresh";
-    refreshButton.addEventListener("click", refreshLibrary);
-    topActions.appendChild(refreshButton);
-    mount.appendChild(topActions);
-
-    const status = document.createElement("div");
-    status.className = "note";
     if (state.character?.error) {
-      status.textContent = `Error: ${state.character.error}`;
+      refs.status.textContent = `Error: ${state.character.error}`;
     } else {
-      status.textContent = `Entries: ${library.length}`;
+      refs.status.textContent = `Entries: ${library.length}`;
     }
-    mount.appendChild(status);
-
-    const list = document.createElement("div");
-    list.className = "stack";
-    if (!library.length) {
-      const empty = document.createElement("div");
-      empty.className = "row note";
-      empty.textContent = "No character templates.";
-      list.appendChild(empty);
-    } else {
-      for (const character of library) {
-        const row = document.createElement("div");
-        row.className = "row";
-
-        const summary = document.createElement("div");
-        const name = character?.name || character?.id || "Unnamed";
-        const desc = character?.summary ? ` - ${character.summary}` : "";
-        summary.textContent = `${name}${desc}`;
-        row.appendChild(summary);
-
-        const tags = document.createElement("div");
-        tags.className = "note";
-        tags.textContent = `id=${character.id} | tags=${toTagsInput(character.tags) || "-"}`;
-        row.appendChild(tags);
-
-        const actions = document.createElement("div");
-        actions.className = "inline";
-        const loadButton = document.createElement("button");
-        loadButton.className = "primary";
-        loadButton.textContent = "Load to Campaign";
-        loadButton.addEventListener("click", () => loadToCampaign(character.id));
-        actions.appendChild(loadButton);
-        row.appendChild(actions);
-
-        list.appendChild(row);
-      }
-    }
-    mount.appendChild(list);
-
-    const createTitle = document.createElement("h3");
-    createTitle.textContent = "Create Character";
-    mount.appendChild(createTitle);
-
-    const nameField = document.createElement("label");
-    nameField.className = "field";
-    nameField.innerHTML = '<span class="field-label">Name</span>';
-    const nameInput = document.createElement("input");
-    nameInput.setAttribute("data-focus-key", "character-name");
-    nameInput.value = createForm.name || "";
-    nameInput.addEventListener("input", () => {
-      store.setCharacterCreateForm({ name: nameInput.value });
-    });
-    nameField.appendChild(nameInput);
-    mount.appendChild(nameField);
-
-    const summaryField = document.createElement("label");
-    summaryField.className = "field";
-    summaryField.innerHTML = '<span class="field-label">Summary</span>';
-    const summaryInput = document.createElement("textarea");
-    summaryInput.setAttribute("data-focus-key", "character-summary");
-    summaryInput.rows = 2;
-    summaryInput.value = createForm.summary || "";
-    summaryInput.addEventListener("input", () => {
-      store.setCharacterCreateForm({ summary: summaryInput.value });
-    });
-    summaryField.appendChild(summaryInput);
-    mount.appendChild(summaryField);
-
-    const tagsField = document.createElement("label");
-    tagsField.className = "field";
-    tagsField.innerHTML = '<span class="field-label">Tags (comma separated)</span>';
-    const tagsInput = document.createElement("input");
-    tagsInput.setAttribute("data-focus-key", "character-tags");
-    tagsInput.value = createForm.tags || "";
-    tagsInput.addEventListener("input", () => {
-      store.setCharacterCreateForm({ tags: tagsInput.value });
-    });
-    tagsField.appendChild(tagsInput);
-    mount.appendChild(tagsField);
-
-    const createButton = document.createElement("button");
-    createButton.className = "primary";
-    createButton.textContent = "Create";
-    createButton.addEventListener("click", createCharacter);
-    mount.appendChild(createButton);
-
-    restoreFocusState(mount, focusSnapshot);
+    renderLibraryList(refs.list, library, loadToCampaign);
+    syncFormFieldValue(refs.nameInput, createForm.name);
+    syncFormFieldValue(refs.summaryInput, createForm.summary);
+    syncFormFieldValue(refs.tagsInput, createForm.tags);
   }
 
   render();
