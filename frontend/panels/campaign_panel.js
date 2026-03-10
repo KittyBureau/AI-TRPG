@@ -1,4 +1,4 @@
-import { createCampaign, listCampaigns } from "../api/api.js";
+import { createCampaign, listCampaigns, listWorlds } from "../api/api.js";
 
 export function formatCampaignStatusLines(status) {
   if (!status || typeof status !== "object") {
@@ -33,6 +33,8 @@ export function initPanel(store) {
   const uiState = {
     selectedCharacterIds: [],
     requestedActiveActorId: "",
+    selectedWorldId: "",
+    worldOptions: [],
     submitting: false,
   };
 
@@ -71,6 +73,33 @@ export function initPanel(store) {
     if (!silent) {
       store.setStatusMessage(`Loaded ${result.data.campaigns.length} campaigns.`);
     }
+  }
+
+  async function refreshWorlds({ silent = false } = {}) {
+    const state = store.getState();
+    const result = await listWorlds(state.baseUrl);
+    if (!result.ok || !Array.isArray(result.data)) {
+      uiState.worldOptions = [];
+      if (!silent) {
+        store.setStatusMessage(`Failed to load worlds (${result.status}).`);
+      } else {
+        render();
+      }
+      return result;
+    }
+    uiState.worldOptions = result.data;
+    if (
+      uiState.selectedWorldId &&
+      !uiState.worldOptions.some((world) => world && world.world_id === uiState.selectedWorldId)
+    ) {
+      uiState.selectedWorldId = "";
+    }
+    if (!silent) {
+      store.setStatusMessage(`Loaded ${uiState.worldOptions.length} world(s).`);
+    } else {
+      render();
+    }
+    return result;
   }
 
   async function createCampaignEntry() {
@@ -123,6 +152,7 @@ export function initPanel(store) {
         {
           characterIds: selectedCharacterIds,
           activeActorId: uiState.requestedActiveActorId || selectedCharacterIds[0],
+          worldId: uiState.selectedWorldId,
         },
         state.baseUrl
       );
@@ -216,6 +246,7 @@ export function initPanel(store) {
     const focusSnapshot = captureFocusState();
     const library = Array.isArray(state.character?.library) ? state.character.library : [];
     const orderedSelectedCharacterIds = syncSelectedPartyState(library);
+    const worlds = Array.isArray(uiState.worldOptions) ? uiState.worldOptions : [];
     mount.innerHTML = "";
 
     const title = document.createElement("h2");
@@ -235,6 +266,7 @@ export function initPanel(store) {
       if (typeof store.recoverRuntime === "function" && store.getState().baseUrl) {
         await store.recoverRuntime({ silent: false, manual: true });
       }
+      await refreshWorlds({ silent: true });
     });
     baseField.appendChild(baseInput);
     mount.appendChild(baseField);
@@ -312,6 +344,61 @@ export function initPanel(store) {
     explicitPartyNote.textContent =
       "Selected library characters are created as the initial party, then loaded through the existing party/load chain to hydrate adopted profiles.";
     mount.appendChild(explicitPartyNote);
+
+    const worldField = document.createElement("label");
+    worldField.className = "field";
+    worldField.innerHTML = '<span class="field-label">Existing World (optional)</span>';
+    const worldControls = document.createElement("div");
+    worldControls.className = "inline";
+    const worldSelect = document.createElement("select");
+    worldSelect.setAttribute("data-focus-key", "explicit-create-world");
+    const worldEmptyOption = document.createElement("option");
+    worldEmptyOption.value = "";
+    worldEmptyOption.textContent = "Default campaign world";
+    worldSelect.appendChild(worldEmptyOption);
+    for (const world of worlds) {
+      const worldId =
+        world && typeof world.world_id === "string" ? world.world_id.trim() : "";
+      if (!worldId) {
+        continue;
+      }
+      const option = document.createElement("option");
+      option.value = worldId;
+      const name =
+        world && typeof world.name === "string" && world.name.trim()
+          ? world.name.trim()
+          : worldId;
+      const generatorId =
+        world?.generator && typeof world.generator.id === "string" && world.generator.id.trim()
+          ? world.generator.id.trim()
+          : "";
+      option.textContent = generatorId ? `${name} (${worldId}, ${generatorId})` : `${name} (${worldId})`;
+      option.selected = worldId === uiState.selectedWorldId;
+      worldSelect.appendChild(option);
+    }
+    worldSelect.disabled = uiState.submitting;
+    worldSelect.addEventListener("change", () => {
+      uiState.selectedWorldId = worldSelect.value.trim();
+      render();
+    });
+    const worldRefreshButton = document.createElement("button");
+    worldRefreshButton.type = "button";
+    worldRefreshButton.textContent = "Refresh Worlds";
+    worldRefreshButton.disabled = uiState.submitting;
+    worldRefreshButton.addEventListener("click", () => {
+      void refreshWorlds();
+    });
+    worldControls.appendChild(worldSelect);
+    worldControls.appendChild(worldRefreshButton);
+    worldField.appendChild(worldControls);
+    mount.appendChild(worldField);
+
+    const worldNote = document.createElement("div");
+    worldNote.className = "note";
+    worldNote.textContent = worlds.length
+      ? "Optional world binding for explicit create. Leave empty to keep the old default world path."
+      : "No saved worlds found. Explicit create can still use the old default world path.";
+    mount.appendChild(worldNote);
 
     const partySelectionList = document.createElement("div");
     partySelectionList.className = "stack";
@@ -415,5 +502,6 @@ export function initPanel(store) {
   store.subscribe(render);
   if (store.getState().backend?.ready !== false) {
     refreshCampaigns({ silent: true });
+    refreshWorlds({ silent: true });
   }
 }

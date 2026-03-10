@@ -578,7 +578,7 @@ test("silent readiness polling does not emit repeatedly when backend state is un
   assert.equal(emits, 1);
 });
 
-test("createCampaignWithSelectedParty creates, loads selected characters, then sets active actor", async () => {
+test("createCampaignWithSelectedParty creates with optional world_id, loads selected characters, then sets active actor", async () => {
   const store = await loadStoreModule();
   const calls = [];
   let campaignGetCalls = 0;
@@ -593,6 +593,7 @@ test("createCampaignWithSelectedParty creates, loads selected characters, then s
     if (requestUrl.endsWith("/api/v1/campaign/create")) {
       assert.deepEqual(JSON.parse(String(options.body)), {
         party_character_ids: ["pc_002", "pc_003"],
+        world_id: "world_existing_002",
       });
       return jsonResponse({ campaign_id: "camp_new" });
     }
@@ -649,6 +650,7 @@ test("createCampaignWithSelectedParty creates, loads selected characters, then s
     {
       characterIds: ["pc_002", "pc_003"],
       activeActorId: "pc_003",
+      worldId: "world_existing_002",
     },
     "http://127.0.0.1:8000"
   );

@@ -31,6 +31,10 @@ async function listCampaigns(baseUrl) {
   return request(baseUrl, "/api/v1/campaign/list");
 }
 
+async function listWorlds(baseUrl) {
+  return request(baseUrl, "/api/v1/worlds/list");
+}
+
 async function getRuntimeStatus(baseUrl) {
   return request(baseUrl, "/api/v1/runtime/status");
 }
@@ -155,6 +159,7 @@ export {
   getMapView,
   getRuntimeStatus,
   listCampaigns,
+  listWorlds,
   listCharacters,
   loadCharacterToCampaign,
   selectActor,

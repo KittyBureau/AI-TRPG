@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from backend.domain.world_models import WorldGenerator
 from backend.infra.file_repo import FileRepo
 
-router = APIRouter(prefix="/campaigns", tags=["world"])
+router = APIRouter(tags=["world"])
 
 
 def _repo() -> FileRepo:
@@ -29,7 +29,33 @@ class WorldResponse(BaseModel):
     updated_at: str
 
 
-@router.get("/{campaign_id}/world", response_model=WorldResponse)
+class WorldSummaryGeneratorResponse(BaseModel):
+    id: str = ""
+
+
+class WorldSummaryResponse(BaseModel):
+    world_id: str
+    name: str
+    generator: WorldSummaryGeneratorResponse
+    updated_at: str
+
+
+@router.get("/worlds/list", response_model=list[WorldSummaryResponse])
+def list_worlds() -> list[WorldSummaryResponse]:
+    repo = _repo()
+    worlds = repo.list_worlds()
+    return [
+        WorldSummaryResponse(
+            world_id=world.world_id,
+            name=world.name,
+            generator=WorldSummaryGeneratorResponse(id=world.generator.id if world.generator else ""),
+            updated_at=world.updated_at,
+        )
+        for world in worlds
+    ]
+
+
+@router.get("/campaigns/{campaign_id}/world", response_model=WorldResponse)
 def get_world_for_campaign(campaign_id: str) -> WorldResponse:
     repo = _repo()
     try:

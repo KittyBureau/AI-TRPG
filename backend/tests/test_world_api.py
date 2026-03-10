@@ -16,6 +16,7 @@ from backend.domain.models import (
     Selected,
     SettingsSnapshot,
 )
+from backend.domain.world_models import World
 from backend.infra.file_repo import FileRepo
 
 
@@ -91,3 +92,72 @@ def test_get_campaign_world_returns_404_when_campaign_missing(
 
     response = client.get("/api/v1/campaigns/camp_missing/world")
     assert response.status_code == 404
+
+
+def test_list_worlds_returns_minimal_summaries_sorted_by_updated_at_desc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = FileRepo(tmp_path / "storage")
+    repo.save_world(
+        World(
+            world_id="world_old",
+            name="Older World",
+            seed=1,
+            generator={"id": "stub", "version": "1", "params": {}},
+            schema_version="1",
+            created_at="2026-03-03T00:00:00+00:00",
+            updated_at="2026-03-03T00:00:00+00:00",
+        )
+    )
+    repo.save_world(
+        World(
+            world_id="world_new",
+            name="Newer World",
+            seed=2,
+            generator={"id": "alt", "version": "1", "params": {}},
+            schema_version="1",
+            created_at="2026-03-04T00:00:00+00:00",
+            updated_at="2026-03-05T00:00:00+00:00",
+        )
+    )
+    client = _client(tmp_path, monkeypatch)
+
+    response = client.get("/api/v1/worlds/list")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["world_id"] for item in body] == ["world_new", "world_old"]
+    assert body[0] == {
+        "world_id": "world_new",
+        "name": "Newer World",
+        "generator": {"id": "alt"},
+        "updated_at": "2026-03-05T00:00:00+00:00",
+    }
+
+
+def test_list_worlds_skips_invalid_world_json_without_stub_side_effects(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = FileRepo(tmp_path / "storage")
+    repo.save_world(
+        World(
+            world_id="world_valid",
+            name="Valid World",
+            seed=7,
+            generator={"id": "stub", "version": "1", "params": {}},
+            schema_version="1",
+            created_at="2026-03-04T00:00:00+00:00",
+            updated_at="2026-03-04T00:00:00+00:00",
+        )
+    )
+    invalid_path = tmp_path / "storage" / "worlds" / "world_bad" / "world.json"
+    invalid_path.parent.mkdir(parents=True, exist_ok=True)
+    invalid_path.write_text('{"world_id": ""}', encoding="utf-8")
+    client = _client(tmp_path, monkeypatch)
+
+    response = client.get("/api/v1/worlds/list")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["world_id"] for item in body] == ["world_valid"]
+    assert not (tmp_path / "storage" / "worlds" / "world_missing").exists()

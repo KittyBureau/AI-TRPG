@@ -253,6 +253,28 @@ class FileRepo:
         normalize_world(world)
         return world
 
+    def list_worlds(self) -> List[World]:
+        worlds: List[World] = []
+        for path in self.worlds_root.glob("*/world.json"):
+            payload = self._read_json_file(path)
+            if not isinstance(payload, dict):
+                continue
+            try:
+                world = _model_from_dict(World, payload)
+                require_valid_world(world)
+                normalize_world(world)
+            except Exception:
+                continue
+            worlds.append(world)
+        return sorted(
+            worlds,
+            key=lambda world: (
+                world.updated_at or "",
+                world.world_id,
+            ),
+            reverse=True,
+        )
+
     def save_world(self, world: World) -> None:
         require_valid_world(world)
         normalize_world(world)

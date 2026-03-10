@@ -686,10 +686,19 @@ export async function createCampaignWithSelectedParty(
   const activeActorId = selectedCharacterIds.includes(requestedActiveActorId)
     ? requestedActiveActorId
     : selectedCharacterIds[0];
+  const worldId =
+    typeof options?.worldId === "string" && options.worldId.trim()
+      ? options.worldId.trim()
+      : "";
 
-  const createResult = await createCampaignApi(baseUrl, {
+  const createPayload = {
     party_character_ids: selectedCharacterIds,
-  });
+  };
+  if (worldId) {
+    createPayload.world_id = worldId;
+  }
+
+  const createResult = await createCampaignApi(baseUrl, createPayload);
   if (!createResult.ok || !createResult.data || typeof createResult.data.campaign_id !== "string") {
     state.statusMessage = `Create campaign failed: ${parseApiError(createResult)}`;
     emit();
