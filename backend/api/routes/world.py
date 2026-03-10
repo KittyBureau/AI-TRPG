@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from backend.app.world_service import generate_world_resource
 from backend.domain.world_models import WorldGenerator
 from backend.infra.file_repo import FileRepo
 
@@ -40,6 +41,16 @@ class WorldSummaryResponse(BaseModel):
     updated_at: str
 
 
+class GenerateWorldRequest(BaseModel):
+    world_id: str
+    name: str | None = None
+
+
+class GenerateWorldResponse(WorldResponse):
+    created: bool
+    normalized: bool
+
+
 @router.get("/worlds/list", response_model=list[WorldSummaryResponse])
 def list_worlds() -> list[WorldSummaryResponse]:
     repo = _repo()
@@ -53,6 +64,20 @@ def list_worlds() -> list[WorldSummaryResponse]:
         )
         for world in worlds
     ]
+
+
+@router.post("/worlds/generate", response_model=GenerateWorldResponse)
+def generate_world_standalone(request: GenerateWorldRequest) -> GenerateWorldResponse:
+    repo = _repo()
+    try:
+        result = generate_world_resource(
+            world_id=request.world_id,
+            name=request.name,
+            repo=repo,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return GenerateWorldResponse(**result)
 
 
 @router.get("/campaigns/{campaign_id}/world", response_model=WorldResponse)

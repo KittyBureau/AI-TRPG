@@ -32,20 +32,13 @@ def generate_world(
     if resolved_world_id is None:
         return None, "world_id_missing"
 
-    world = repo.get_world(resolved_world_id)
-    created = world is None
-    if world is None:
-        world = repo.get_or_create_world_stub(resolved_world_id)
-
-    normalized = _normalize_world_v1(
-        world,
+    world, created, normalized = _ensure_world_resource(
         world_id=resolved_world_id,
+        repo=repo,
+        name_arg=None,
         seed_arg=seed_arg,
         generator_id_arg=generator_id_arg,
-        created=created,
     )
-    if normalized:
-        repo.save_world(world)
 
     if bind_to_campaign:
         campaign.selected.world_id = resolved_world_id
@@ -61,6 +54,39 @@ def generate_world(
         "also_generate_map": also_generate_map,
     }
     return result, None
+
+
+def generate_world_resource(
+    *,
+    world_id: str,
+    repo: FileRepo,
+    name: Optional[str] = None,
+) -> Dict[str, Any]:
+    normalized_world_id = world_id.strip()
+    if not normalized_world_id:
+        raise ValueError("world_id is required")
+    name_arg = name.strip() if isinstance(name, str) and name.strip() else None
+    world, created, normalized = _ensure_world_resource(
+        world_id=normalized_world_id,
+        repo=repo,
+        name_arg=name_arg,
+        seed_arg=None,
+        generator_id_arg=None,
+    )
+    return {
+        "world_id": world.world_id,
+        "name": world.name,
+        "seed": world.seed,
+        "world_description": world.world_description,
+        "objective": world.objective,
+        "start_area": world.start_area,
+        "generator": world.generator,
+        "schema_version": world.schema_version,
+        "created_at": world.created_at,
+        "updated_at": world.updated_at,
+        "created": created,
+        "normalized": normalized,
+    }
 
 
 def _parse_world_id_arg(args: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
@@ -119,10 +145,37 @@ def _resolve_world_id(world_id_arg: Optional[str], campaign: Campaign) -> Option
     return None
 
 
+def _ensure_world_resource(
+    *,
+    world_id: str,
+    repo: FileRepo,
+    name_arg: Optional[str],
+    seed_arg: Optional[int | str],
+    generator_id_arg: Optional[str],
+) -> Tuple[World, bool, bool]:
+    world = repo.get_world(world_id)
+    created = world is None
+    if world is None:
+        world = repo.get_or_create_world_stub(world_id)
+
+    normalized = _normalize_world_v1(
+        world,
+        world_id=world_id,
+        name_arg=name_arg,
+        seed_arg=seed_arg,
+        generator_id_arg=generator_id_arg,
+        created=created,
+    )
+    if normalized:
+        repo.save_world(world)
+    return world, created, normalized
+
+
 def _normalize_world_v1(
     world: World,
     *,
     world_id: str,
+    name_arg: Optional[str],
     seed_arg: Optional[int | str],
     generator_id_arg: Optional[str],
     created: bool,
@@ -134,7 +187,10 @@ def _normalize_world_v1(
         world.world_id = world_id
         changed = True
 
-    if not world.name.strip():
+    if name_arg is not None and world.name != name_arg:
+        world.name = name_arg
+        changed = True
+    elif not world.name.strip():
         world.name = world.world_id
         changed = True
 

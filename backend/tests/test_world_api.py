@@ -161,3 +161,67 @@ def test_list_worlds_skips_invalid_world_json_without_stub_side_effects(
     body = response.json()
     assert [item["world_id"] for item in body] == ["world_valid"]
     assert not (tmp_path / "storage" / "worlds" / "world_missing").exists()
+
+
+def test_generate_world_without_campaign_creates_resource_and_is_listed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+
+    response = client.post(
+        "/api/v1/worlds/generate",
+        json={"world_id": "world_api_new", "name": "API Generated World"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["world_id"] == "world_api_new"
+    assert body["name"] == "API Generated World"
+    assert body["created"] is True
+    assert body["generator"]["id"] == "stub"
+
+    list_response = client.get("/api/v1/worlds/list")
+    assert list_response.status_code == 200
+    listed_ids = [item["world_id"] for item in list_response.json()]
+    assert "world_api_new" in listed_ids
+
+
+def test_generate_world_repeat_reuses_existing_world_without_campaign_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+
+    first = client.post(
+        "/api/v1/worlds/generate",
+        json={"world_id": "world_api_repeat", "name": "Initial Name"},
+    )
+    second = client.post(
+        "/api/v1/worlds/generate",
+        json={"world_id": "world_api_repeat"},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_body = first.json()
+    second_body = second.json()
+    assert first_body["created"] is True
+    assert second_body["created"] is False
+    assert second_body["world_id"] == "world_api_repeat"
+    assert second_body["name"] == "Initial Name"
+    assert second_body["seed"] == first_body["seed"]
+    world_path = tmp_path / "storage" / "worlds" / "world_api_repeat" / "world.json"
+    assert world_path.exists()
+    campaigns_root = tmp_path / "storage" / "campaigns"
+    if campaigns_root.exists():
+        assert list(campaigns_root.glob("camp_*")) == []
+
+
+def test_generate_world_rejects_blank_world_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+
+    response = client.post("/api/v1/worlds/generate", json={"world_id": "   "})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "world_id is required"
