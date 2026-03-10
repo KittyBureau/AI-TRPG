@@ -35,6 +35,14 @@ async function listWorlds(baseUrl) {
   return request(baseUrl, "/api/v1/worlds/list");
 }
 
+async function generateWorld(baseUrl, payload) {
+  return request(baseUrl, "/api/v1/worlds/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  });
+}
+
 async function getRuntimeStatus(baseUrl) {
   return request(baseUrl, "/api/v1/runtime/status");
 }
@@ -158,6 +166,7 @@ export {
   getCampaign,
   getMapView,
   getRuntimeStatus,
+  generateWorld,
   listCampaigns,
   listWorlds,
   listCharacters,

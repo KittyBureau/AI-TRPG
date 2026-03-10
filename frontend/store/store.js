@@ -1,10 +1,12 @@
 import {
   createCampaign as createCampaignApi,
   createCharacter as createCharacterApi,
+  generateWorld as generateWorldApi,
   getCampaign as getCampaignApi,
   getRuntimeStatus as getRuntimeStatusApi,
   listCampaigns as listCampaignsApi,
   listCharacters,
+  listWorlds as listWorldsApi,
   loadCharacterToCampaign as loadCharacterToCampaignApi,
   selectActor as selectActorApi,
 } from "../api/api.js";
@@ -31,6 +33,16 @@ const state = {
     },
     status: "idle",
     error: null,
+  },
+  worlds: {
+    list: [],
+    status: "idle",
+    error: null,
+    generate_form: {
+      world_id: "",
+      name: "",
+    },
+    last_generated_world_id: null,
   },
   campaignOptions: [],
   initiativeOrder: [],
@@ -319,6 +331,18 @@ export function setCharacterSelectedId(characterId) {
   emit();
 }
 
+export function setWorldGenerateForm(nextForm) {
+  const patch =
+    nextForm && typeof nextForm === "object" && !Array.isArray(nextForm)
+      ? nextForm
+      : {};
+  state.worlds.generate_form = {
+    ...state.worlds.generate_form,
+    ...patch,
+  };
+  emit();
+}
+
 function parseTagsInput(tags) {
   if (!tags || typeof tags !== "string") {
     return [];
@@ -501,6 +525,27 @@ export async function loadCampaignOptionsFromBackend(
   return result;
 }
 
+export async function refreshWorlds(baseUrl = state.baseUrl, options = {}) {
+  state.worlds.status = "loading";
+  state.worlds.error = null;
+  if (options.emit !== false) {
+    emit();
+  }
+  const result = await listWorldsApi(baseUrl);
+  if (!result.ok || !Array.isArray(result.data)) {
+    state.worlds.list = [];
+    state.worlds.status = "error";
+    state.worlds.error = parseApiError(result);
+    emit();
+    return result;
+  }
+  state.worlds.list = result.data;
+  state.worlds.status = "idle";
+  state.worlds.error = null;
+  emit();
+  return result;
+}
+
 export async function checkBackendReady(
   baseUrl = state.baseUrl,
   options = {}
@@ -652,6 +697,34 @@ export async function createCharacter(baseUrl = state.baseUrl, payload = null) {
   state.character.selected_character_id = result.data.character_id;
   state.character.status = "idle";
   state.character.error = null;
+  emit();
+  return result;
+}
+
+export async function generateWorldResource(baseUrl = state.baseUrl, payload = null) {
+  state.worlds.status = "creating";
+  state.worlds.error = null;
+  emit();
+  const fallbackPayload = {
+    world_id: state.worlds.generate_form.world_id || "",
+    name: state.worlds.generate_form.name || "",
+  };
+  const requestPayload = payload && typeof payload === "object" ? payload : fallbackPayload;
+  const result = await generateWorldApi(baseUrl, requestPayload);
+  if (!result.ok || !result.data || typeof result.data.world_id !== "string") {
+    state.worlds.status = "error";
+    state.worlds.error = parseApiError(result);
+    emit();
+    return result;
+  }
+  state.worlds.last_generated_world_id = result.data.world_id;
+  state.worlds.generate_form = {
+    ...state.worlds.generate_form,
+    world_id: "",
+  };
+  const refreshResult = await refreshWorlds(baseUrl, { emit: false });
+  state.worlds.status = refreshResult.ok ? "idle" : "error";
+  state.worlds.error = refreshResult.ok ? null : parseApiError(refreshResult);
   emit();
   return result;
 }

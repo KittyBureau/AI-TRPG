@@ -2,11 +2,13 @@ import {
   checkBackendReady,
   createCampaignWithSelectedParty,
   createCharacter,
+  generateWorldResource,
   getState,
   initializeStore,
   loadCharacterLibrary,
   loadCharacterToCampaign,
   loadCampaignOptionsFromBackend,
+  refreshWorlds,
   recoverFrontendSession,
   refreshCampaign,
   selectActiveActor,
@@ -14,6 +16,7 @@ import {
   setCampaignId,
   setCampaignOptions,
   setCharacterCreateForm,
+  setWorldGenerateForm,
   setSelectedItemForActor,
   setDebugResponseText,
   recordTurnResult,
@@ -25,6 +28,7 @@ import {
 } from "./store/store.js";
 import { initPanel as initCampaignPanel } from "./panels/campaign_panel.js";
 import { initPanel as initCharacterLibraryPanel } from "./panels/character_library_panel.js";
+import { initPanel as initWorldPanel } from "./panels/world_panel.js";
 import { initPanel as initPartyPanel } from "./panels/party_panel.js";
 import { initPanel as initActorControlPanel } from "./panels/actor_control_panel.js";
 import { initPanel as initDebugPanel } from "./panels/debug_panel.js";
@@ -64,6 +68,7 @@ async function initPlay() {
     setCampaignOptions,
     setPartyActors,
     setCharacterCreateForm,
+    setWorldGenerateForm,
     setSelectedItemForActor,
     setDebugResponseText,
     recordTurnResult,
@@ -74,8 +79,10 @@ async function initPlay() {
     checkBackendReady,
     recoverFrontendSession,
     createCharacter,
+    generateWorldResource,
     createCampaignWithSelectedParty,
     loadCharacterToCampaign,
+    refreshWorlds,
     refreshCampaign,
     selectActiveActor,
   };
@@ -107,6 +114,7 @@ async function initPlay() {
   initializeStore();
   initStatusLine(store);
   initCampaignPanel(store);
+  initWorldPanel(store);
   initCharacterLibraryPanel(store);
   initPartyPanel(store);
   initActorControlPanel(store);

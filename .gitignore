@@ -30,6 +30,7 @@ storage/secrets/keyring.json
 # Campaigns
 storage/campaigns/
 storage/characters_library/
+storage/worlds/
 
 # Local temporary workspaces
 .tmp/

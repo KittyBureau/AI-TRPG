@@ -685,3 +685,95 @@ test("createCampaignWithSelectedParty rejects empty explicit selection", async (
   assert.equal(result.status, 400);
   assert.match(store.getState().statusMessage, /Select at least one character/i);
 });
+
+test("refreshWorlds stores authoritative world list from backend", async () => {
+  const store = await loadStoreModule();
+  global.fetch = async (url) => {
+    assert.match(String(url), /\/api\/v1\/worlds\/list$/);
+    return jsonResponse([
+      {
+        world_id: "world_beta",
+        name: "World Beta",
+        generator: { id: "stub" },
+        updated_at: "2026-03-10T00:00:00Z",
+      },
+    ]);
+  };
+
+  const result = await store.refreshWorlds("http://127.0.0.1:8000");
+
+  assert.equal(result.ok, true);
+  assert.equal(store.getState().worlds.status, "idle");
+  assert.equal(store.getState().worlds.error, null);
+  assert.deepEqual(store.getState().worlds.list, [
+    {
+      world_id: "world_beta",
+      name: "World Beta",
+      generator: { id: "stub" },
+      updated_at: "2026-03-10T00:00:00Z",
+    },
+  ]);
+});
+
+test("generateWorldResource posts minimal payload then refreshes world list", async () => {
+  const store = await loadStoreModule();
+  const calls = [];
+  global.fetch = async (url, options = {}) => {
+    const requestUrl = String(url);
+    calls.push({
+      url: requestUrl,
+      method: options.method || "GET",
+      body: options.body ? JSON.parse(String(options.body)) : null,
+    });
+    if (requestUrl.endsWith("/api/v1/worlds/generate")) {
+      assert.deepEqual(JSON.parse(String(options.body)), {
+        world_id: "world_new_ui",
+        name: "World From UI",
+      });
+      return jsonResponse({
+        world_id: "world_new_ui",
+        name: "World From UI",
+        generator: { id: "stub" },
+        updated_at: "2026-03-10T00:00:00Z",
+        created: true,
+        normalized: true,
+      });
+    }
+    if (requestUrl.endsWith("/api/v1/worlds/list")) {
+      return jsonResponse([
+        {
+          world_id: "world_new_ui",
+          name: "World From UI",
+          generator: { id: "stub" },
+          updated_at: "2026-03-10T00:00:00Z",
+        },
+      ]);
+    }
+    throw new Error(`unexpected fetch: ${requestUrl}`);
+  };
+
+  store.setWorldGenerateForm({
+    world_id: "world_new_ui",
+    name: "World From UI",
+  });
+  const result = await store.generateWorldResource("http://127.0.0.1:8000");
+
+  assert.equal(result.ok, true);
+  assert.equal(store.getState().worlds.status, "idle");
+  assert.equal(store.getState().worlds.error, null);
+  assert.equal(store.getState().worlds.last_generated_world_id, "world_new_ui");
+  assert.equal(store.getState().worlds.generate_form.world_id, "");
+  assert.equal(store.getState().worlds.generate_form.name, "World From UI");
+  assert.deepEqual(store.getState().worlds.list, [
+    {
+      world_id: "world_new_ui",
+      name: "World From UI",
+      generator: { id: "stub" },
+      updated_at: "2026-03-10T00:00:00Z",
+    },
+  ]);
+  assert.deepEqual(
+    calls.map((entry) => `${entry.method} ${entry.url.split("/api/v1/")[1]}`),
+    ["POST worlds/generate", "GET worlds/list"]
+  );
+});

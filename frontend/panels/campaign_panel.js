@@ -1,4 +1,4 @@
-import { createCampaign, listCampaigns, listWorlds } from "../api/api.js";
+import { createCampaign, listCampaigns } from "../api/api.js";
 
 export function formatCampaignStatusLines(status) {
   if (!status || typeof status !== "object") {
@@ -34,7 +34,6 @@ export function initPanel(store) {
     selectedCharacterIds: [],
     requestedActiveActorId: "",
     selectedWorldId: "",
-    worldOptions: [],
     submitting: false,
   };
 
@@ -77,27 +76,21 @@ export function initPanel(store) {
 
   async function refreshWorlds({ silent = false } = {}) {
     const state = store.getState();
-    const result = await listWorlds(state.baseUrl);
+    const result = await store.refreshWorlds(state.baseUrl, { emit: silent !== true });
     if (!result.ok || !Array.isArray(result.data)) {
-      uiState.worldOptions = [];
       if (!silent) {
         store.setStatusMessage(`Failed to load worlds (${result.status}).`);
-      } else {
-        render();
       }
       return result;
     }
-    uiState.worldOptions = result.data;
     if (
       uiState.selectedWorldId &&
-      !uiState.worldOptions.some((world) => world && world.world_id === uiState.selectedWorldId)
+      !result.data.some((world) => world && world.world_id === uiState.selectedWorldId)
     ) {
       uiState.selectedWorldId = "";
     }
     if (!silent) {
-      store.setStatusMessage(`Loaded ${uiState.worldOptions.length} world(s).`);
-    } else {
-      render();
+      store.setStatusMessage(`Loaded ${result.data.length} world(s).`);
     }
     return result;
   }
@@ -246,7 +239,7 @@ export function initPanel(store) {
     const focusSnapshot = captureFocusState();
     const library = Array.isArray(state.character?.library) ? state.character.library : [];
     const orderedSelectedCharacterIds = syncSelectedPartyState(library);
-    const worlds = Array.isArray(uiState.worldOptions) ? uiState.worldOptions : [];
+    const worlds = Array.isArray(state.worlds?.list) ? state.worlds.list : [];
     mount.innerHTML = "";
 
     const title = document.createElement("h2");
@@ -502,6 +495,5 @@ export function initPanel(store) {
   store.subscribe(render);
   if (store.getState().backend?.ready !== false) {
     refreshCampaigns({ silent: true });
-    refreshWorlds({ silent: true });
   }
 }
