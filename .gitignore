@@ -35,5 +35,9 @@ storage/worlds/
 # Local temporary workspaces
 .tmp/
 
+# Local ChatGPT reference sync scripts (not versioned)
+scripts/sync_chatgpt_docs.ps1
+scripts/sync_chatgpt_docs.bat
+
 # Human-only one-off prompts
 docs/99_human_only/one_off_prompts/
