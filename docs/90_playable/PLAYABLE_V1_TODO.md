@@ -41,9 +41,9 @@ At milestone or phase wrap-up, refresh the lightweight ChatGPT web reference-doc
 ## Item Counts
 
 - P0: 14 items (must-complete)
-- P1: 14 items
-- P2: 11 items
-- Total: 39 items
+- P1: 20 items
+- P2: 12 items
+- Total: 46 items
 
 ## TOC
 
@@ -257,6 +257,19 @@ At milestone or phase wrap-up, refresh the lightweight ChatGPT web reference-doc
 
 ## P1 (Important, Not Blocking v1 Launch)
 
+Current P1 closure focus:
+
+- stable current-situation visibility
+- minimal narrative continuity when tools dominate a turn
+- key blocking Play UI issues
+- playable regression/docs closure
+
+Explicitly out of current P1 closure:
+
+- prompt customization / prompt templates
+- context architecture optimization
+- graphical map or map editor expansion
+
 ### P1-01 Campaign status and milestone UX alignment
 - Status: `DONE`
 - Why: lifecycle observability helps run stability.
@@ -339,14 +352,6 @@ At milestone or phase wrap-up, refresh the lightweight ChatGPT web reference-doc
   - `pytest -q backend/tests/test_character_fact_api.py backend/tests/test_character_facade.py` -> `25 passed`
   - `backend/tests/test_character_fact_api.py` covers successful adopt metadata merge, preservation of actor runtime authority fields, missing/invalid fact errors, invalid accepted sidecar `500`, repeated adopt stability, and legacy actor metadata backfill
 - Rollback: revert CharacterFact adopt merge/sidecar error handling together with the added tests/docs.
-
-### P1-08 Conflict detector false-positive reduction
-- Status: `TODO`
-- Why: unnecessary retries degrade user experience.
-- Scope: `backend/app/conflict_detector.py`, `backend/app/turn_service.py`
-- Acceptance: no increase in false conflict blocks on stable smoke scenarios.
-- Tests: `backend/tests/test_chat_semantic_guard.py`, `scripts/smoke_full_gameplay.ps1`
-- Rollback: revert detector heuristic changes.
 
 ### P1-09 Prompt context payload hygiene
 - Status: `DONE` (2026-03-09)
@@ -450,6 +455,67 @@ At milestone or phase wrap-up, refresh the lightweight ChatGPT web reference-doc
   - prompt debug trace inspection
 - Rollback: remove the selected-item request hint/context injection path and fall back to inventory-only context behavior if a regression appears.
 
+### P1-15 Read-only Map Panel from authoritative campaign snapshot
+- Status: `DONE` (2026-03-10)
+- Why: Play needs a minimal current-situation console showing who is acting, where they are, and where they can go next.
+- Scope: `backend/api/routes/campaign.py`, `frontend/store/store.js`, `frontend/play.js`, `frontend/play.html`, `frontend/panels/map_panel.js`, `frontend/panels/actor_control_panel.js`
+- Acceptance: Play renders active actor, current area, optional current area description, and reachable areas from shared store campaign data; `state_summary` may enhance matching labels/text only.
+- Tests: `backend/tests/test_campaign_get_api.py`, `backend/tests/test_campaign_get_endpoint.py`, `frontend/tests/store_loop.test.mjs`, `frontend/tests/map_panel.test.mjs`
+- Verification Evidence:
+  - `pytest -q backend/tests/test_campaign_get_api.py backend/tests/test_campaign_get_endpoint.py` -> `6 passed`
+  - `node --test frontend/tests/store_loop.test.mjs frontend/tests/campaign_panel.test.mjs frontend/tests/map_panel.test.mjs` -> `23 passed`
+  - Repo reality required expanding `GET /api/v1/campaign/get` from selected/actor-id/status refresh to selected/actors/map/status refresh so Play could derive map situation from the authoritative campaign snapshot instead of a separate `/map/view` fetch
+  - Play `Map Panel` now reads `selected.active_actor_id`, `actors[active_actor_id].position`, `map.areas[position]`, and `reachable_area_ids` from shared store campaign state
+- Rollback: revert the `campaign/get` snapshot expansion and Play panel/store wiring as one unit.
+
+### P1-16 Tool-response narrative fallback
+- Status: `TODO`
+- Why: tool-heavy turns still need minimal readable narrative continuity in Play.
+- Scope: `backend/app/turn_service.py`, `backend/api/routes/chat.py`, `frontend/panels/actor_control_panel.js`
+- Acceptance: when a turn succeeds mainly through tools and narrative output is thin/empty, Play still shows a minimal readable result summary without changing tool authority.
+- Tests: `backend/tests/test_turn_response_contract_api.py`, `frontend/tests/store_loop.test.mjs`, `scripts/smoke_full_gameplay.ps1`
+- Rollback: revert fallback rendering/response shaping if it obscures tool truth.
+
+### P1-17 World preview minimal read-only visibility
+- Status: `TODO`
+- Why: campaign/world selection is more usable when the current world binding can be inspected without leaving Play.
+- Scope: `backend/api/routes/world.py`, `frontend/panels/world_panel.js`, `frontend/store/store.js`
+- Acceptance: Play exposes minimal read-only world information for the selected/current world without turning World Panel into a management system.
+- Tests: `backend/tests/test_world_api.py`, `frontend/tests/store_loop.test.mjs`, `scripts/smoke_frontend_flow.ps1`
+- Rollback: remove preview-only display and keep world list/generate behavior unchanged.
+
+### P1-18 Character Library input focus bug
+- Status: `TODO`
+- Why: focus churn in Character Library blocks smooth party setup on the Play page.
+- Scope: `frontend/panels/character_library_panel.js`, `frontend/play.js`, `frontend/store/store.js`
+- Acceptance: typing/selecting in Character Library remains stable during normal Play page refresh/re-render paths.
+- Tests: `scripts/smoke_frontend_flow.ps1`, targeted frontend panel/store regression tests
+- Rollback: revert the focus-preservation change if it destabilizes panel state.
+
+### P1-19 Manual playable regression and docs closure
+- Status: `TODO`
+- Why: P1 should close with repeatable human-readable verification, not only partial targeted tests.
+- Scope: `docs/02_guides/testing/playable_v1_manual_test.md`, `docs/20_runtime/testing/active_actor_integration_smoke.md`, `docs/20_runtime/testing/state_consistency_check.md`, `scripts/smoke_frontend_flow.ps1`
+- Acceptance: current Playable v1 closure path is documented, runnable, and reflects the actual world -> campaign -> play loop plus current-situation visibility checks.
+- Tests: manual guide rerun + deterministic smoke rerun
+- Rollback: revert closure-doc edits if the verification path is found inaccurate.
+
+### P1-20 Actor initial-position closure for loaded/null-position actors
+- Status: `TODO`
+- Why: repo reality still allows `party/load` actors to exist with `position = null`, which weakens the minimal playable baseline.
+- Scope: `backend/app/party_load_service.py`, `backend/domain/state_utils.py`, `backend/api/routes/campaign.py`
+- Acceptance: active actors in the normal Play flow either receive a stable initial position or expose a clear deterministic fallback policy without inventing map state in the frontend.
+- Tests: `backend/tests/test_campaign_get_endpoint.py`, `backend/tests/test_character_library_api.py`, `docs/20_runtime/testing/active_actor_integration_smoke.md`
+- Rollback: restore existing `party/load` actor creation behavior if the closure rule causes regressions.
+
+### P1-21 Minimal current-turn result visibility cleanup
+- Status: `TODO`
+- Why: the Play page still needs a clearer minimal result readout after turn execution without expanding into a broad UI redesign.
+- Scope: `frontend/panels/actor_control_panel.js`, `frontend/renderers/delta_renderer.js`, `frontend/store/store.js`
+- Acceptance: after each turn, Play shows a compact, readable current-turn result summary aligned with authoritative turn/store data.
+- Tests: `frontend/tests/store_loop.test.mjs`, `scripts/smoke_frontend_flow.ps1`
+- Rollback: revert the result-summary presentation if it adds noise or duplicates debug-only views.
+
 ---
 
 ## P2 (Post-v1 / Optimization)
@@ -552,3 +618,11 @@ At milestone or phase wrap-up, refresh the lightweight ChatGPT web reference-doc
 - Acceptance: design and implementation, when scheduled, preserve world consistency while reducing token growth in long sessions.
 - Tests: future long-session regression coverage and prompt-size observability checks after implementation is approved.
 - Rollback: keep the current history-oriented prompt assembly if the optimization proves unstable.
+
+### P2-12 Conflict detector false-positive reduction
+- Status: `TODO`
+- Why: unnecessary retries degrade user experience, but this is no longer part of current P1 closure.
+- Scope: `backend/app/conflict_detector.py`, `backend/app/turn_service.py`
+- Acceptance: no increase in false conflict blocks on stable smoke scenarios.
+- Tests: `backend/tests/test_chat_semantic_guard.py`, `scripts/smoke_full_gameplay.ps1`
+- Rollback: revert detector heuristic changes.
