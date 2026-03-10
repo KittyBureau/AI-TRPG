@@ -26,3 +26,9 @@ uvicorn backend.api.main:app --reload
 
 - Main docs index: `docs/00_overview/README.md`
 - AI task index: `docs/_index/AI_INDEX.md`
+
+## Documentation Workflow
+
+- Primary workflow: local VSCode + Codex with the full repository as source of truth.
+- ChatGPT web project context uses a lightweight Google Drive reference-doc package refreshed via `scripts/sync_chatgpt_docs.ps1`.
+- That package is intentionally small and stage-oriented; detailed implementation lookup should still happen from the local repo, usually through Codex.

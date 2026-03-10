@@ -189,6 +189,9 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - Current architecture/status overview for Playable v1 lives in `docs/00_overview/PROJECT_STATUS.md`.
 - Transitional exception: `docs/02_guides/testing/playable_v1_manual_test.md` remains as a stable manual-test entry path.
 - Human-only docs: `docs/99_human_only/**`. Do not cite or rely on these unless the task explicitly allows it.
+- Primary implementation lookup remains local (`backend/**`, `frontend/**`, `storage/**`, full docs tree). The ChatGPT web reference-doc package is lightweight context only and is not a substitute for local repo reading.
+- The ChatGPT web reference-doc package must stay small and structure-oriented; do not expand it into a second full documentation mirror.
+- Refresh `scripts/sync_chatgpt_docs.ps1` output at milestone or phase wrap-up when index/overview/status/roadmap/high-level architecture docs materially change. Do not treat Drive sync as required for every small doc edit.
 - When a task explicitly requests an alignment report, write the report under `docs/99_human_only/alignment_reports/` using a dated filename (for example: `YYYY-MM-DD_<topic>_alignment_report.md`).
 - Reference/legacy docs are non-authoritative; do not treat them as implementation truth.
 - When modifying backend/frontend API routes, request/response fields, status codes, storage paths, JSON keys, enums, or settings keys/defaults/validation, you must update the matching docs.
@@ -199,6 +202,7 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - If docs are deferred, ensure `docs/01_specs/TODO_DOCS_ALIGNMENT.md` contains a dated entry with evidence.
 - For alignment tasks, confirm report output path is under `docs/99_human_only/alignment_reports/`.
 - When changing gameplay flow UI controls or turn templates, run a manual chain check: create campaign -> world_generate -> map_generate -> actor_spawn -> move -> inventory_add -> chat/turn.
+- At stage closure, if the lightweight ChatGPT reference set changed materially, refresh the Drive package with `scripts/sync_chatgpt_docs.ps1`.
 **Scope**
 - `backend/**`, `frontend/**`, `docs/00_overview/**`, `docs/01_specs/**`, `docs/20_runtime/**`, `docs/30_resources/**`, `docs/90_playable/**`, `docs/99_human_only/alignment_reports/**`, `docs/01_specs/TODO_DOCS_ALIGNMENT.md`.
 

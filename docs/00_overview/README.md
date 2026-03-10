@@ -7,6 +7,14 @@
 - `docs/_index/AI_INDEX.md` - Task constraints and verification checkpoints.
 - `docs/_index/CODEX_TASK_PREFIX.md` - Prompt prefix for Codex tasks.
 
+## Documentation Operations
+
+- Primary development remains local: VSCode + Codex + the full repository are the authoritative working environment.
+- ChatGPT web project context uses a lightweight Google Drive reference-doc package for structure, navigation, status, and roadmap context only.
+- The synced package is not a second repo mirror; detailed implementation reading should still happen from the local repository, usually through Codex.
+- Refresh the lightweight package at milestone or phase wrap-up when project structure, high-level architecture, current status, or roadmap docs materially change.
+- Standard refresh path: `scripts/sync_chatgpt_docs.ps1` (one-way overwrite upload from local to Drive).
+
 ## Core Specs (Authoritative)
 
 - `docs/01_specs/architecture.md`

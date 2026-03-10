@@ -1,6 +1,6 @@
 ﻿# PLAYABLE v1 TODO (Development Mainline)
 
-Last updated: 2026-03-09
+Last updated: 2026-03-10
 
 ## Positioning
 
@@ -27,6 +27,10 @@ Non-goals for Playable v1:
 3. Run targeted tests and smoke checks until green.
 4. Update this TODO item status.
 5. Repeat.
+
+## Stage Wrap-up Note
+
+At milestone or phase wrap-up, refresh the lightweight ChatGPT web reference-doc package with `scripts/sync_chatgpt_docs.ps1` if high-level docs such as `README.md`, `docs/_index/AI_INDEX.md`, `docs/00_overview/**`, `docs/01_specs/architecture.md`, `docs/20_runtime/storage_authority.md`, or this TODO changed materially. This is a stage-closing sync, not a per-edit requirement.
 
 ## Status Legend
 
