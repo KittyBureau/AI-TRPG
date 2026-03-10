@@ -20,7 +20,6 @@ import {
   setSelectedItemForActor,
   setDebugResponseText,
   recordTurnResult,
-  setMapView,
   setPartyActors,
   setStateSummary,
   setStatusMessage,
@@ -30,6 +29,7 @@ import { initPanel as initCampaignPanel } from "./panels/campaign_panel.js";
 import { initPanel as initCharacterLibraryPanel } from "./panels/character_library_panel.js";
 import { initPanel as initWorldPanel } from "./panels/world_panel.js";
 import { initPanel as initPartyPanel } from "./panels/party_panel.js";
+import { initPanel as initMapPanel } from "./panels/map_panel.js";
 import { initPanel as initActorControlPanel } from "./panels/actor_control_panel.js";
 import { initPanel as initDebugPanel } from "./panels/debug_panel.js";
 
@@ -73,7 +73,6 @@ async function initPlay() {
     setDebugResponseText,
     recordTurnResult,
     setStateSummary,
-    setMapView,
     loadCampaignOptionsFromBackend,
     loadCharacterLibrary,
     checkBackendReady,
@@ -117,6 +116,7 @@ async function initPlay() {
   initWorldPanel(store);
   initCharacterLibraryPanel(store);
   initPartyPanel(store);
+  initMapPanel(store);
   initActorControlPanel(store);
   initDebugPanel(store);
   startReadinessPolling(store);

@@ -22,6 +22,10 @@ const state = {
     party_character_ids: [],
     active_actor_id: "",
     status: null,
+    actors: {},
+    map: {
+      areas: {},
+    },
   },
   character: {
     library: [],
@@ -54,7 +58,6 @@ const state = {
   stateSummary: null,
   inventoryByActor: {},
   selectedItemIdByActor: {},
-  mapView: null,
   turnHistory: [],
   debug: {
     requestText: "",
@@ -102,12 +105,16 @@ function hasOwn(object, key) {
   return Object.prototype.hasOwnProperty.call(object, key);
 }
 
-function normalizeActorId(value) {
+function normalizeStringId(value) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
+function normalizeActorId(value) {
+  return normalizeStringId(value);
+}
+
 function normalizeItemId(value) {
-  return typeof value === "string" && value.trim() ? value.trim() : "";
+  return normalizeStringId(value);
 }
 
 function normalizeInventory(rawInventory) {
@@ -275,6 +282,8 @@ export function setCampaignId(campaignId) {
   }
   if (previousCampaignId !== state.campaignId) {
     state.campaign.status = null;
+    state.campaign.actors = {};
+    state.campaign.map = { areas: {} };
   }
   emit();
 }
@@ -360,6 +369,69 @@ function parseApiError(result) {
   return `HTTP ${result?.status ?? 500}`;
 }
 
+function normalizeCampaignActors(rawActors) {
+  const normalized = {};
+  if (Array.isArray(rawActors)) {
+    for (const rawActorId of rawActors) {
+      const actorId = normalizeActorId(rawActorId);
+      if (!actorId) {
+        continue;
+      }
+      normalized[actorId] = {
+        position: null,
+        hp: null,
+        character_state: "",
+      };
+    }
+    return normalized;
+  }
+  if (!rawActors || typeof rawActors !== "object") {
+    return normalized;
+  }
+  for (const [rawActorId, rawActor] of Object.entries(rawActors)) {
+    const actorId = normalizeActorId(rawActorId);
+    if (!actorId || !rawActor || typeof rawActor !== "object" || Array.isArray(rawActor)) {
+      continue;
+    }
+    normalized[actorId] = {
+      position: normalizeStringId(rawActor.position) || null,
+      hp: Number.isFinite(rawActor.hp) ? Number(rawActor.hp) : null,
+      character_state:
+        typeof rawActor.character_state === "string" ? rawActor.character_state.trim() : "",
+    };
+  }
+  return normalized;
+}
+
+function normalizeCampaignMap(rawMap) {
+  const normalized = {
+    areas: {},
+  };
+  if (!rawMap || typeof rawMap !== "object" || Array.isArray(rawMap)) {
+    return normalized;
+  }
+  const rawAreas =
+    rawMap.areas && typeof rawMap.areas === "object" && !Array.isArray(rawMap.areas)
+      ? rawMap.areas
+      : {};
+  for (const [rawAreaId, rawArea] of Object.entries(rawAreas)) {
+    const areaId = normalizeStringId(rawAreaId);
+    if (!areaId || !rawArea || typeof rawArea !== "object" || Array.isArray(rawArea)) {
+      continue;
+    }
+    normalized.areas[areaId] = {
+      id: normalizeStringId(rawArea.id) || areaId,
+      name: typeof rawArea.name === "string" ? rawArea.name.trim() : "",
+      description: typeof rawArea.description === "string" ? rawArea.description.trim() : "",
+      parent_area_id: normalizeStringId(rawArea.parent_area_id) || null,
+      reachable_area_ids: Array.isArray(rawArea.reachable_area_ids)
+        ? [...new Set(rawArea.reachable_area_ids.map(normalizeStringId).filter(Boolean))]
+        : [],
+    };
+  }
+  return normalized;
+}
+
 function normalizeCampaignGetPayload(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return null;
@@ -377,9 +449,8 @@ function normalizeCampaignGetPayload(payload) {
   if (!campaignId || !selected || !Array.isArray(selected.party_character_ids)) {
     return null;
   }
-  if (!Array.isArray(payload.actors)) {
-    return null;
-  }
+  const actors = normalizeCampaignActors(payload.actors);
+  const map = normalizeCampaignMap(payload.map);
   const rawStatus =
     payload.status && typeof payload.status === "object" && !Array.isArray(payload.status)
       ? payload.status
@@ -404,6 +475,8 @@ function normalizeCampaignGetPayload(payload) {
           .map((value) => value.trim())
       ),
     ],
+    actors,
+    map,
     statusSnapshot:
       rawStatus && milestoneCurrent
         ? {
@@ -982,6 +1055,8 @@ export async function refreshCampaign(
   state.campaignId = normalizedPayload.campaignId;
   state.campaign.active_actor_id = normalizedPayload.activeActorId;
   state.campaign.status = normalizedPayload.statusSnapshot;
+  state.campaign.actors = normalizedPayload.actors;
+  state.campaign.map = normalizedPayload.map;
   syncCampaignOption(normalizedPayload.campaignId, {
     active_actor_id: normalizedPayload.activeActorId,
   });
@@ -1177,11 +1252,6 @@ export function appendTurnHistory(entry) {
 
 export function setStateSummary(summary) {
   state.stateSummary = summary;
-  emit();
-}
-
-export function setMapView(mapView) {
-  state.mapView = mapView;
   emit();
 }
 

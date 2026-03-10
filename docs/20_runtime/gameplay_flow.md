@@ -58,7 +58,7 @@ Turn actor context:
 - `POST /api/v1/runtime/unlock` (local CLI path; not a browser passphrase form)
 - `POST /api/v1/campaign/create`
 - `GET /api/v1/campaign/list`
-- `GET /api/v1/campaign/get` (authoritative selected/actors/status snapshot for one campaign)
+- `GET /api/v1/campaign/get` (authoritative selected/actors/map/status snapshot for one campaign)
 - `POST /api/v1/campaign/select_actor` (manual active actor switch)
 - `GET /api/v1/characters/library` (optional for library inspect)
 - `POST /api/v1/campaigns/{campaign_id}/party/load` (optional for deterministic party load)
@@ -222,10 +222,13 @@ Expected check:
 
 - response includes `selected.party_character_ids`
 - response includes `selected.active_actor_id`
+- response includes `actors[active_actor_id].position` when the active actor has a current location
+- response includes `map.areas[area_id].reachable_area_ids` for current campaign reachability
 - response includes `status.ended` and `status.milestone.current`
 - missing campaign returns explicit error instead of fallback success
 - invalid persisted campaign payload returns explicit error; frontend refresh should not overwrite current party/active state on that failure
 - when `status` is unavailable in the payload, Play should show campaign status as unavailable instead of deriving a second local truth
+- Play current-situation map UI should derive from the authoritative campaign snapshot in shared store, not from a separate `/map/view` fetch
 
 ## Frontend Minimal Flow
 
@@ -256,8 +259,10 @@ frontend/
 The page now includes these flow panels:
 
 - `Campaign Panel`
+- `World Panel`
 - `Character Library Panel`
 - `Party Panel`
+- `Map Panel`
 - `Actor Control Panel`
 - `Debug Panel`
 
@@ -275,8 +280,9 @@ Use the following buttons in order:
 1. `Create Campaign` or select existing campaign
 2. In `Character Library`, load at least two characters into campaign
 3. In `Party Panel`, use selector + `Set Active` to switch active actor
-4. In `Actor Control Panel`, submit `Turn` or `Move`
-5. In `Campaign Panel`, click `Refresh Campaign` to re-sync party/active/status from backend
+4. In `Map Panel`, confirm active actor, current area, and reachable areas
+5. In `Actor Control Panel`, submit `Turn` or `Move`
+6. In `Campaign Panel`, click `Refresh Campaign` to re-sync party/active/map/status from backend
 
 State consistency verification:
 
@@ -353,7 +359,7 @@ Optional:
 - `actor_spawn.bind_to_party` defaults to `true`.
 - blank `spawn_position` uses backend default behavior.
 - move input is minimal (`to_area_id` required); no `move_options` coupling in this version.
-- objective / area description / inventory are displayed from `state_summary` extensions in turn response.
+- inventory remains displayed from turn/state-summary data; current map situation on Play is derived from the authoritative campaign snapshot refreshed into shared store.
 - retries for tool steps are controlled by `Tool Retry Attempts` (1..5).
 
 ## What to inspect after running

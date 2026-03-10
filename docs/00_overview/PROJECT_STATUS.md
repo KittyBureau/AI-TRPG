@@ -15,6 +15,7 @@ Frontend:
 - `play.html` for the playable loop
 - `debug.html` for request/trace inspection
 - shared API layer, store, and panel modules
+- Play page currently includes Campaign, World, Character Library, Party, Map, Actor Control, and Debug panels
 
 Storage:
 
@@ -71,6 +72,7 @@ Runtime system:
 - playable gameplay loop from campaign selection to turn execution
 - campaign load and authoritative refresh
 - active actor control and switching
+- read-only current-situation Map Panel derived from authoritative campaign snapshot state
 - move / inventory / scene action flow
 - runtime unlock flow via status + explicit CLI
 - frontend recovery from not-ready backend

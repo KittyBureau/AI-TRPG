@@ -1,4 +1,4 @@
-import { chatTurn, getMapView } from "../api/api.js";
+import { chatTurn } from "../api/api.js";
 import { getPartyActorIds, resolveActingActorId } from "../utils/acting_actor.js";
 
 function buildMovePrompt(actorId, toAreaId) {
@@ -92,34 +92,6 @@ export function initPanel(store) {
     userInput: "",
     moveToAreaId: "",
   };
-  let lastMapRequestKey = "";
-
-  async function refreshMap(campaignId, actorId, options = {}) {
-    if (!campaignId || !actorId) {
-      if (options.clearWhenMissing === true) {
-        store.setMapView(null);
-      }
-      return;
-    }
-    const requestKey = `${campaignId}:${actorId}`;
-    lastMapRequestKey = requestKey;
-    const state = store.getState();
-    const mapResult = await getMapView(state.baseUrl, campaignId, actorId);
-    const nextState = store.getState();
-    const nextActorId = resolveActingActorId(nextState);
-    const nextRequestKey =
-      nextState.campaignId && nextActorId ? `${nextState.campaignId}:${nextActorId}` : "";
-    if (requestKey !== lastMapRequestKey || nextRequestKey !== requestKey) {
-      return;
-    }
-    if (mapResult.ok && mapResult.data) {
-      store.setMapView(mapResult.data);
-      return;
-    }
-    if (options.clearOnFailure === true) {
-      store.setMapView(null);
-    }
-  }
 
   async function refreshCampaignState(campaignId) {
     if (!campaignId || typeof store.refreshCampaign !== "function") {
@@ -177,7 +149,6 @@ export function initPanel(store) {
       return;
     }
     store.recordTurnResult(result.data, JSON.stringify(result.data, null, 2));
-    await refreshMap(state.campaignId, actorId);
     const refreshed = await refreshCampaignState(state.campaignId);
     if (!refreshed) {
       return;
@@ -223,7 +194,6 @@ export function initPanel(store) {
       return;
     }
     store.recordTurnResult(result.data, JSON.stringify(result.data, null, 2));
-    await refreshMap(state.campaignId, actorId);
     const refreshed = await refreshCampaignState(state.campaignId);
     if (!refreshed) {
       return;
@@ -347,58 +317,6 @@ export function initPanel(store) {
       mount.appendChild(inventoryList);
     }
 
-    const mapTitle = document.createElement("h3");
-    mapTitle.textContent = "Map Snapshot";
-    mount.appendChild(mapTitle);
-
-    const mapView =
-      state.mapView && typeof state.mapView === "object" ? state.mapView : null;
-    if (!canAct) {
-      const mapEmpty = document.createElement("div");
-      mapEmpty.className = "note";
-      mapEmpty.textContent = "Select an actor to inspect map context.";
-      mount.appendChild(mapEmpty);
-    } else if (!mapView || mapView.active_actor_id !== actingActorId) {
-      const mapLoading = document.createElement("div");
-      mapLoading.className = "note";
-      mapLoading.textContent = "Map snapshot unavailable yet.";
-      mount.appendChild(mapLoading);
-    } else {
-      const actorRow = document.createElement("div");
-      actorRow.className = "note";
-      actorRow.textContent = `Active actor: ${mapView.active_actor_id}`;
-      mount.appendChild(actorRow);
-
-      const currentArea = mapView.current_area || {};
-      const areaRow = document.createElement("div");
-      areaRow.className = "note";
-      areaRow.textContent = `Current area: ${currentArea.name || "-"} (${currentArea.id || "-"})`;
-      mount.appendChild(areaRow);
-
-      const reachableTitle = document.createElement("div");
-      reachableTitle.className = "note";
-      reachableTitle.textContent = `Reachable areas (${Array.isArray(mapView.reachable_areas) ? mapView.reachable_areas.length : 0})`;
-      mount.appendChild(reachableTitle);
-
-      const reachableList = document.createElement("div");
-      reachableList.className = "stack";
-      const reachableAreas = Array.isArray(mapView.reachable_areas) ? mapView.reachable_areas : [];
-      if (!reachableAreas.length) {
-        const none = document.createElement("div");
-        none.className = "row note";
-        none.textContent = "(none)";
-        reachableList.appendChild(none);
-      } else {
-        for (const area of reachableAreas) {
-          const row = document.createElement("div");
-          row.className = "row";
-          row.textContent = `${area.name || "-"} (${area.id || "-"})`;
-          reachableList.appendChild(row);
-        }
-      }
-      mount.appendChild(reachableList);
-    }
-
     const turnField = document.createElement("label");
     turnField.className = "field";
     turnField.innerHTML = '<span class="field-label">Turn Input</span>';
@@ -443,27 +361,5 @@ export function initPanel(store) {
   }
 
   render();
-  let lastObservedMapKey = "";
-  store.subscribe(() => {
-    const state = store.getState();
-    const actorId = resolveActingActorId(state);
-    const nextMapKey =
-      state.campaignId && actorId ? `${state.campaignId}:${actorId}` : "";
-    if (nextMapKey !== lastObservedMapKey) {
-      lastObservedMapKey = nextMapKey;
-      void refreshMap(state.campaignId, actorId, {
-        clearWhenMissing: true,
-        clearOnFailure: true,
-      });
-    }
-    render();
-  });
-  const initialState = store.getState();
-  const initialActorId = resolveActingActorId(initialState);
-  if (initialState.campaignId && initialActorId) {
-    lastObservedMapKey = `${initialState.campaignId}:${initialActorId}`;
-    void refreshMap(initialState.campaignId, initialActorId, {
-      clearOnFailure: true,
-    });
-  }
+  store.subscribe(render);
 }

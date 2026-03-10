@@ -9,7 +9,15 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from backend.api.main import create_app
-from backend.domain.models import ActorState, Campaign, Goal, Milestone, Selected, SettingsSnapshot
+from backend.domain.models import (
+    ActorState,
+    Campaign,
+    Goal,
+    MapArea,
+    Milestone,
+    Selected,
+    SettingsSnapshot,
+)
 from backend.infra.file_repo import FileRepo
 
 
@@ -45,6 +53,16 @@ def _create_campaign(tmp_path: Path, campaign_id: str = "camp_get_001") -> str:
                 character_state="alive",
                 meta={},
             )
+        },
+        map={
+            "areas": {
+                "area_001": MapArea(
+                    id="area_001",
+                    name="Camp",
+                    description="Initial camp",
+                    reachable_area_ids=[],
+                )
+            }
         },
     )
     repo.create_campaign(campaign)
@@ -84,6 +102,8 @@ def test_campaign_get_reflects_party_load_and_select_actor(
     assert "ch_smoke_001" in body["selected"]["party_character_ids"]
     assert body["selected"]["active_actor_id"] == "ch_smoke_001"
     assert "ch_smoke_001" in body["actors"]
+    assert "position" in body["actors"]["ch_smoke_001"]
+    assert body["map"]["areas"]["area_001"]["name"] == "Camp"
 
 
 def test_campaign_get_keeps_party_list_stable_after_repeated_party_load(
@@ -113,7 +133,7 @@ def test_campaign_get_keeps_party_list_stable_after_repeated_party_load(
     assert get_resp.status_code == 200
     body = get_resp.json()
     assert body["selected"]["party_character_ids"].count("ch_repeat_get") == 1
-    assert body["actors"].count("ch_repeat_get") == 1
+    assert list(body["actors"].keys()).count("ch_repeat_get") == 1
 
 
 def test_campaign_get_returns_404_for_missing_campaign(

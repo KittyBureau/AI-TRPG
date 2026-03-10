@@ -21,8 +21,10 @@ Current runtime frontend is panel-based and module-driven:
 Play page panels:
 
 - Campaign Panel
+- World Panel
 - Character Library Panel
 - Party Panel
+- Map Panel
 - Actor Control Panel
 - Debug Panel
 
@@ -41,8 +43,14 @@ Stable runtime endpoints used by the frontend:
 
 - `GET /api/v1/runtime/status`
 - `POST /api/v1/runtime/unlock` (CLI-facing; frontend never posts passphrases)
+- `GET /api/v1/worlds/list`
+- `POST /api/v1/worlds/generate`
+- `POST /api/v1/campaign/create`
 - `GET /api/v1/campaign/list`
+- `GET /api/v1/campaign/get`
+- `POST /api/v1/campaign/select_actor`
 - `GET /api/v1/characters/library`
+- `POST /api/v1/campaigns/{campaign_id}/party/load`
 - `POST /api/v1/chat/turn`
 
 ## Validation Entry

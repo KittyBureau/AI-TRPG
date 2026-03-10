@@ -12,6 +12,7 @@ from backend.domain.models import (
     ActorState,
     Campaign,
     Goal,
+    MapArea,
     Milestone,
     Selected,
     SettingsSnapshot,
@@ -52,6 +53,22 @@ def _create_campaign(tmp_path: Path, campaign_id: str = "camp_0001") -> str:
                 meta={},
             ),
         },
+        map={
+            "areas": {
+                "area_001": MapArea(
+                    id="area_001",
+                    name="Camp",
+                    description="Initial camp",
+                    reachable_area_ids=["area_002"],
+                ),
+                "area_002": MapArea(
+                    id="area_002",
+                    name="Gate",
+                    description="North gate",
+                    reachable_area_ids=[],
+                ),
+            }
+        },
     )
     repo.create_campaign(campaign)
     return campaign_id
@@ -69,7 +86,36 @@ def test_campaign_get_returns_selected_party_and_active_actor(
     assert body["campaign_id"] == campaign_id
     assert body["selected"]["party_character_ids"] == ["pc_001", "pc_002"]
     assert body["selected"]["active_actor_id"] == "pc_002"
-    assert body["actors"] == ["pc_001", "pc_002"]
+    assert body["actors"] == {
+        "pc_001": {
+            "position": "area_001",
+            "hp": 10,
+            "character_state": "alive",
+        },
+        "pc_002": {
+            "position": "area_002",
+            "hp": 10,
+            "character_state": "alive",
+        },
+    }
+    assert body["map"] == {
+        "areas": {
+            "area_001": {
+                "id": "area_001",
+                "name": "Camp",
+                "description": "Initial camp",
+                "parent_area_id": None,
+                "reachable_area_ids": ["area_002"],
+            },
+            "area_002": {
+                "id": "area_002",
+                "name": "Gate",
+                "description": "North gate",
+                "parent_area_id": None,
+                "reachable_area_ids": [],
+            },
+        }
+    }
     assert body["status"] == {
         "ended": False,
         "reason": None,

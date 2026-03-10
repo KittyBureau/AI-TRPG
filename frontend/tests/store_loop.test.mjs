@@ -46,7 +46,28 @@ test("refreshCampaign syncs party and active actor from backend authority", asyn
         party_character_ids: ["pc_001", "pc_002"],
         active_actor_id: "pc_002",
       },
-      actors: ["pc_001", "pc_002"],
+      actors: {
+        pc_001: { position: "area_001", hp: 10, character_state: "alive" },
+        pc_002: { position: "area_002", hp: 9, character_state: "alive" },
+      },
+      map: {
+        areas: {
+          area_001: {
+            id: "area_001",
+            name: "Camp",
+            description: "A quiet camp",
+            parent_area_id: null,
+            reachable_area_ids: ["area_002"],
+          },
+          area_002: {
+            id: "area_002",
+            name: "Gate",
+            description: "The north gate",
+            parent_area_id: null,
+            reachable_area_ids: [],
+          },
+        },
+      },
       status: {
         ended: false,
         reason: null,
@@ -70,6 +91,28 @@ test("refreshCampaign syncs party and active actor from backend authority", asyn
   assert.deepEqual(store.getState().campaign.party_character_ids, ["pc_001", "pc_002"]);
   assert.equal(store.getState().campaign.active_actor_id, "pc_002");
   assert.equal(store.getState().campaignOptions[0].active_actor_id, "pc_002");
+  assert.deepEqual(store.getState().campaign.actors, {
+    pc_001: { position: "area_001", hp: 10, character_state: "alive" },
+    pc_002: { position: "area_002", hp: 9, character_state: "alive" },
+  });
+  assert.deepEqual(store.getState().campaign.map, {
+    areas: {
+      area_001: {
+        id: "area_001",
+        name: "Camp",
+        description: "A quiet camp",
+        parent_area_id: null,
+        reachable_area_ids: ["area_002"],
+      },
+      area_002: {
+        id: "area_002",
+        name: "Gate",
+        description: "The north gate",
+        parent_area_id: null,
+        reachable_area_ids: [],
+      },
+    },
+  });
   assert.deepEqual(store.getState().campaign.status, {
     ended: false,
     reason: null,
@@ -228,9 +271,14 @@ test("campaign switch clears stale status until the next authoritative refresh c
 
   await store.refreshCampaign("camp_001", "http://127.0.0.1:8000");
   assert.equal(store.getState().campaign.status?.milestone.current, "intro");
+  assert.deepEqual(store.getState().campaign.actors, {
+    pc_001: { position: null, hp: null, character_state: "" },
+  });
 
   store.setCampaignId("camp_002");
   assert.equal(store.getState().campaign.status, null);
+  assert.deepEqual(store.getState().campaign.actors, {});
+  assert.deepEqual(store.getState().campaign.map, { areas: {} });
 
   await store.refreshCampaign("camp_002", "http://127.0.0.1:8000");
   assert.equal(store.getState().campaign.active_actor_id, "pc_002");

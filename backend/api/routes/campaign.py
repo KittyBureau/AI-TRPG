@@ -88,10 +88,29 @@ class CampaignSelectedResponse(BaseModel):
     active_actor_id: str
 
 
+class CampaignActorResponse(BaseModel):
+    position: Optional[str] = None
+    hp: int
+    character_state: str
+
+
+class CampaignMapAreaResponse(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    parent_area_id: Optional[str] = None
+    reachable_area_ids: List[str] = Field(default_factory=list)
+
+
+class CampaignMapResponse(BaseModel):
+    areas: dict[str, CampaignMapAreaResponse] = Field(default_factory=dict)
+
+
 class CampaignGetResponse(BaseModel):
     campaign_id: str
     selected: CampaignSelectedResponse
-    actors: List[str] = Field(default_factory=list)
+    actors: dict[str, CampaignActorResponse] = Field(default_factory=dict)
+    map: CampaignMapResponse = Field(default_factory=CampaignMapResponse)
     status: CampaignStatusSnapshotResponse
 
 
@@ -181,7 +200,26 @@ def get_campaign(campaign_id: str) -> CampaignGetResponse:
             party_character_ids=list(campaign.selected.party_character_ids),
             active_actor_id=campaign.selected.active_actor_id,
         ),
-        actors=sorted(campaign.actors.keys()),
+        actors={
+            actor_id: CampaignActorResponse(
+                position=campaign.actors[actor_id].position,
+                hp=campaign.actors[actor_id].hp,
+                character_state=campaign.actors[actor_id].character_state,
+            )
+            for actor_id in sorted(campaign.actors.keys())
+        },
+        map=CampaignMapResponse(
+            areas={
+                area_id: CampaignMapAreaResponse(
+                    id=campaign.map.areas[area_id].id,
+                    name=campaign.map.areas[area_id].name,
+                    description=campaign.map.areas[area_id].description,
+                    parent_area_id=campaign.map.areas[area_id].parent_area_id,
+                    reachable_area_ids=list(campaign.map.areas[area_id].reachable_area_ids),
+                )
+                for area_id in sorted(campaign.map.areas.keys())
+            }
+        ),
         status=_build_campaign_status_snapshot(campaign),
     )
 

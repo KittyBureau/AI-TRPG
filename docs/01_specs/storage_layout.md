@@ -232,6 +232,12 @@ World lazy-create migration (v1):
 | lifecycle | object | Campaign lifecycle status (`ended`, `reason`, `ended_at`). |
 | created_at | string | ISO timestamp. |
 
+Frontend campaign refresh note:
+
+- `GET /api/v1/campaign/get` is the authoritative Play refresh snapshot.
+- It mirrors `selected`, `actors`, `map.areas`, and `status` from persisted campaign state.
+- Play uses that shared-store snapshot for current actor/map situation; `/api/v1/map/view` remains optional inspection data, not the primary Play source of truth.
+
 ## Character access boundary (current)
 
 - `backend/domain/character_access.py` provides the supported access path for
