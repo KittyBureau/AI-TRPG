@@ -133,6 +133,7 @@ Required args:
 Required args:
 
 - `item_id`
+- `source_entity_id`
 
 Optional args:
 
@@ -141,9 +142,10 @@ Optional args:
 
 Notes:
 
-- Adds quantity to `actors[actor_id].inventory[item_id]`.
+- Adds quantity to `actors[actor_id].inventory[item_id]` only when `source_entity_id`
+  resolves to a reachable authoritative entity configured to grant that item.
 - `item_id` must be a non-empty string.
-- Invalid item/quantity/actor args fail with `reason=invalid_args`.
+- Reusing an already-consumed source or referencing a mismatched/unreachable source fails.
 
 ### map_generate
 

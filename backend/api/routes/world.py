@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from backend.app.world_presets import list_world_presets
 from backend.app.world_service import generate_world_resource
 from backend.domain.world_models import WorldGenerator
 from backend.infra.file_repo import FileRepo
@@ -54,7 +55,14 @@ class GenerateWorldResponse(WorldResponse):
 @router.get("/worlds/list", response_model=list[WorldSummaryResponse])
 def list_worlds() -> list[WorldSummaryResponse]:
     repo = _repo()
-    worlds = repo.list_worlds()
+    worlds_by_id = {world.world_id: world for world in repo.list_worlds()}
+    for world in list_world_presets():
+        worlds_by_id.setdefault(world.world_id, world)
+    worlds = sorted(
+        worlds_by_id.values(),
+        key=lambda world: (world.updated_at, world.world_id),
+        reverse=True,
+    )
     return [
         WorldSummaryResponse(
             world_id=world.world_id,
@@ -96,10 +104,19 @@ def get_world_for_campaign(campaign_id: str) -> WorldResponse:
         )
 
     try:
-        world = repo.get_or_create_world_stub(world_id)
+        world = generate_world_resource(world_id=world_id, repo=repo)
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    if hasattr(world, "model_dump"):
-        return WorldResponse(**world.model_dump())
-    return WorldResponse(**world.dict())
+    return WorldResponse(
+        world_id=world["world_id"],
+        name=world["name"],
+        seed=world["seed"],
+        world_description=world["world_description"],
+        objective=world["objective"],
+        start_area=world["start_area"],
+        generator=world["generator"],
+        schema_version=world["schema_version"],
+        created_at=world["created_at"],
+        updated_at=world["updated_at"],
+    )

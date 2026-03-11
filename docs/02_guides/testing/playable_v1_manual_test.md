@@ -8,6 +8,13 @@ This guide provides repeatable manual verification for Playable v1.
 
 Latest playable-baseline manual regression status: PASS (functionally normal).
 
+For the fixed static smoke world introduced during early P2 preparation, use
+`docs/20_runtime/testing/test_watchtower_world_manual_test.md`.
+
+Watchtower regression scenario:
+- use `test_watchtower_world` as the fixed end-to-end smoke baseline
+- confirm guard hint, one-time `tower_key` acquisition, blocked free-form inventory injection, locked door behavior, and `goal_achieved` on entering `watchtower_inside`
+
 Closure observations for the current baseline:
 
 - world generation and explicit world-bound campaign creation remained usable

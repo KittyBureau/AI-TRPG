@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
 
+from backend.app.world_presets import build_world_preset
 from backend.domain.models import Campaign
 from backend.domain.world_models import World, stable_world_timestamp
 from backend.infra.file_repo import FileRepo
@@ -156,7 +157,12 @@ def _ensure_world_resource(
     world = repo.get_world(world_id)
     created = world is None
     if world is None:
-        world = repo.get_or_create_world_stub(world_id)
+        preset_world = build_world_preset(world_id)
+        if preset_world is not None:
+            world = preset_world
+            repo.save_world(world)
+        else:
+            world = repo.get_or_create_world_stub(world_id)
 
     normalized = _normalize_world_v1(
         world,

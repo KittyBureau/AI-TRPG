@@ -15,6 +15,8 @@ from backend.domain.models import (
     ActorState,
     AppliedAction,
     Campaign,
+    Entity,
+    EntityLocation,
     Goal,
     MapArea,
     MapData,
@@ -53,7 +55,11 @@ class _MixedToolLLM:
                 {
                     "id": "call_inventory_ok",
                     "tool": "inventory_add",
-                    "args": {"item_id": "torch", "quantity": 1},
+                    "args": {
+                        "item_id": "torch",
+                        "quantity": 1,
+                        "source_entity_id": "torch_cache",
+                    },
                 },
                 {
                     "id": "call_move_invalid",
@@ -78,7 +84,11 @@ class _NarrativeAndToolSuccessLLM:
                 {
                     "id": "call_inventory_ok",
                     "tool": "inventory_add",
-                    "args": {"item_id": "torch", "quantity": 1},
+                    "args": {
+                        "item_id": "torch",
+                        "quantity": 1,
+                        "source_entity_id": "torch_cache",
+                    },
                 }
             ],
         }
@@ -166,6 +176,22 @@ def _create_campaign(
                 character_state="alive",
                 inventory={},
                 meta={},
+            )
+        },
+        entities={
+            "torch_cache": Entity(
+                id="torch_cache",
+                kind="object",
+                label="Torch Cache",
+                tags=["loot_source"],
+                loc=EntityLocation(type="area", id="area_001"),
+                verbs=["inspect", "search"],
+                state={
+                    "inventory_item_id": "torch",
+                    "inventory_quantity": 1,
+                    "inventory_granted": False,
+                },
+                props={},
             )
         },
     )

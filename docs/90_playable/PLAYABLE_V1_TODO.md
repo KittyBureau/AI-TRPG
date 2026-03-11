@@ -1,6 +1,6 @@
 ﻿# PLAYABLE v1 TODO (Development Mainline)
 
-Last updated: 2026-03-10
+Last updated: 2026-03-11
 
 ## Positioning
 
@@ -42,8 +42,8 @@ At milestone or phase wrap-up, refresh the lightweight ChatGPT web reference-doc
 
 - P0: 14 items (must-complete)
 - P1: 21 items
-- P2: 22 items
-- Total: 57 items
+- P2: 23 items
+- Total: 58 items
 
 ## TOC
 
@@ -745,3 +745,18 @@ Explicitly out of current P1 closure:
 - Acceptance: no increase in false conflict blocks on stable smoke scenarios.
 - Tests: `backend/tests/test_chat_semantic_guard.py`, `scripts/smoke_full_gameplay.ps1`
 - Rollback: revert detector heuristic changes.
+
+### P2-13 Static playable smoke-test world baseline
+- Status: `DONE` (2026-03-11)
+- Why: P2 preparation needs one fixed end-to-end world that can validate the existing gameplay loop without expanding into procedural world content.
+- Scope: `backend/app/world_presets.py`, `backend/app/world_service.py`, `backend/app/turn_service.py`, `backend/app/tool_executor.py`, `backend/api/routes/world.py`, `docs/20_runtime/testing/test_watchtower_world_manual_test.md`
+- Acceptance: `test_watchtower_world` is available in the world list as a built-in preset, can seed a campaign with a fixed watchtower map, starts the actor at `village_gate`, supports one `tower_key` item gate into `watchtower_inside`, and completes the goal when the actor enters the target area.
+- Tests: `backend/tests/test_watchtower_world.py`, `backend/tests/test_watchtower_world_turn_api.py`, `backend/tests/test_world_api.py`
+- Verification Evidence:
+  - fixed world metadata now comes from `backend/app/world_presets.py` and is surfaced in `/api/v1/worlds/list` without requiring a committed `storage/worlds/**` file
+  - campaign bootstrap switches to a static watchtower map/entity set only when `selected.world_id == "test_watchtower_world"`
+  - inventory authority for the smoke-test baseline is now grounded in reachable entity-backed sources; free-form `inventory_add` without a valid source is rejected
+  - manual verification on 2026-03-11 passed for the full watchtower loop: hint, one-time key grant, truthful inventory rejection narration, locked gate, and `goal_achieved`
+  - `backend/tests/test_watchtower_world.py` and `backend/tests/test_watchtower_world_turn_api.py` cover static bootstrap, surfaced NPC hint, one-time clue grant, truthful rejection narration, and blocked-then-successful gated entry
+  - `backend/tests/test_world_api.py` keeps both the world resource path and world list path on the fixed preset instead of the generic stub
+- Rollback: remove the preset world wiring and fall back to the default starter campaign/bootstrap path.

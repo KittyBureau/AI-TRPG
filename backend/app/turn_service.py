@@ -13,12 +13,14 @@ from backend.app.conflict_detector import detect_conflicts
 from backend.app.debug_resources import build_resources_payload
 from backend.app.scene_entities import build_area_local_entity_views
 from backend.app.tool_executor import execute_tool_calls
+from backend.app.world_presets import build_campaign_world_preset
 from backend.domain.character_access import (
     CharacterState,
 )
 from backend.domain.dialog_rules import DEFAULT_DIALOG_TYPE, DIALOG_TYPES
 from backend.domain.map_models import normalize_map
 from backend.domain.models import (
+    AppliedAction,
     AssistantStructured,
     Campaign,
     CampaignSummary,
@@ -432,26 +434,10 @@ class TurnService:
             template_defaults=selected_defaults,
         )
         template_usage["applied"] = applied
-        starter_map = MapData(
-            areas={
-                "area_001": MapArea(
-                    id="area_001",
-                    name="Starting Area",
-                    description="A quiet checkpoint lit by a flickering lantern.",
-                    reachable_area_ids=["area_002"],
-                ),
-                "area_002": MapArea(
-                    id="area_002",
-                    name="Side Room",
-                    description="A cramped side room with scattered crates.",
-                    reachable_area_ids=[],
-                ),
-            },
-            connections=[],
-        )
+        bootstrap = _build_campaign_bootstrap(world_id)
         actors = {
             character_id: ActorState(
-                position="area_001",
+                position=bootstrap["start_area_id"],
                 hp=DEFAULT_HP,
                 character_state=DEFAULT_CHARACTER_STATE,
                 meta={},
@@ -460,12 +446,11 @@ class TurnService:
         }
         if resolved_active not in actors:
             actors[resolved_active] = ActorState(
-                position="area_001",
+                position=bootstrap["start_area_id"],
                 hp=DEFAULT_HP,
                 character_state=DEFAULT_CHARACTER_STATE,
                 meta={},
             )
-        entities = _starter_entities()
         selected = Selected(
             world_id=world_id,
             map_id=map_id,
@@ -476,11 +461,11 @@ class TurnService:
             id=campaign_id,
             selected=selected,
             settings_snapshot=SettingsSnapshot(),
-            goal=Goal(text="Define the main objective", status="active"),
+            goal=Goal(text=bootstrap["goal_text"], status="active"),
             milestone=Milestone(current="intro", last_advanced_turn=0),
-            map=starter_map,
+            map=bootstrap["map"],
             actors=actors,
-            entities=entities,
+            entities=bootstrap["entities"],
         )
         normalize_map(campaign.map)
         self.repo.create_campaign(campaign)
@@ -662,6 +647,11 @@ class TurnService:
                     else None
                 )
                 timestamp = datetime.now(timezone.utc).isoformat()
+                assistant_text = _normalize_authoritative_assistant_text(
+                    llm_output.get("assistant_text", ""),
+                    applied_actions,
+                    tool_feedback,
+                )
                 entry = TurnLogEntry(
                     turn_id=turn_id,
                     timestamp=timestamp,
@@ -669,7 +659,7 @@ class TurnService:
                     dialog_type=dialog_type,
                     dialog_type_source=dialog_type_source,
                     settings_revision=campaign.settings_revision,
-                    assistant_text=llm_output.get("assistant_text", ""),
+                    assistant_text=assistant_text,
                     assistant_structured=AssistantStructured(tool_calls=tool_calls),
                     applied_actions=applied_actions,
                     tool_feedback=tool_feedback,
@@ -711,6 +701,26 @@ class TurnService:
             _CAMPAIGN_TURN_LOCKS.release(campaign_lock)
 
 
+def _default_starter_map() -> MapData:
+    return MapData(
+        areas={
+            "area_001": MapArea(
+                id="area_001",
+                name="Starting Area",
+                description="A quiet checkpoint lit by a flickering lantern.",
+                reachable_area_ids=["area_002"],
+            ),
+            "area_002": MapArea(
+                id="area_002",
+                name="Side Room",
+                description="A cramped side room with scattered crates.",
+                reachable_area_ids=[],
+            ),
+        },
+        connections=[],
+    )
+
+
 def _starter_entities() -> Dict[str, Entity]:
     return {
         "door_01": Entity(
@@ -746,30 +756,40 @@ def _starter_entities() -> Dict[str, Entity]:
     }
 
 
+def _build_campaign_bootstrap(world_id: str) -> Dict[str, object]:
+    preset = build_campaign_world_preset(world_id)
+    if preset is not None:
+        return {
+            "start_area_id": preset.start_area_id,
+            "goal_text": preset.goal_text,
+            "map": preset.map_data,
+            "entities": preset.entities,
+        }
+    return {
+        "start_area_id": "area_001",
+        "goal_text": "Define the main objective",
+        "map": _default_starter_map(),
+        "entities": _starter_entities(),
+    }
+
+
 def _ensure_minimum_state(campaign: Campaign) -> bool:
     updated = False
     if not isinstance(campaign.entities, dict):
         campaign.entities = {}
         updated = True
     if not campaign.map.areas:
-        campaign.map = MapData(
-            areas={
-                "area_001": MapArea(
-                    id="area_001",
-                    name="Starting Area",
-                    description="A quiet checkpoint lit by a flickering lantern.",
-                    reachable_area_ids=["area_002"],
-                ),
-                "area_002": MapArea(
-                    id="area_002",
-                    name="Side Room",
-                    description="A cramped side room with scattered crates.",
-                    reachable_area_ids=[],
-                ),
-            },
-            connections=[],
-        )
+        bootstrap = _build_campaign_bootstrap(campaign.selected.world_id)
+        campaign.map = bootstrap["map"]
+        if not campaign.entities:
+            campaign.entities = bootstrap["entities"]
+        if not campaign.goal.text.strip():
+            campaign.goal.text = str(bootstrap["goal_text"])
         updated = True
+    start_area_id = next(iter(campaign.map.areas.keys()), "area_001")
+    bootstrap = _build_campaign_bootstrap(campaign.selected.world_id)
+    if isinstance(bootstrap.get("start_area_id"), str) and bootstrap["start_area_id"] in campaign.map.areas:
+        start_area_id = str(bootstrap["start_area_id"])
     for character_id in campaign.selected.party_character_ids:
         state = _CHARACTER_FACADE.get_state(campaign, character_id)
         if state.position is None:
@@ -777,7 +797,7 @@ def _ensure_minimum_state(campaign: Campaign) -> bool:
                 campaign,
                 character_id,
                 CharacterState(
-                    position="area_001",
+                    position=start_area_id,
                     hp=state.hp,
                     character_state=state.character_state,
                 ),
@@ -1272,6 +1292,55 @@ def _build_success_response(
     return response
 
 
+def _normalize_authoritative_assistant_text(
+    raw_text: object,
+    applied_actions: List[object],
+    tool_feedback: object,
+) -> str:
+    narrative_text = raw_text.strip() if isinstance(raw_text, str) else ""
+    failed_calls = (
+        tool_feedback.failed_calls
+        if isinstance(tool_feedback, ToolFeedback)
+        else []
+    )
+    failed_inventory_add = any(
+        isinstance(item, FailedCall) and item.tool == "inventory_add"
+        for item in failed_calls
+    )
+    successful_inventory_add = any(
+        isinstance(item, AppliedAction) and item.tool == "inventory_add"
+        for item in applied_actions
+    )
+    if failed_inventory_add and not successful_inventory_add:
+        if not applied_actions:
+            return "No inventory change happened."
+        if _narrative_claims_inventory_gain(narrative_text):
+            return ""
+    return narrative_text
+
+
+def _narrative_claims_inventory_gain(text: str) -> bool:
+    lowered = text.strip().lower()
+    if not lowered:
+        return False
+    keywords = [
+        "add",
+        "added",
+        "inventory",
+        "pick up",
+        "picked up",
+        "obtain",
+        "obtained",
+        "receive",
+        "received",
+        "find ",
+        "found ",
+        "take ",
+        "took ",
+    ]
+    return any(keyword in lowered for keyword in keywords)
+
+
 def _apply_move_options_narrative_fallback(response: Dict[str, object]) -> None:
     if not isinstance(response, dict):
         return
@@ -1323,6 +1392,13 @@ def _apply_success_tool_narrative_fallback(response: Dict[str, object]) -> None:
     applied_actions = response.get("applied_actions")
     if not isinstance(applied_actions, list) or not applied_actions:
         return
+    if len(applied_actions) == 1 and isinstance(applied_actions[0], dict):
+        result = applied_actions[0].get("result")
+        if isinstance(result, dict):
+            result_narrative = result.get("narrative")
+            if isinstance(result_narrative, str) and result_narrative.strip():
+                response["narrative_text"] = result_narrative.strip()
+                return
     response["narrative_text"] = "The action was performed."
 
 

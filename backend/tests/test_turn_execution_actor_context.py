@@ -13,6 +13,8 @@ from backend.api.main import create_app
 from backend.domain.models import (
     ActorState,
     Campaign,
+    Entity,
+    EntityLocation,
     Goal,
     MapArea,
     MapData,
@@ -37,7 +39,11 @@ class _StubExecutionContextLLM:
                 {
                     "id": "call_ctx_fallback_inventory",
                     "tool": "inventory_add",
-                    "args": {"item_id": "compass", "quantity": 1},
+                    "args": {
+                        "item_id": "compass",
+                        "quantity": 1,
+                        "source_entity_id": "compass_cache",
+                    },
                 }
             ]
         elif token == "CTX_TARGET":
@@ -50,7 +56,12 @@ class _StubExecutionContextLLM:
                 {
                     "id": "call_ctx_target_inventory",
                     "tool": "inventory_add",
-                    "args": {"actor_id": "pc_002", "item_id": "torch", "quantity": 1},
+                    "args": {
+                        "actor_id": "pc_002",
+                        "item_id": "torch",
+                        "quantity": 1,
+                        "source_entity_id": "torch_cache",
+                    },
                 },
             ]
         elif token == "CTX_MISMATCH":
@@ -63,7 +74,12 @@ class _StubExecutionContextLLM:
                 {
                     "id": "call_ctx_mismatch_inventory",
                     "tool": "inventory_add",
-                    "args": {"actor_id": "pc_001", "item_id": "torch", "quantity": 1},
+                    "args": {
+                        "actor_id": "pc_001",
+                        "item_id": "torch",
+                        "quantity": 1,
+                        "source_entity_id": "torch_cache",
+                    },
                 },
             ]
         return {
@@ -117,6 +133,36 @@ def _create_campaign(tmp_path: Path, campaign_id: str) -> None:
                 character_state="alive",
                 inventory={},
                 meta={},
+            ),
+        },
+        entities={
+            "compass_cache": Entity(
+                id="compass_cache",
+                kind="object",
+                label="Compass Cache",
+                tags=["loot_source"],
+                loc=EntityLocation(type="area", id="area_001"),
+                verbs=["inspect", "search"],
+                state={
+                    "inventory_item_id": "compass",
+                    "inventory_quantity": 1,
+                    "inventory_granted": False,
+                },
+                props={},
+            ),
+            "torch_cache": Entity(
+                id="torch_cache",
+                kind="object",
+                label="Torch Cache",
+                tags=["loot_source"],
+                loc=EntityLocation(type="area", id="area_002"),
+                verbs=["inspect", "search"],
+                state={
+                    "inventory_item_id": "torch",
+                    "inventory_quantity": 1,
+                    "inventory_granted": False,
+                },
+                props={},
             ),
         },
     )

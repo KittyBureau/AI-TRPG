@@ -16,7 +16,7 @@ from backend.domain.models import (
     Selected,
     SettingsSnapshot,
 )
-from backend.domain.world_models import World
+from backend.domain.world_models import World, stable_world_timestamp
 from backend.infra.file_repo import FileRepo
 
 
@@ -126,13 +126,39 @@ def test_list_worlds_returns_minimal_summaries_sorted_by_updated_at_desc(
 
     assert response.status_code == 200
     body = response.json()
-    assert [item["world_id"] for item in body] == ["world_new", "world_old"]
+    assert [item["world_id"] for item in body] == [
+        "world_new",
+        "test_watchtower_world",
+        "world_old",
+    ]
     assert body[0] == {
         "world_id": "world_new",
         "name": "Newer World",
         "generator": {"id": "alt"},
         "updated_at": "2026-03-05T00:00:00+00:00",
     }
+
+
+def test_list_worlds_includes_watchtower_preset_without_storage_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+
+    response = client.get("/api/v1/worlds/list")
+
+    assert response.status_code == 200
+    body = response.json()
+    watchtower = next(
+        item for item in body if item["world_id"] == "test_watchtower_world"
+    )
+    assert watchtower == {
+        "world_id": "test_watchtower_world",
+        "name": "Test Watchtower World",
+        "generator": {"id": "static_test_world"},
+        "updated_at": stable_world_timestamp("test_watchtower_world"),
+    }
+    world_path = tmp_path / "storage" / "worlds" / "test_watchtower_world" / "world.json"
+    assert not world_path.exists()
 
 
 def test_list_worlds_skips_invalid_world_json_without_stub_side_effects(
@@ -159,7 +185,10 @@ def test_list_worlds_skips_invalid_world_json_without_stub_side_effects(
 
     assert response.status_code == 200
     body = response.json()
-    assert [item["world_id"] for item in body] == ["world_valid"]
+    assert [item["world_id"] for item in body] == [
+        "world_valid",
+        "test_watchtower_world",
+    ]
     assert not (tmp_path / "storage" / "worlds" / "world_missing").exists()
 
 
@@ -225,3 +254,22 @@ def test_generate_world_rejects_blank_world_id(
 
     assert response.status_code == 400
     assert response.json()["detail"] == "world_id is required"
+
+
+def test_generate_world_known_watchtower_preset_returns_static_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+
+    response = client.post(
+        "/api/v1/worlds/generate",
+        json={"world_id": "test_watchtower_world"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["world_id"] == "test_watchtower_world"
+    assert body["name"] == "Test Watchtower World"
+    assert body["start_area"] == "village_gate"
+    assert body["objective"] == "Find the tower key in the old hut and enter the watchtower."
+    assert body["generator"]["id"] == "static_test_world"

@@ -6,5 +6,9 @@
   "torch": {
     "name": "torch",
     "description": "a simple handheld torch for lighting dark areas"
+  },
+  "tower_key": {
+    "name": "tower key",
+    "description": "the iron key that unlocks the abandoned watchtower"
   }
 }

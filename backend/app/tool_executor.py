@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from backend.app.actor_service import spawn_actor
 from backend.app.character_facade_factory import create_runtime_character_facade
+from backend.app.world_presets import is_goal_area, required_item_for_move
 from backend.app.world_service import generate_world
 from backend.domain.character_access import (
     CharacterFacade,
@@ -160,16 +161,14 @@ def _apply_tool_call(
 ) -> Tuple[Optional[AppliedAction], Optional[str]]:
     timestamp = datetime.now(timezone.utc).isoformat()
     if call.tool == "move":
-        action = _apply_move(campaign, actor_id, call, timestamp, character_facade)
-        return action, "invalid_args" if action is None else None
+        return _apply_move(campaign, actor_id, call, timestamp, character_facade)
     if call.tool == "hp_delta":
         action = _apply_hp_delta(campaign, call, timestamp, character_facade)
         return action, "invalid_args" if action is None else None
     if call.tool == "inventory_add":
-        action = _apply_inventory_add(
+        return _apply_inventory_add(
             campaign, actor_id, call, timestamp, character_facade
         )
-        return action, "invalid_args" if action is None else None
     if call.tool == "move_options":
         action = _apply_move_options(
             campaign, actor_id, call, timestamp, character_facade
@@ -196,25 +195,34 @@ def _apply_move(
     call: ToolCall,
     timestamp: str,
     character_facade: CharacterFacade,
-) -> Optional[AppliedAction]:
+) -> Tuple[Optional[AppliedAction], Optional[str]]:
     actor_id = _resolve_call_actor_id(effective_actor_id, call)
     to_area_id = call.args.get("to_area_id")
     if "from_area_id" in call.args:
-        return None
+        return None, "invalid_args"
     if not isinstance(actor_id, str) or not isinstance(to_area_id, str):
-        return None
+        return None, "invalid_args"
     if actor_id not in campaign.actors:
-        return None
+        return None, "invalid_args"
     if to_area_id not in campaign.map.areas:
-        return None
+        return None, "invalid_args"
     actor_state = character_facade.get_state(campaign, actor_id)
     from_area_id = actor_state.position
     if not isinstance(from_area_id, str):
-        return None
+        return None, "invalid_args"
     if to_area_id == from_area_id:
-        return None
+        return None, "invalid_args"
     if not _is_connected(campaign, from_area_id, to_area_id):
-        return None
+        return None, "invalid_args"
+    required_item_id = required_item_for_move(
+        campaign.selected.world_id, from_area_id, to_area_id
+    )
+    if required_item_id is not None:
+        actor = campaign.actors.get(actor_id)
+        inventory = actor.inventory if actor is not None and isinstance(actor.inventory, dict) else {}
+        quantity = inventory.get(required_item_id)
+        if not isinstance(quantity, int) or quantity <= 0:
+            return None, "missing_required_item"
     character_facade.set_state(
         campaign,
         actor_id,
@@ -224,12 +232,14 @@ def _apply_move(
             character_state=actor_state.character_state,
         ),
     )
+    if is_goal_area(campaign.selected.world_id, to_area_id):
+        campaign.goal.status = "completed"
     return AppliedAction(
         tool="move",
         args=call.args,
         result={"from_area_id": from_area_id, "to_area_id": to_area_id},
         timestamp=timestamp,
-    )
+    ), None
 
 
 def _apply_hp_delta(
@@ -281,31 +291,33 @@ def _apply_inventory_add(
     call: ToolCall,
     timestamp: str,
     character_facade: CharacterFacade,
-) -> Optional[AppliedAction]:
+) -> Tuple[Optional[AppliedAction], Optional[str]]:
     actor_id = _resolve_call_actor_id(effective_actor_id, call)
     item_id = call.args.get("item_id")
     quantity = call.args.get("quantity", 1)
+    source_entity_id = call.args.get("source_entity_id")
     if not isinstance(actor_id, str):
-        return None
+        return None, "invalid_args"
     if not isinstance(item_id, str):
-        return None
+        return None, "invalid_args"
     normalized_item_id = item_id.strip()
     if not normalized_item_id:
-        return None
+        return None, "invalid_args"
     if not isinstance(quantity, int) or quantity <= 0:
-        return None
+        return None, "invalid_args"
+    if not isinstance(source_entity_id, str) or not source_entity_id.strip():
+        return None, "inventory_source_required"
     actor_state = character_facade.get_state(campaign, actor_id)
     character_facade.set_state(campaign, actor_id, actor_state)
-    actor = campaign.actors.get(actor_id)
-    if actor is None:
-        return None
-    if not isinstance(actor.inventory, dict):
-        actor.inventory = {}
-    current_qty = actor.inventory.get(normalized_item_id, 0)
-    if not isinstance(current_qty, int) or current_qty < 0:
-        current_qty = 0
-    new_qty = current_qty + quantity
-    actor.inventory[normalized_item_id] = new_qty
+    new_qty, error_reason = _grant_inventory_from_source(
+        campaign,
+        actor_id=actor_id,
+        item_id=normalized_item_id,
+        quantity=quantity,
+        source_entity_id=source_entity_id.strip(),
+    )
+    if new_qty is None:
+        return None, error_reason or "invalid_item_source"
     return AppliedAction(
         tool="inventory_add",
         args=call.args,
@@ -316,7 +328,7 @@ def _apply_inventory_add(
             "new_quantity": new_qty,
         },
         timestamp=timestamp,
-    )
+    ), None
 
 
 def _apply_move_options(
@@ -660,12 +672,13 @@ def _apply_scene_action(
     try:
         if normalized_action == "inspect":
             label = target.label if target is not None else "the scene"
+            hint_suffix = _scene_hint_suffix(target)
             return _scene_action_applied(
                 call,
                 timestamp,
                 _scene_action_result(
                     ok=True,
-                    narrative=f"You inspect {label}.",
+                    narrative=f"You inspect {label}.{hint_suffix}",
                     entity_patches=entity_patches,
                     new_entities=new_entities,
                     removed_entities=removed_entities,
@@ -675,12 +688,13 @@ def _apply_scene_action(
         if normalized_action == "talk":
             if target is None:
                 return None
+            hint_suffix = _scene_hint_suffix(target)
             return _scene_action_applied(
                 call,
                 timestamp,
                 _scene_action_result(
                     ok=True,
-                    narrative=f"You talk to {target.label}.",
+                    narrative=f"You talk to {target.label}.{hint_suffix}",
                     entity_patches=entity_patches,
                     new_entities=new_entities,
                     removed_entities=removed_entities,
@@ -722,6 +736,45 @@ def _apply_scene_action(
 
         if normalized_action == "search":
             if is_area_search:
+                area_source = _find_area_inventory_source(
+                    campaign,
+                    actor_id=actor_id,
+                    area_id=current_area_id,
+                )
+                if area_source is not None:
+                    source_entity, item_id, quantity = area_source
+                    new_qty, error_reason = _grant_inventory_from_source(
+                        campaign,
+                        actor_id=actor_id,
+                        item_id=item_id,
+                        quantity=quantity,
+                        source_entity_id=source_entity.id,
+                        entity_patches=entity_patches,
+                    )
+                    if new_qty is not None:
+                        return _scene_action_applied(
+                            call,
+                            timestamp,
+                            _scene_action_result(
+                                ok=True,
+                                narrative=f"You search the area and find {item_id} in {source_entity.label}.",
+                                entity_patches=entity_patches,
+                                new_entities=new_entities,
+                                removed_entities=removed_entities,
+                            ),
+                        )
+                    if error_reason == "item_source_depleted":
+                        return _scene_action_applied(
+                            call,
+                            timestamp,
+                            _scene_action_result(
+                                ok=True,
+                                narrative="You search the area but find nothing useful.",
+                                entity_patches=entity_patches,
+                                new_entities=new_entities,
+                                removed_entities=removed_entities,
+                            ),
+                        )
                 return _scene_action_applied(
                     call,
                     timestamp,
@@ -735,6 +788,43 @@ def _apply_scene_action(
                 )
             if target is None:
                 return None
+            grant_item_id = target.state.get("inventory_item_id")
+            grant_quantity = target.state.get("inventory_quantity", 1)
+            if isinstance(grant_item_id, str):
+                normalized_grant_item_id = grant_item_id.strip()
+                if normalized_grant_item_id and isinstance(grant_quantity, int) and grant_quantity > 0:
+                    new_qty, error_reason = _grant_inventory_from_source(
+                        campaign,
+                        actor_id=actor_id,
+                        item_id=normalized_grant_item_id,
+                        quantity=grant_quantity,
+                        source_entity_id=target.id,
+                        entity_patches=entity_patches,
+                    )
+                    if new_qty is not None:
+                        return _scene_action_applied(
+                            call,
+                            timestamp,
+                            _scene_action_result(
+                                ok=True,
+                                narrative=f"You search {target.label} and find {normalized_grant_item_id}.",
+                                entity_patches=entity_patches,
+                                new_entities=new_entities,
+                                removed_entities=removed_entities,
+                            ),
+                        )
+                    if error_reason == "item_source_depleted":
+                        return _scene_action_applied(
+                            call,
+                            timestamp,
+                            _scene_action_result(
+                                ok=True,
+                                narrative=f"You search {target.label} but find nothing useful.",
+                                entity_patches=entity_patches,
+                                new_entities=new_entities,
+                                removed_entities=removed_entities,
+                            ),
+                        )
             if target.kind == "container" and target.state.get("opened") is True:
                 has_nested = any(
                     entity.loc.type == "entity" and entity.loc.id == target.id
@@ -1185,3 +1275,92 @@ def _is_connected(campaign: Campaign, from_area_id: str, to_area_id: str) -> boo
     if not area:
         return False
     return to_area_id in area.reachable_area_ids
+
+
+def _scene_hint_suffix(target: Optional[Entity]) -> str:
+    if target is None:
+        return ""
+    hint = target.state.get("hint")
+    if not isinstance(hint, str):
+        return ""
+    normalized_hint = hint.strip()
+    if not normalized_hint:
+        return ""
+    return f" {normalized_hint}"
+
+
+def _grant_inventory_from_source(
+    campaign: Campaign,
+    *,
+    actor_id: str,
+    item_id: str,
+    quantity: int,
+    source_entity_id: str,
+    entity_patches: Optional[List[Dict[str, Any]]] = None,
+) -> Tuple[Optional[int], Optional[str]]:
+    actor = campaign.actors.get(actor_id)
+    source = campaign.entities.get(source_entity_id)
+    if actor is None or source is None:
+        return None, "invalid_item_source"
+    current_area_id = actor.position if isinstance(actor.position, str) else None
+    if not _is_entity_reachable(
+        campaign,
+        source,
+        actor_id=actor_id,
+        current_area_id=current_area_id,
+    ):
+        return None, "invalid_item_source"
+    granted_item_id = source.state.get("inventory_item_id")
+    if not isinstance(granted_item_id, str) or granted_item_id.strip() != item_id:
+        return None, "invalid_item_source"
+    granted_quantity = source.state.get("inventory_quantity", 1)
+    if not isinstance(granted_quantity, int) or granted_quantity <= 0:
+        return None, "invalid_item_source"
+    if quantity != granted_quantity:
+        return None, "invalid_item_source"
+    if source.state.get("inventory_granted") is True:
+        return None, "item_source_depleted"
+    before = _entity_to_dict(source) if entity_patches is not None else {}
+    if not isinstance(actor.inventory, dict):
+        actor.inventory = {}
+    current_qty = actor.inventory.get(item_id, 0)
+    if not isinstance(current_qty, int) or current_qty < 0:
+        current_qty = 0
+    new_qty = current_qty + quantity
+    actor.inventory[item_id] = new_qty
+    source.state["inventory_granted"] = True
+    if entity_patches is not None:
+        _append_entity_patch(entity_patches, source, before)
+    return new_qty, None
+
+
+def _find_area_inventory_source(
+    campaign: Campaign,
+    *,
+    actor_id: str,
+    area_id: Optional[str],
+) -> Optional[Tuple[Entity, str, int]]:
+    if not isinstance(area_id, str) or not area_id.strip():
+        return None
+    for entity in sorted(campaign.entities.values(), key=lambda item: item.id):
+        if entity.loc.type != "area" or entity.loc.id != area_id:
+            continue
+        item_id = entity.state.get("inventory_item_id")
+        quantity = entity.state.get("inventory_quantity", 1)
+        if not isinstance(item_id, str) or not item_id.strip():
+            continue
+        if not isinstance(quantity, int) or quantity <= 0:
+            continue
+        if entity.state.get("inventory_granted") is True:
+            continue
+        if not _is_scene_action_allowed("search", entity):
+            continue
+        if not _is_entity_reachable(
+            campaign,
+            entity,
+            actor_id=actor_id,
+            current_area_id=area_id,
+        ):
+            continue
+        return entity, item_id.strip(), quantity
+    return None

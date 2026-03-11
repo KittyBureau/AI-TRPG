@@ -12,6 +12,8 @@ from backend.app.turn_service import TurnService
 from backend.domain.models import (
     ActorState,
     Campaign,
+    Entity,
+    EntityLocation,
     Goal,
     MapArea,
     MapData,
@@ -74,12 +76,37 @@ def _make_campaign(campaign_id: str = "camp_inventory") -> Campaign:
     )
 
 
+def _add_inventory_source(
+    campaign: Campaign,
+    *,
+    source_entity_id: str,
+    item_id: str,
+    quantity: int = 1,
+    area_id: str = "area_001",
+) -> None:
+    campaign.entities[source_entity_id] = Entity(
+        id=source_entity_id,
+        kind="object",
+        label=f"{item_id} source",
+        tags=["loot_source"],
+        loc=EntityLocation(type="area", id=area_id),
+        verbs=["inspect", "search"],
+        state={
+            "inventory_item_id": item_id,
+            "inventory_quantity": quantity,
+            "inventory_granted": False,
+        },
+        props={},
+    )
+
+
 def test_inventory_add_applies_and_updates_actor_inventory() -> None:
     campaign = _make_campaign()
+    _add_inventory_source(campaign, source_entity_id="torch_cache", item_id="torch", quantity=2)
     call = ToolCall(
         id="call_inventory_001",
         tool="inventory_add",
-        args={"item_id": "torch", "quantity": 2},
+        args={"item_id": "torch", "quantity": 2, "source_entity_id": "torch_cache"},
     )
 
     applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
@@ -110,6 +137,11 @@ def test_inventory_add_applies_and_updates_actor_inventory() -> None:
         ({"item_id": "rope", "quantity": 0}, "invalid_args"),
         ({"item_id": "rope", "quantity": -1}, "invalid_args"),
         ({"item_id": "rope", "quantity": "2"}, "invalid_args"),
+        ({"item_id": "rope", "quantity": 1}, "inventory_source_required"),
+        (
+            {"item_id": "rope", "quantity": 1, "source_entity_id": "missing_source"},
+            "invalid_item_source",
+        ),
         ({"item_id": "rope", "actor_id": "pc_999"}, "actor_context_mismatch"),
     ],
 )
@@ -142,7 +174,11 @@ def test_inventory_add_persists_via_turn_service(
                     {
                         "id": "call_inventory_turn",
                         "tool": "inventory_add",
-                        "args": {"item_id": "medkit", "quantity": 1},
+                        "args": {
+                            "item_id": "medkit",
+                            "quantity": 1,
+                            "source_entity_id": "medkit_cache",
+                        },
                     }
                 ],
             }
@@ -152,6 +188,9 @@ def test_inventory_add_persists_via_turn_service(
     repo = FileRepo(tmp_path / "storage")
     service = TurnService(repo)
     campaign = _make_campaign("camp_inventory_turn")
+    _add_inventory_source(
+        campaign, source_entity_id="medkit_cache", item_id="medkit", quantity=1
+    )
     repo.create_campaign(campaign)
 
     response = service.submit_turn("camp_inventory_turn", "Pick up the medkit.")
@@ -212,3 +251,83 @@ def test_regular_turn_does_not_change_inventory_without_inventory_add(
     assert response["state_summary"]["active_actor_inventory"] == {"torch": 1}
     reloaded = repo.get_campaign("camp_inventory_narrative")
     assert reloaded.actors["pc_001"].inventory == {"torch": 1}
+
+
+def test_free_form_turn_cannot_add_apple_without_authoritative_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        turn_service_module,
+        "LLMClient",
+        lambda: _StubLLM(
+            {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": "call_inventory_apple",
+                        "tool": "inventory_add",
+                        "args": {"item_id": "apple", "quantity": 1},
+                    }
+                ],
+            }
+        ),
+    )
+
+    repo = FileRepo(tmp_path / "storage")
+    service = TurnService(repo)
+    repo.create_campaign(_make_campaign("camp_inventory_apple"))
+
+    response = service.submit_turn("camp_inventory_apple", "add an apple to my inventory")
+
+    assert response["applied_actions"] == []
+    assert response["tool_feedback"]["failed_calls"] == [
+        {
+            "id": "call_inventory_apple",
+            "tool": "inventory_add",
+            "status": "error",
+            "reason": "inventory_source_required",
+        }
+    ]
+    assert response["state_summary"]["active_actor_inventory"] == {}
+
+
+def test_free_form_turn_cannot_add_tower_key_without_authoritative_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        turn_service_module,
+        "LLMClient",
+        lambda: _StubLLM(
+            {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": "call_inventory_tower_key",
+                        "tool": "inventory_add",
+                        "args": {"item_id": "tower_key", "quantity": 1},
+                    }
+                ],
+            }
+        ),
+    )
+
+    repo = FileRepo(tmp_path / "storage")
+    service = TurnService(repo)
+    repo.create_campaign(_make_campaign("camp_inventory_tower_key"))
+
+    response = service.submit_turn("camp_inventory_tower_key", "add tower_key to my inventory")
+
+    assert response["applied_actions"] == []
+    assert response["tool_feedback"]["failed_calls"] == [
+        {
+            "id": "call_inventory_tower_key",
+            "tool": "inventory_add",
+            "status": "error",
+            "reason": "inventory_source_required",
+        }
+    ]
+    assert response["state_summary"]["active_actor_inventory"] == {}

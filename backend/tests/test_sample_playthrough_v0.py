@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 import backend.app.turn_service as turn_service_module
 from backend.api.main import create_app
+from backend.domain.models import Entity, EntityLocation
 from backend.infra.file_repo import FileRepo
 
 
@@ -70,7 +71,11 @@ class _StubPlayableLLM:
                     {
                         "id": "call_play_loot_1",
                         "tool": "inventory_add",
-                        "args": {"item_id": "torch", "quantity": 1},
+                        "args": {
+                            "item_id": "torch",
+                            "quantity": 1,
+                            "source_entity_id": "torch_cache_01",
+                        },
                     }
                 ],
             }
@@ -98,7 +103,11 @@ class _StubPlayableLLM:
                     {
                         "id": "call_play_loot_2",
                         "tool": "inventory_add",
-                        "args": {"item_id": "herb", "quantity": 2},
+                        "args": {
+                            "item_id": "herb",
+                            "quantity": 2,
+                            "source_entity_id": "herb_cache_01",
+                        },
                     }
                 ],
             }
@@ -152,6 +161,34 @@ def test_sample_playthrough_v0_persists_state_without_drift(
     repo = FileRepo(tmp_path / "storage")
     campaign = repo.get_campaign(campaign_id)
     campaign.goal.text = "Retrieve supplies and stay alive."
+    campaign.entities["torch_cache_01"] = Entity(
+        id="torch_cache_01",
+        kind="object",
+        label="Torch Cache",
+        tags=["loot_source"],
+        loc=EntityLocation(type="area", id="area_003"),
+        verbs=["inspect", "search"],
+        state={
+            "inventory_item_id": "torch",
+            "inventory_quantity": 1,
+            "inventory_granted": False,
+        },
+        props={},
+    )
+    campaign.entities["herb_cache_01"] = Entity(
+        id="herb_cache_01",
+        kind="object",
+        label="Herb Cache",
+        tags=["loot_source"],
+        loc=EntityLocation(type="area", id="area_003"),
+        verbs=["inspect", "search"],
+        state={
+            "inventory_item_id": "herb",
+            "inventory_quantity": 2,
+            "inventory_granted": False,
+        },
+        props={},
+    )
     repo.save_campaign(campaign)
 
     tokens = [
