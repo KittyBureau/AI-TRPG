@@ -176,6 +176,7 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 **Rules**
 - If changes touch manifest trigger paths, update affected AI_INDEX sections and source-of-truth specs first.
 - New protocol fields or enums require updates in `docs/01_specs/**` before code changes merge.
+- Use `docs/01_specs/DOC_SYNC_BASELINE.md` for the minimal Drive-sync checklist at milestone wrap-up.
 - Keep section numbers stable; append new sections at the end.
 **Checks**
 - Review `docs/_index/ai_index_manifest.json` for trigger coverage.
@@ -186,6 +187,7 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 ## 12. Documentation Authority & Sync Obligations
 **Rules**
 - Authoritative docs: `docs/00_overview/**`, `docs/01_specs/**`, `docs/20_runtime/**`, `docs/30_resources/**`, `docs/90_playable/**`.
+- Minimal sync baseline note: `docs/01_specs/DOC_SYNC_BASELINE.md`.
 - Current architecture/status overview for Playable v1 lives in `docs/00_overview/PROJECT_STATUS.md`.
 - Transitional exception: `docs/02_guides/testing/playable_v1_manual_test.md` remains as a stable manual-test entry path.
 - Human-only docs: `docs/99_human_only/**`. Do not cite or rely on these unless the task explicitly allows it.

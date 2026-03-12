@@ -12,6 +12,7 @@
 - Primary development remains local: VSCode + Codex + the full repository are the authoritative working environment.
 - ChatGPT web project context uses a lightweight Google Drive reference-doc package for structure, navigation, status, and roadmap context only.
 - The synced package is not a second repo mirror; detailed implementation reading should still happen from the local repository, usually through Codex.
+- Minimal sync checklist: `docs/01_specs/DOC_SYNC_BASELINE.md`.
 - Refresh the lightweight package at milestone or phase wrap-up when project structure, high-level architecture, current status, or roadmap docs materially change.
 - Standard refresh path: `scripts/sync_chatgpt_docs.ps1` (one-way overwrite upload from local to Drive).
 
