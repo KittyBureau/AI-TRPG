@@ -236,6 +236,7 @@ Frontend campaign refresh note:
 
 - `GET /api/v1/campaign/get` is the authoritative Play refresh snapshot.
 - It mirrors `selected`, `actors`, `map.areas`, and `status` from persisted campaign state.
+- `actors[*]` includes read-only runtime snapshot fields used by Play refresh, including `position`, `hp`, `character_state`, and `inventory`.
 - Play uses that shared-store snapshot for current actor/map situation; `/api/v1/map/view` remains optional inspection data, not the primary Play source of truth.
 
 ## Character access boundary (current)

@@ -470,6 +470,25 @@ function normalizeCampaignActors(rawActors) {
   return normalized;
 }
 
+function normalizeCampaignInventories(rawActors) {
+  if (!rawActors || typeof rawActors !== "object" || Array.isArray(rawActors)) {
+    return null;
+  }
+  const normalized = {};
+  let sawInventoryField = false;
+  for (const [rawActorId, rawActor] of Object.entries(rawActors)) {
+    const actorId = normalizeActorId(rawActorId);
+    if (!actorId || !rawActor || typeof rawActor !== "object" || Array.isArray(rawActor)) {
+      continue;
+    }
+    if (hasOwn(rawActor, "inventory")) {
+      sawInventoryField = true;
+    }
+    normalized[actorId] = normalizeInventory(rawActor.inventory);
+  }
+  return sawInventoryField ? normalized : null;
+}
+
 function normalizeCampaignMap(rawMap) {
   const normalized = {
     areas: {},
@@ -535,6 +554,7 @@ function normalizeCampaignGetPayload(payload) {
     return null;
   }
   const actors = normalizeCampaignActors(payload.actors);
+  const inventoriesByActor = normalizeCampaignInventories(payload.actors);
   const map = normalizeCampaignMap(payload.map);
   const rawStatus =
     payload.status && typeof payload.status === "object" && !Array.isArray(payload.status)
@@ -561,6 +581,7 @@ function normalizeCampaignGetPayload(payload) {
       ),
     ],
     actors,
+    inventoriesByActor,
     map,
     statusSnapshot:
       rawStatus && milestoneCurrent
@@ -1139,10 +1160,14 @@ export async function refreshCampaign(
   state.campaign.status = normalizedPayload.statusSnapshot;
   state.campaign.actors = normalizedPayload.actors;
   state.campaign.map = normalizedPayload.map;
+  if (normalizedPayload.inventoriesByActor) {
+    replaceInventoryByActor(normalizedPayload.inventoriesByActor);
+  } else {
+    reconcileSelectedItemsWithInventory();
+  }
   syncCampaignOption(normalizedPayload.campaignId, {
     active_actor_id: normalizedPayload.activeActorId,
   });
-  reconcileSelectedItemsWithInventory();
   state.statusMessage = `Campaign refreshed from backend: active=${state.campaign.active_actor_id || "none"}, party=${state.campaign.party_character_ids.length}.`;
   emit();
   return result;

@@ -1,5 +1,6 @@
 import { chatTurn } from "../api/api.js";
 import { getPartyActorIds, resolveActingActorId } from "../utils/acting_actor.js";
+import { buildInventoryItemViews } from "../utils/inventory_items.js";
 
 function buildMovePrompt(actorId, toAreaId) {
   return `[UI_FLOW_STEP]
@@ -69,7 +70,7 @@ function getActorInventoryView(state, actorId) {
   if (!actorId || !hasOwn(inventoryByActor, actorId)) {
     return {
       known: false,
-      entries: [],
+      items: [],
     };
   }
   const inventory =
@@ -78,7 +79,12 @@ function getActorInventoryView(state, actorId) {
       : {};
   return {
     known: true,
-    entries: Object.entries(inventory).sort(([left], [right]) => left.localeCompare(right)),
+    items: buildInventoryItemViews(
+      inventory,
+      state?.selectedItemIdByActor && typeof state.selectedItemIdByActor === "object"
+        ? state.selectedItemIdByActor[actorId]
+        : null
+    ),
   };
 }
 
@@ -219,6 +225,10 @@ export function initPanel(store) {
       actingActorId && state.selectedItemIdByActor
         ? state.selectedItemIdByActor[actingActorId] || null
         : null;
+    const selectedItemView =
+      inventoryView.known && Array.isArray(inventoryView.items)
+        ? inventoryView.items.find((item) => item.is_selected) || null
+        : null;
 
     mount.innerHTML = "";
 
@@ -275,7 +285,9 @@ export function initPanel(store) {
 
     const selectionRow = document.createElement("div");
     selectionRow.className = "note";
-    selectionRow.textContent = `Selected item: ${selectedItemId || "none"}`;
+    selectionRow.textContent = selectedItemView
+      ? `Selected item: ${selectedItemView.name} (${selectedItemView.item_id})`
+      : `Selected item: ${selectedItemId || "none"}`;
     mount.appendChild(selectionRow);
 
     const inventoryNote = document.createElement("div");
@@ -295,7 +307,7 @@ export function initPanel(store) {
       inventoryUnknown.textContent =
         "Inventory snapshot unavailable yet. It will appear after a successful turn response.";
       mount.appendChild(inventoryUnknown);
-    } else if (!inventoryView.entries.length) {
+    } else if (!inventoryView.items.length) {
       const inventoryNone = document.createElement("div");
       inventoryNone.className = "note";
       inventoryNone.textContent = "No items in inventory.";
@@ -303,18 +315,50 @@ export function initPanel(store) {
     } else {
       const inventoryList = document.createElement("div");
       inventoryList.className = "stack";
-      for (const [itemId, quantity] of inventoryView.entries) {
+      for (const item of inventoryView.items) {
         const itemButton = document.createElement("button");
         itemButton.type = "button";
         itemButton.className =
-        itemId === selectedItemId ? "inventory-item selected" : "inventory-item";
-        itemButton.textContent = `${itemId} x${quantity}`;
+          item.is_selected ? "inventory-item selected" : "inventory-item";
+        itemButton.setAttribute("aria-pressed", item.is_selected ? "true" : "false");
         itemButton.addEventListener("click", () => {
-          const selected = store.setSelectedItemForActor(actingActorId, itemId);
+          const selected = store.setSelectedItemForActor(actingActorId, item.item_id);
           if (!selected) {
-            store.setStatusMessage(`Failed to select item: ${itemId}`);
+            store.setStatusMessage(`Failed to select item: ${item.item_id}`);
           }
         });
+
+        const itemHeader = document.createElement("div");
+        itemHeader.className = "inventory-item-header";
+
+        const itemName = document.createElement("div");
+        itemName.className = "inventory-item-name";
+        itemName.textContent = item.name;
+        itemHeader.appendChild(itemName);
+
+        const itemQuantity = document.createElement("div");
+        itemQuantity.className = "inventory-item-quantity";
+        itemQuantity.textContent = `x${item.quantity}`;
+        itemHeader.appendChild(itemQuantity);
+
+        if (item.is_selected) {
+          const selectedBadge = document.createElement("div");
+          selectedBadge.className = "inventory-item-badge";
+          selectedBadge.textContent = "Selected";
+          itemHeader.appendChild(selectedBadge);
+        }
+
+        const itemDescription = document.createElement("div");
+        itemDescription.className = "inventory-item-description";
+        itemDescription.textContent = item.description;
+
+        const itemMeta = document.createElement("div");
+        itemMeta.className = "inventory-item-meta";
+        itemMeta.textContent = `item_id: ${item.item_id}`;
+
+        itemButton.appendChild(itemHeader);
+        itemButton.appendChild(itemDescription);
+        itemButton.appendChild(itemMeta);
         inventoryList.appendChild(itemButton);
       }
       mount.appendChild(inventoryList);

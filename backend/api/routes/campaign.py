@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from backend.app.debug_resources import build_template_usage_debug
 from backend.app.turn_service import TurnService
-from backend.domain.models import Campaign
+from backend.domain.models import ActorState, Campaign
 from backend.infra.file_repo import FileRepo
 
 router = APIRouter(prefix="/campaign", tags=["campaign"])
@@ -92,6 +92,7 @@ class CampaignActorResponse(BaseModel):
     position: Optional[str] = None
     hp: int
     character_state: str
+    inventory: dict[str, int] = Field(default_factory=dict)
 
 
 class CampaignMapAreaResponse(BaseModel):
@@ -140,6 +141,21 @@ def _build_campaign_status_snapshot(campaign: Campaign) -> CampaignStatusSnapsho
             summary=campaign.milestone.summary,
         ),
     )
+
+
+def _serialize_actor_inventory(actor: ActorState) -> dict[str, int]:
+    inventory = actor.inventory if isinstance(actor.inventory, dict) else {}
+    payload: dict[str, int] = {}
+    for raw_item_id, raw_quantity in inventory.items():
+        if not isinstance(raw_item_id, str):
+            continue
+        item_id = raw_item_id.strip()
+        if not item_id:
+            continue
+        if not isinstance(raw_quantity, int) or raw_quantity <= 0:
+            continue
+        payload[item_id] = raw_quantity
+    return payload
 
 
 @router.post("/create", response_model=CreateCampaignResponse)
@@ -205,6 +221,7 @@ def get_campaign(campaign_id: str) -> CampaignGetResponse:
                 position=campaign.actors[actor_id].position,
                 hp=campaign.actors[actor_id].hp,
                 character_state=campaign.actors[actor_id].character_state,
+                inventory=_serialize_actor_inventory(campaign.actors[actor_id]),
             )
             for actor_id in sorted(campaign.actors.keys())
         },

@@ -44,12 +44,14 @@ def _create_campaign(tmp_path: Path, campaign_id: str = "camp_0001") -> str:
                 position="area_001",
                 hp=10,
                 character_state="alive",
+                inventory={"torch": 1},
                 meta={},
             ),
             "pc_002": ActorState(
                 position="area_002",
                 hp=10,
                 character_state="alive",
+                inventory={},
                 meta={},
             ),
         },
@@ -91,11 +93,13 @@ def test_campaign_get_returns_selected_party_and_active_actor(
             "position": "area_001",
             "hp": 10,
             "character_state": "alive",
+            "inventory": {"torch": 1},
         },
         "pc_002": {
             "position": "area_002",
             "hp": 10,
             "character_state": "alive",
+            "inventory": {},
         },
     }
     assert body["map"] == {

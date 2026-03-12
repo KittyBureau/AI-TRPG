@@ -51,6 +51,7 @@ def _create_campaign(tmp_path: Path, campaign_id: str = "camp_get_001") -> str:
                 position="area_001",
                 hp=10,
                 character_state="alive",
+                inventory={"torch": 1},
                 meta={},
             )
         },
@@ -103,6 +104,8 @@ def test_campaign_get_reflects_party_load_and_select_actor(
     assert body["selected"]["active_actor_id"] == "ch_smoke_001"
     assert "ch_smoke_001" in body["actors"]
     assert "position" in body["actors"]["ch_smoke_001"]
+    assert body["actors"]["pc_001"]["inventory"] == {"torch": 1}
+    assert body["actors"]["ch_smoke_001"]["inventory"] == {}
     assert body["map"]["areas"]["area_001"]["name"] == "Camp"
 
 

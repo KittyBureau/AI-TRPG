@@ -122,12 +122,55 @@ button.primary {
 button.inventory-item {
   width: 100%;
   text-align: left;
+  padding: 10px 12px;
+  border-radius: 10px;
 }
 
 button.inventory-item.selected {
   background: #dff3ed;
   border-color: var(--accent);
   color: var(--text);
+  box-shadow: inset 0 0 0 2px rgba(13, 107, 87, 0.18);
+}
+
+.inventory-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.inventory-item-name {
+  font-weight: 600;
+}
+
+.inventory-item-quantity {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.inventory-item-badge {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.inventory-item-description {
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.inventory-item-meta {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .inline {

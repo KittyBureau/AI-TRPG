@@ -47,8 +47,18 @@ test("refreshCampaign syncs party and active actor from backend authority", asyn
         active_actor_id: "pc_002",
       },
       actors: {
-        pc_001: { position: "area_001", hp: 10, character_state: "alive" },
-        pc_002: { position: "area_002", hp: 9, character_state: "alive" },
+        pc_001: {
+          position: "area_001",
+          hp: 10,
+          character_state: "alive",
+          inventory: { torch: 1 },
+        },
+        pc_002: {
+          position: "area_002",
+          hp: 9,
+          character_state: "alive",
+          inventory: { rope: 2 },
+        },
       },
       map: {
         areas: {
@@ -94,6 +104,10 @@ test("refreshCampaign syncs party and active actor from backend authority", asyn
   assert.deepEqual(store.getState().campaign.actors, {
     pc_001: { position: "area_001", hp: 10, character_state: "alive" },
     pc_002: { position: "area_002", hp: 9, character_state: "alive" },
+  });
+  assert.deepEqual(store.getState().inventoryByActor, {
+    pc_001: { torch: 1 },
+    pc_002: { rope: 2 },
   });
   assert.deepEqual(store.getState().campaign.map, {
     areas: {
@@ -442,6 +456,60 @@ test("selected item state stays isolated by actor and follows active actor switc
     store.getState().selectedItemIdByActor[store.getState().campaign.active_actor_id],
     "torch"
   );
+});
+
+test("refreshCampaign seeds inventoryByActor from campaign/get actor inventory and reconciles stale selection", async () => {
+  const store = await loadStoreModule();
+  global.fetch = async (url) => {
+    assert.match(String(url), /\/api\/v1\/campaign\/get\?/);
+    return jsonResponse({
+      campaign_id: "camp_001",
+      selected: {
+        party_character_ids: ["pc_001"],
+        active_actor_id: "pc_001",
+      },
+      actors: {
+        pc_001: {
+          position: "area_001",
+          hp: 10,
+          character_state: "alive",
+          inventory: { rope: 1 },
+        },
+      },
+      status: {
+        ended: false,
+        reason: null,
+        ended_at: null,
+        milestone: {
+          current: "intro",
+          last_advanced_turn: 0,
+          turn_trigger_interval: 6,
+          pressure: 0,
+          pressure_threshold: 2,
+          summary: "",
+        },
+      },
+    });
+  };
+
+  store.recordTurnResult({
+    effective_actor_id: "pc_001",
+    state_summary: {
+      active_actor_id: "pc_001",
+      inventories: {
+        pc_001: { torch: 1, rope: 1 },
+      },
+    },
+  });
+  assert.equal(store.setSelectedItemForActor("pc_001", "torch"), true);
+
+  const result = await store.refreshCampaign("camp_001", "http://127.0.0.1:8000");
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(store.getState().inventoryByActor, {
+    pc_001: { rope: 1 },
+  });
+  assert.equal(store.getState().selectedItemIdByActor.pc_001, null);
 });
 
 test("recordTurnResult clears selected item when inventory snapshot removes it", async () => {

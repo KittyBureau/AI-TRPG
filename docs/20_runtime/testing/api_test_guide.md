@@ -78,7 +78,7 @@ Checks:
 
 - created campaign persisted under `storage/campaigns/<id>/campaign.json`
 - `selected.party_character_ids` and `selected.active_actor_id` remain consistent
-- `GET /campaign/get` returns `actors` keyed by actor id with runtime snapshot fields needed by Play refresh (at minimum actor position)
+- `GET /campaign/get` returns `actors` keyed by actor id with runtime snapshot fields needed by Play refresh, including read-only `inventory`
 - `GET /campaign/get` returns `map.areas` keyed by area id with `reachable_area_ids`
 - `GET /campaign/get` returns `status.ended` plus `status.milestone.current` from the same authoritative campaign snapshot used by `/campaign/status`
 - missing `campaign_id` returns `404` with explicit not-found detail
