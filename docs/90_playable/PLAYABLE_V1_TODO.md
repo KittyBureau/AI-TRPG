@@ -544,7 +544,7 @@ Current P2 priority override (2026-03-12):
 - Keep scope to one template-driven, solvable, immediately playable scenario instance.
 
 ### P2-01 Playable scenario generator v0 (`key_gate_scenario`)
-- Status: `WIP`
+- Status: `DONE` (stabilized v0 loop)
 - Why: the next content step is not a broad world generator; it is a parameterized playable scenario generator that can reproduce the fixed watchtower loop structurally while staying compatible with the current runtime.
 - Scope:
   - design source doc: `docs/90_playable/P2_PLAYABLE_SCENARIO_GENERATOR_V0.md`
@@ -559,7 +559,13 @@ Current P2 priority override (2026-03-12):
 - Current design status:
   - watchtower baseline extracted as the source structural pattern
   - minimal parameter model, generation pipeline, integration plan, and solvability rules documented on 2026-03-12
-  - runtime implementation intentionally not started in this round
+  - internal-only scenario chain, runtime-near bridge, and guarded campaign-bootstrap/runtime path are now implemented for metadata-backed `key_gate_scenario` worlds
+  - one built-in scenario-backed dev preset now exists to exercise that path through the normal preset bootstrap flow
+  - `/api/v1/worlds/generate` can now create scenario-backed world resources that store normalized generator metadata only
+  - frontend World Panel now exposes a minimal scenario-backed generate mode with only `template`, `theme`, `area_count`, `layout_type`, and `difficulty`
+  - world list and campaign world selection now show lightweight scenario readability fields (`scenario-backed`, template label, area count, difficulty)
+  - advanced scenario editing, previews, and separate scenario management surfaces remain out of scope in v0
+  - the current v0 loop is now closed and stabilized enough to pause before switching to another main track
 - Acceptance:
   - watchtower baseline is documented as Scenario Template 0
   - `key_gate_scenario` template definition is explicit about fixed logic vs parameterized content
@@ -567,7 +573,9 @@ Current P2 priority override (2026-03-12):
   - repo-aligned integration points are identified without introducing a parallel runtime architecture
 - Tests:
   - design phase: `backend/tests/test_watchtower_world.py`, `backend/tests/test_watchtower_world_turn_api.py`, `docs/20_runtime/testing/test_watchtower_world_manual_test.md`
-  - future implementation phase: targeted generator/validation tests plus watchtower regression rerun
+  - implemented internal/runtime coverage: `backend/tests/test_scenario_templates.py`, `backend/tests/test_scenario_builder.py`, `backend/tests/test_scenario_bridge.py`, `backend/tests/test_scenario_bootstrap_adapter.py`, `backend/tests/test_scenario_runtime_integration.py`
+  - API/frontend readability coverage: `backend/tests/test_world_api.py`, `frontend/tests/store_loop.test.mjs`, `frontend/tests/world_panel.test.mjs`, `frontend/tests/campaign_panel.test.mjs`, `docs/20_runtime/testing/scenario_world_panel_smoke.md`
+  - hand-authored baseline regression remains required: `backend/tests/test_watchtower_world.py`, `backend/tests/test_watchtower_world_turn_api.py`
 - Rollback: keep `test_watchtower_world` as the only fixed playable scenario and defer generator implementation until the design is confirmed.
 
 ### P2-02 Tool policy schema tightening

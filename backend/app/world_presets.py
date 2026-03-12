@@ -11,6 +11,8 @@ TEST_WATCHTOWER_START_AREA_ID = "village_gate"
 TEST_WATCHTOWER_TARGET_AREA_ID = "watchtower_inside"
 TEST_WATCHTOWER_GATE_FROM_AREA_ID = "watchtower_entrance"
 TEST_WATCHTOWER_GATE_ITEM_ID = "tower_key"
+# Internal development preset for the scenario-generator v0 runtime path.
+DEV_KEY_GATE_SCENARIO_WORLD_ID = "dev_key_gate_scenario_world"
 
 
 @dataclass(frozen=True)
@@ -23,6 +25,34 @@ class CampaignWorldPreset:
 
 def build_world_preset(world_id: str) -> Optional[World]:
     normalized_world_id = world_id.strip()
+    if normalized_world_id == DEV_KEY_GATE_SCENARIO_WORLD_ID:
+        now = stable_world_timestamp(normalized_world_id)
+        return World(
+            world_id=normalized_world_id,
+            name="Dev Key Gate Scenario World",
+            seed=stable_seed_from_world_id(normalized_world_id),
+            world_description=(
+                "A scenario-backed development preset for validating the key-gate runtime path."
+            ),
+            objective="Find the required item and enter the target area.",
+            start_area="area_start",
+            generator=WorldGenerator(
+                id="playable_scenario_v0",
+                version="1",
+                params={
+                    "mode": "playable_scenario",
+                    "template_id": "key_gate_scenario",
+                    "template_version": "v0",
+                    "theme": "watchtower",
+                    "area_count": 4,
+                    "layout_type": "linear",
+                    "difficulty": "easy",
+                },
+            ),
+            schema_version="1",
+            created_at=now,
+            updated_at=now,
+        )
     if normalized_world_id != TEST_WATCHTOWER_WORLD_ID:
         return None
     now = stable_world_timestamp(normalized_world_id)
@@ -47,8 +77,15 @@ def build_world_preset(world_id: str) -> Optional[World]:
 
 
 def list_world_presets() -> list[World]:
-    preset = build_world_preset(TEST_WATCHTOWER_WORLD_ID)
-    return [preset] if preset is not None else []
+    preset_ids = [
+        DEV_KEY_GATE_SCENARIO_WORLD_ID,
+        TEST_WATCHTOWER_WORLD_ID,
+    ]
+    return [
+        preset
+        for preset in (build_world_preset(preset_id) for preset_id in preset_ids)
+        if preset is not None
+    ]
 
 
 def build_campaign_world_preset(world_id: str) -> Optional[CampaignWorldPreset]:

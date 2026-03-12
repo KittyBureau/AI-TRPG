@@ -874,3 +874,126 @@ test("generateWorldResource posts minimal payload then refreshes world list", as
     ["POST worlds/generate", "GET worlds/list"]
   );
 });
+
+test("generateWorldResource posts scenario-backed payload then refreshes world list", async () => {
+  const store = await loadStoreModule();
+  const calls = [];
+  global.fetch = async (url, options = {}) => {
+    const requestUrl = String(url);
+    calls.push({
+      url: requestUrl,
+      method: options.method || "GET",
+      body: options.body ? JSON.parse(String(options.body)) : null,
+    });
+    if (requestUrl.endsWith("/api/v1/worlds/generate")) {
+      assert.deepEqual(JSON.parse(String(options.body)), {
+        world_id: "world_scenario_ui",
+        name: "Scenario From UI",
+        generator_id: "playable_scenario_v0",
+        generator_params: {
+          template_id: "key_gate_scenario",
+          theme: "watchtower",
+          area_count: 6,
+          layout_type: "branch",
+          difficulty: "easy",
+        },
+      });
+      return jsonResponse({
+        world_id: "world_scenario_ui",
+        name: "Scenario From UI",
+        generator: {
+          id: "playable_scenario_v0",
+          version: "1",
+          params: {
+            mode: "playable_scenario",
+            template_id: "key_gate_scenario",
+            template_version: "v0",
+            theme: "watchtower",
+            area_count: 6,
+            layout_type: "branch",
+            difficulty: "easy",
+          },
+        },
+        updated_at: "2026-03-10T00:00:00Z",
+        created: true,
+        normalized: true,
+      });
+    }
+    if (requestUrl.endsWith("/api/v1/worlds/list")) {
+      return jsonResponse([
+        {
+          world_id: "world_scenario_ui",
+          name: "Scenario From UI",
+          generator: { id: "playable_scenario_v0" },
+          updated_at: "2026-03-10T00:00:00Z",
+        },
+      ]);
+    }
+    throw new Error(`unexpected fetch: ${requestUrl}`);
+  };
+
+  store.setWorldGenerateForm({
+    world_id: "world_scenario_ui",
+    name: "Scenario From UI",
+    mode: "scenario",
+    scenario_template: "key_gate_scenario",
+    scenario_theme: "watchtower",
+    scenario_area_count: "6",
+    scenario_layout_type: "branch",
+    scenario_difficulty: "easy",
+  });
+  const result = await store.generateWorldResource("http://127.0.0.1:8000");
+
+  assert.equal(result.ok, true);
+  assert.equal(store.getState().worlds.status, "idle");
+  assert.equal(store.getState().worlds.error, null);
+  assert.equal(store.getState().worlds.last_generated_world_id, "world_scenario_ui");
+  assert.equal(store.getState().worlds.generate_form.world_id, "");
+  assert.equal(store.getState().worlds.generate_form.mode, "scenario");
+  assert.equal(store.getState().worlds.generate_form.scenario_layout_type, "branch");
+  assert.deepEqual(store.getState().worlds.list, [
+    {
+      world_id: "world_scenario_ui",
+      name: "Scenario From UI",
+      generator: { id: "playable_scenario_v0" },
+      updated_at: "2026-03-10T00:00:00Z",
+    },
+  ]);
+  assert.deepEqual(
+    calls.map((entry) => `${entry.method} ${entry.url.split("/api/v1/")[1]}`),
+    ["POST worlds/generate", "GET worlds/list"]
+  );
+});
+
+test("generateWorldResource keeps legacy scenario layout input until backend normalization", async () => {
+  const store = await loadStoreModule();
+  let postedBody = null;
+  global.fetch = async (url, options = {}) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/api/v1/worlds/generate")) {
+      postedBody = JSON.parse(String(options.body));
+      return jsonResponse({
+        world_id: "world_scenario_legacy",
+        name: "Scenario Legacy",
+        generator: { id: "playable_scenario_v0" },
+        updated_at: "2026-03-10T00:00:00Z",
+        created: true,
+        normalized: true,
+      });
+    }
+    if (requestUrl.endsWith("/api/v1/worlds/list")) {
+      return jsonResponse([]);
+    }
+    throw new Error(`unexpected fetch: ${requestUrl}`);
+  };
+
+  store.setWorldGenerateForm({
+    world_id: "world_scenario_legacy",
+    mode: "scenario",
+    scenario_layout_type: "branched",
+  });
+  const result = await store.generateWorldResource("http://127.0.0.1:8000");
+
+  assert.equal(result.ok, true);
+  assert.equal(postedBody.generator_params.layout_type, "branched");
+});

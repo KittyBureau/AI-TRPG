@@ -65,4 +65,5 @@ Related guide:
 
 - `docs/20_runtime/gameplay_flow.md`
 - `docs/20_runtime/testing/active_actor_integration_smoke.md`
+- `docs/20_runtime/testing/scenario_world_panel_smoke.md`
 - `docs/20_runtime/testing/state_consistency_check.md`

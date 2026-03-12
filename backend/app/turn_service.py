@@ -11,9 +11,10 @@ from typing import Dict, List, Optional
 from backend.app.character_facade_factory import create_runtime_character_facade
 from backend.app.conflict_detector import detect_conflicts
 from backend.app.debug_resources import build_resources_payload
+from backend.app.scenario_runtime_mapper import build_runtime_bootstrap_from_world
 from backend.app.scene_entities import build_area_local_entity_views
 from backend.app.tool_executor import execute_tool_calls
-from backend.app.world_presets import build_campaign_world_preset
+from backend.app.world_presets import build_campaign_world_preset, build_world_preset
 from backend.domain.character_access import (
     CharacterState,
 )
@@ -434,7 +435,7 @@ class TurnService:
             template_defaults=selected_defaults,
         )
         template_usage["applied"] = applied
-        bootstrap = _build_campaign_bootstrap(world_id)
+        bootstrap = _build_campaign_bootstrap(world_id, self.repo)
         actors = {
             character_id: ActorState(
                 position=bootstrap["start_area_id"],
@@ -499,7 +500,7 @@ class TurnService:
             )
         try:
             campaign = self.repo.get_campaign(campaign_id)
-            state_updated = _ensure_minimum_state(campaign)
+            state_updated = _ensure_minimum_state(campaign, self.repo)
             if state_updated:
                 self.repo.save_campaign(campaign)
             effective_actor_id = _resolve_effective_actor_id(
@@ -756,7 +757,25 @@ def _starter_entities() -> Dict[str, Entity]:
     }
 
 
-def _build_campaign_bootstrap(world_id: str) -> Dict[str, object]:
+def _build_campaign_bootstrap(
+    world_id: str,
+    repo: Optional[FileRepo] = None,
+) -> Dict[str, object]:
+    world = repo.get_world(world_id) if repo is not None else None
+    if world is None:
+        world = build_world_preset(world_id)
+    if world is not None:
+        # Guarded v0 path: only supported scenario-generator metadata-backed
+        # worlds, including the built-in dev preset, go through the
+        # internal scenario chain here.
+        scenario_bootstrap = build_runtime_bootstrap_from_world(world)
+        if scenario_bootstrap is not None:
+            return {
+                "start_area_id": scenario_bootstrap.start_area_id,
+                "goal_text": scenario_bootstrap.goal_text,
+                "map": scenario_bootstrap.map_data,
+                "entities": scenario_bootstrap.entities,
+            }
     preset = build_campaign_world_preset(world_id)
     if preset is not None:
         return {
@@ -773,13 +792,16 @@ def _build_campaign_bootstrap(world_id: str) -> Dict[str, object]:
     }
 
 
-def _ensure_minimum_state(campaign: Campaign) -> bool:
+def _ensure_minimum_state(
+    campaign: Campaign,
+    repo: Optional[FileRepo] = None,
+) -> bool:
     updated = False
     if not isinstance(campaign.entities, dict):
         campaign.entities = {}
         updated = True
     if not campaign.map.areas:
-        bootstrap = _build_campaign_bootstrap(campaign.selected.world_id)
+        bootstrap = _build_campaign_bootstrap(campaign.selected.world_id, repo)
         campaign.map = bootstrap["map"]
         if not campaign.entities:
             campaign.entities = bootstrap["entities"]
@@ -787,7 +809,7 @@ def _ensure_minimum_state(campaign: Campaign) -> bool:
             campaign.goal.text = str(bootstrap["goal_text"])
         updated = True
     start_area_id = next(iter(campaign.map.areas.keys()), "area_001")
-    bootstrap = _build_campaign_bootstrap(campaign.selected.world_id)
+    bootstrap = _build_campaign_bootstrap(campaign.selected.world_id, repo)
     if isinstance(bootstrap.get("start_area_id"), str) and bootstrap["start_area_id"] in campaign.map.areas:
         start_area_id = str(bootstrap["start_area_id"])
     for character_id in campaign.selected.party_character_ids:

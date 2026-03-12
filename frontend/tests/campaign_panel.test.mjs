@@ -38,3 +38,35 @@ test("formatCampaignStatusLines falls back cleanly when status snapshot is unava
     "Campaign status unavailable until authoritative refresh succeeds.",
   ]);
 });
+
+test("formatWorldOptionLabel highlights scenario-backed worlds with lightweight detail", async () => {
+  const { formatWorldOptionLabel } = await loadPanelModule();
+
+  assert.equal(
+    formatWorldOptionLabel({
+      world_id: "world_scenario_ui",
+      name: "Scenario From UI",
+      generator: { id: "playable_scenario_v0" },
+      scenario: {
+        label: "Key Gate Scenario",
+        template_id: "key_gate_scenario",
+        area_count: 6,
+        difficulty: "easy",
+      },
+    }),
+    "Scenario From UI (world_scenario_ui) - scenario-backed | Key Gate Scenario | 6 areas | easy"
+  );
+});
+
+test("formatWorldOptionLabel keeps non-scenario world labels compact", async () => {
+  const { formatWorldOptionLabel } = await loadPanelModule();
+
+  assert.equal(
+    formatWorldOptionLabel({
+      world_id: "world_stub_ui",
+      name: "Stub From UI",
+      generator: { id: "stub" },
+    }),
+    "Stub From UI (world_stub_ui, stub)"
+  );
+});

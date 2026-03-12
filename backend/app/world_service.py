@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
 
+from backend.app.scenario_runtime_mapper import SCENARIO_GENERATOR_ID, SCENARIO_MODE
+from backend.app.scenario_templates import normalize_scenario_params
 from backend.app.world_presets import build_world_preset
 from backend.domain.models import Campaign
-from backend.domain.world_models import World, stable_world_timestamp
+from backend.domain.world_models import World, stable_seed_from_world_id, stable_world_timestamp
 from backend.infra.file_repo import FileRepo
 
 
@@ -62,17 +64,24 @@ def generate_world_resource(
     world_id: str,
     repo: FileRepo,
     name: Optional[str] = None,
+    generator_id: Optional[str] = None,
+    generator_params: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     normalized_world_id = world_id.strip()
     if not normalized_world_id:
         raise ValueError("world_id is required")
     name_arg = name.strip() if isinstance(name, str) and name.strip() else None
+    generator_id_arg, generator_params_arg = _normalize_generator_request(
+        generator_id=generator_id,
+        generator_params=generator_params,
+    )
     world, created, normalized = _ensure_world_resource(
         world_id=normalized_world_id,
         repo=repo,
         name_arg=name_arg,
         seed_arg=None,
-        generator_id_arg=None,
+        generator_id_arg=generator_id_arg,
+        generator_params_arg=generator_params_arg,
     )
     return {
         "world_id": world.world_id,
@@ -153,6 +162,7 @@ def _ensure_world_resource(
     name_arg: Optional[str],
     seed_arg: Optional[int | str],
     generator_id_arg: Optional[str],
+    generator_params_arg: Optional[Dict[str, Any]] = None,
 ) -> Tuple[World, bool, bool]:
     world = repo.get_world(world_id)
     created = world is None
@@ -170,6 +180,7 @@ def _ensure_world_resource(
         name_arg=name_arg,
         seed_arg=seed_arg,
         generator_id_arg=generator_id_arg,
+        generator_params_arg=generator_params_arg,
         created=created,
     )
     if normalized:
@@ -184,6 +195,7 @@ def _normalize_world_v1(
     name_arg: Optional[str],
     seed_arg: Optional[int | str],
     generator_id_arg: Optional[str],
+    generator_params_arg: Optional[Dict[str, Any]],
     created: bool,
 ) -> bool:
     changed = False
@@ -198,20 +210,6 @@ def _normalize_world_v1(
         changed = True
     elif not world.name.strip():
         world.name = world.world_id
-        changed = True
-
-    if not world.world_description.strip():
-        world.world_description = (
-            "A sparse frontier of connected rooms and uncertain paths."
-        )
-        changed = True
-
-    if not world.objective.strip():
-        world.objective = "Explore the nearby areas and recover one useful item."
-        changed = True
-
-    if not world.start_area.strip():
-        world.start_area = "area_001"
         changed = True
 
     if not world.schema_version.strip():
@@ -230,6 +228,40 @@ def _normalize_world_v1(
         world.generator.params = {}
         changed = True
 
+    if _apply_generator_contract(
+        world,
+        generator_id_arg=generator_id_arg,
+        generator_params_arg=generator_params_arg,
+    ):
+        changed = True
+
+    if _is_playable_scenario_world(world):
+        if not world.world_description.strip():
+            world.world_description = (
+                "A playable scenario world resource that stores normalized generator metadata only."
+            )
+            changed = True
+        if not world.objective.strip():
+            world.objective = "Find the required item and enter the target area."
+            changed = True
+        if world.start_area != "area_start":
+            world.start_area = "area_start"
+            changed = True
+    else:
+        if not world.world_description.strip():
+            world.world_description = (
+                "A sparse frontier of connected rooms and uncertain paths."
+            )
+            changed = True
+
+        if not world.objective.strip():
+            world.objective = "Explore the nearby areas and recover one useful item."
+            changed = True
+
+        if not world.start_area.strip():
+            world.start_area = "area_001"
+            changed = True
+
     seed_changed, seed_source = _apply_seed_policy(
         world,
         world_id=world_id,
@@ -238,10 +270,15 @@ def _normalize_world_v1(
     )
     if seed_changed:
         changed = True
-    seed_source_value = world.generator.params.get("seed_source")
-    if not isinstance(seed_source_value, str) or not seed_source_value.strip():
-        world.generator.params["seed_source"] = seed_source
-        changed = True
+    if _is_playable_scenario_world(world):
+        if "seed_source" in world.generator.params:
+            world.generator.params.pop("seed_source", None)
+            changed = True
+    else:
+        seed_source_value = world.generator.params.get("seed_source")
+        if not isinstance(seed_source_value, str) or not seed_source_value.strip():
+            world.generator.params["seed_source"] = seed_source
+            changed = True
 
     created_at = world.created_at.strip()
     if not created_at:
@@ -254,6 +291,70 @@ def _normalize_world_v1(
         changed = True
 
     return changed
+
+
+def _normalize_generator_request(
+    *,
+    generator_id: Optional[str],
+    generator_params: Optional[Dict[str, Any]],
+) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    generator_id_arg = (
+        generator_id.strip() if isinstance(generator_id, str) and generator_id.strip() else None
+    )
+    if generator_params is not None and not isinstance(generator_params, dict):
+        raise ValueError("generator_params must be an object")
+    if generator_params is not None and generator_id_arg is None:
+        raise ValueError("generator_id is required when generator_params are provided")
+    if generator_id_arg is not None and generator_id_arg != SCENARIO_GENERATOR_ID:
+        raise ValueError(f"unsupported generator_id: {generator_id_arg}")
+    if generator_id_arg != SCENARIO_GENERATOR_ID:
+        return generator_id_arg, None
+    scenario_input = dict(generator_params or {})
+    template_id = scenario_input.get("template_id")
+    if "scenario_template" not in scenario_input and isinstance(template_id, str):
+        scenario_input["scenario_template"] = template_id
+    normalized = normalize_scenario_params(scenario_input)
+    return generator_id_arg, {
+        "mode": SCENARIO_MODE,
+        "template_id": normalized.scenario_template,
+        "template_version": "v0",
+        "theme": normalized.theme,
+        "area_count": normalized.area_count,
+        "layout_type": normalized.layout_type,
+        "difficulty": normalized.difficulty,
+    }
+
+
+def _apply_generator_contract(
+    world: World,
+    *,
+    generator_id_arg: Optional[str],
+    generator_params_arg: Optional[Dict[str, Any]],
+) -> bool:
+    if generator_id_arg != SCENARIO_GENERATOR_ID and generator_params_arg is None:
+        return False
+    changed = False
+    if world.generator.id != SCENARIO_GENERATOR_ID:
+        world.generator.id = SCENARIO_GENERATOR_ID
+        changed = True
+    if world.generator.version != "1":
+        world.generator.version = "1"
+        changed = True
+    if generator_params_arg is not None and world.generator.params != generator_params_arg:
+        world.generator.params = dict(generator_params_arg)
+        changed = True
+    return changed
+
+
+def _is_playable_scenario_world(world: World) -> bool:
+    if world.generator.id != SCENARIO_GENERATOR_ID:
+        return False
+    if not isinstance(world.generator.params, dict):
+        return False
+    return (
+        world.generator.params.get("mode") == SCENARIO_MODE
+        and world.generator.params.get("template_id") == "key_gate_scenario"
+    )
 
 
 def _apply_seed_policy(

@@ -1,4 +1,5 @@
 import { createCampaign, listCampaigns } from "../api/api.js";
+import { describeScenarioWorld } from "./world_panel.js";
 
 export function formatCampaignStatusLines(status) {
   if (!status || typeof status !== "object") {
@@ -23,6 +24,29 @@ export function formatCampaignStatusLines(status) {
     lines.push(`Ended reason: ${status.reason.trim()}`);
   }
   return lines;
+}
+
+export function formatWorldOptionLabel(world) {
+  const worldId =
+    world && typeof world.world_id === "string" && world.world_id.trim()
+      ? world.world_id.trim()
+      : "";
+  if (!worldId) {
+    return "";
+  }
+  const name =
+    world && typeof world.name === "string" && world.name.trim()
+      ? world.name.trim()
+      : worldId;
+  const scenarioDescription = describeScenarioWorld(world);
+  if (scenarioDescription) {
+    return `${name} (${worldId}) - ${scenarioDescription}`;
+  }
+  const generatorId =
+    world?.generator && typeof world.generator.id === "string" && world.generator.id.trim()
+      ? world.generator.id.trim()
+      : "";
+  return generatorId ? `${name} (${worldId}, ${generatorId})` : `${name} (${worldId})`;
 }
 
 export function initPanel(store) {
@@ -363,15 +387,7 @@ export function initPanel(store) {
       }
       const option = document.createElement("option");
       option.value = worldId;
-      const name =
-        world && typeof world.name === "string" && world.name.trim()
-          ? world.name.trim()
-          : worldId;
-      const generatorId =
-        world?.generator && typeof world.generator.id === "string" && world.generator.id.trim()
-          ? world.generator.id.trim()
-          : "";
-      option.textContent = generatorId ? `${name} (${worldId}, ${generatorId})` : `${name} (${worldId})`;
+      option.textContent = formatWorldOptionLabel(world);
       option.selected = worldId === uiState.selectedWorldId;
       worldSelect.appendChild(option);
     }

@@ -36,14 +36,23 @@ TODOs across docs.
   - `backend/tests/test_turn_response_contract_api.py`
 
 ## Playable scenario generator v0 design alignment (2026-03-12)
-- Status: design documented; runtime implementation pending.
+- Status: v0 closed loop implemented and lightly stabilized for pause.
 - Scope:
   - `docs/90_playable/P2_PLAYABLE_SCENARIO_GENERATOR_V0.md` now records the watchtower extraction, `key_gate_scenario` template definition, parameter model, solvability rules, and minimal integration plan.
-  - This document is intentionally design-only for now and must not be read as implemented runtime behavior.
+  - repo now also contains an internal-only scenario chain plus a guarded runtime compatibility path for metadata-backed `key_gate_scenario` worlds
+  - one built-in scenario-backed preset is now available for internal development and validation of the guarded preset/bootstrap flow
+  - `/api/v1/worlds/generate` now persists only normalized scenario generator metadata for supported playable-scenario worlds; topology and runtime content are still rebuilt later during campaign bootstrap/runtime
+  - `frontend/panels/world_panel.js` now exposes only the minimal scenario parameter surface; this must still not be described as advanced scenario editing or a broader content system
+  - world list and campaign world selection now expose only lightweight scenario readability fields (`scenario-backed`, template label, area count, difficulty)
 - Recommendation:
   - Keep the design doc aligned to the current code seams in `backend/app/world_presets.py`, `backend/app/turn_service.py`, and `backend/app/tool_executor.py`.
-  - Do not claim generated scenario support in user-facing runtime docs until campaign bootstrap and move/goal rule lookup are actually wired.
+  - Treat the `tool_executor.py` scenario move/goal fallback as a v0 compatibility bridge only, not as a general future expansion point.
+  - Keep describing API-generated scenario worlds as metadata-backed resources, not persisted materialized worlds.
+  - Treat Scenario Generator v0 as stabilized around the single `key_gate_scenario` path; future work should branch deliberately instead of continuing silent scope growth.
 - Evidence:
+  - `backend/app/scenario_runtime_mapper.py`
   - `backend/app/world_presets.py`
+  - `backend/app/world_service.py`
   - `backend/app/turn_service.py`
   - `backend/app/tool_executor.py`
+  - `frontend/panels/world_panel.js`

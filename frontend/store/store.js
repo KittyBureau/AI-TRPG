@@ -14,6 +14,12 @@ import {
 
 const BASE_URL_KEY = "raw-console-base-url";
 const DEFAULT_BACKEND_BASE_URL = "http://127.0.0.1:8000";
+const SCENARIO_GENERATOR_ID = "playable_scenario_v0";
+const DEFAULT_SCENARIO_TEMPLATE = "key_gate_scenario";
+const DEFAULT_SCENARIO_THEME = "watchtower";
+const DEFAULT_SCENARIO_AREA_COUNT = "6";
+const DEFAULT_SCENARIO_LAYOUT_TYPE = "branch";
+const DEFAULT_SCENARIO_DIFFICULTY = "easy";
 
 const state = {
   baseUrl: "",
@@ -47,6 +53,12 @@ const state = {
     generate_form: {
       world_id: "",
       name: "",
+      mode: "stub",
+      scenario_template: DEFAULT_SCENARIO_TEMPLATE,
+      scenario_theme: DEFAULT_SCENARIO_THEME,
+      scenario_area_count: DEFAULT_SCENARIO_AREA_COUNT,
+      scenario_layout_type: DEFAULT_SCENARIO_LAYOUT_TYPE,
+      scenario_difficulty: DEFAULT_SCENARIO_DIFFICULTY,
     },
     last_generated_world_id: null,
   },
@@ -353,6 +365,58 @@ export function setWorldGenerateForm(nextForm) {
     ...patch,
   };
   emit();
+}
+
+function normalizeScenarioAreaCount(value) {
+  const parsed = Number.parseInt(String(value ?? "").trim(), 10);
+  if (!Number.isInteger(parsed) || parsed < 4 || parsed > 8) {
+    return 6;
+  }
+  return parsed;
+}
+
+function normalizeScenarioChoice(value, allowed, fallback) {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+  return allowed.includes(normalized) ? normalized : fallback;
+}
+
+function buildWorldGenerateRequestPayload(form) {
+  const payload = {
+    world_id: typeof form?.world_id === "string" ? form.world_id : "",
+    name: typeof form?.name === "string" ? form.name : "",
+  };
+  if (form?.mode !== "scenario") {
+    return payload;
+  }
+  payload.generator_id = SCENARIO_GENERATOR_ID;
+  payload.generator_params = {
+    template_id:
+      typeof form?.scenario_template === "string" && form.scenario_template.trim()
+        ? form.scenario_template.trim()
+        : DEFAULT_SCENARIO_TEMPLATE,
+    theme:
+      typeof form?.scenario_theme === "string" && form.scenario_theme.trim()
+        ? form.scenario_theme.trim()
+        : DEFAULT_SCENARIO_THEME,
+    area_count: normalizeScenarioAreaCount(form?.scenario_area_count),
+    layout_type: normalizeScenarioChoice(
+      form?.scenario_layout_type,
+      ["linear", "branch", "branched"],
+      DEFAULT_SCENARIO_LAYOUT_TYPE
+    ),
+    difficulty: normalizeScenarioChoice(
+      form?.scenario_difficulty,
+      ["easy", "standard"],
+      DEFAULT_SCENARIO_DIFFICULTY
+    ),
+  };
+  return payload;
 }
 
 function parseTagsInput(tags) {
@@ -799,10 +863,7 @@ export async function generateWorldResource(baseUrl = state.baseUrl, payload = n
   state.worlds.status = "creating";
   state.worlds.error = null;
   emit();
-  const fallbackPayload = {
-    world_id: state.worlds.generate_form.world_id || "",
-    name: state.worlds.generate_form.name || "",
-  };
+  const fallbackPayload = buildWorldGenerateRequestPayload(state.worlds.generate_form);
   const requestPayload = payload && typeof payload === "object" ? payload : fallbackPayload;
   const result = await generateWorldApi(baseUrl, requestPayload);
   if (!result.ok || !result.data || typeof result.data.world_id !== "string") {

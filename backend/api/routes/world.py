@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -35,16 +36,26 @@ class WorldSummaryGeneratorResponse(BaseModel):
     id: str = ""
 
 
+class WorldSummaryScenarioResponse(BaseModel):
+    label: str = ""
+    template_id: str = ""
+    area_count: int | None = None
+    difficulty: str = ""
+
+
 class WorldSummaryResponse(BaseModel):
     world_id: str
     name: str
     generator: WorldSummaryGeneratorResponse
+    scenario: WorldSummaryScenarioResponse | None = None
     updated_at: str
 
 
 class GenerateWorldRequest(BaseModel):
     world_id: str
     name: str | None = None
+    generator_id: str | None = None
+    generator_params: dict[str, Any] | None = None
 
 
 class GenerateWorldResponse(WorldResponse):
@@ -68,10 +79,29 @@ def list_worlds() -> list[WorldSummaryResponse]:
             world_id=world.world_id,
             name=world.name,
             generator=WorldSummaryGeneratorResponse(id=world.generator.id if world.generator else ""),
+            scenario=_build_scenario_summary(world),
             updated_at=world.updated_at,
         )
         for world in worlds
     ]
+
+
+def _build_scenario_summary(world) -> WorldSummaryScenarioResponse | None:
+    generator = getattr(world, "generator", None)
+    if generator is None or getattr(generator, "id", "").strip() != "playable_scenario_v0":
+        return None
+    params = generator.params if isinstance(generator.params, dict) else {}
+    template_id = str(params.get("template_id", "")).strip()
+    if template_id != "key_gate_scenario":
+        return None
+    area_count = params.get("area_count")
+    difficulty = str(params.get("difficulty", "")).strip()
+    return WorldSummaryScenarioResponse(
+        label="Key Gate Scenario",
+        template_id=template_id,
+        area_count=area_count if isinstance(area_count, int) else None,
+        difficulty=difficulty,
+    )
 
 
 @router.post("/worlds/generate", response_model=GenerateWorldResponse)
@@ -81,6 +111,8 @@ def generate_world_standalone(request: GenerateWorldRequest) -> GenerateWorldRes
         result = generate_world_resource(
             world_id=request.world_id,
             name=request.name,
+            generator_id=request.generator_id,
+            generator_params=request.generator_params,
             repo=repo,
         )
     except ValueError as exc:

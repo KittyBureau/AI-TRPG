@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -8,6 +10,8 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from backend.api.main import create_app
+from backend.app.turn_service import TurnService
+from backend.app.world_presets import DEV_KEY_GATE_SCENARIO_WORLD_ID, build_world_preset
 from backend.domain.models import (
     ActorState,
     Campaign,
@@ -20,10 +24,110 @@ from backend.domain.world_models import World, stable_world_timestamp
 from backend.infra.file_repo import FileRepo
 
 
+class _ScenarioApiRuntimeLLM:
+    def generate(
+        self,
+        system_prompt: str,
+        user_input: str,
+        debug_append: Any,
+    ) -> dict[str, Any]:
+        token = user_input.strip()
+        if token == "TALK_HINT":
+            return {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": "call_hint_talk",
+                        "tool": "scene_action",
+                        "args": {
+                            "actor_id": "pc_001",
+                            "action": "talk",
+                            "target_id": "hint_source_001",
+                            "params": {},
+                        },
+                    }
+                ],
+            }
+        if token == "MOVE_TO_CLUE":
+            return {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": "call_move_clue",
+                        "tool": "move",
+                        "args": {"actor_id": "pc_001", "to_area_id": "area_clue"},
+                    }
+                ],
+            }
+        if token == "SEARCH_CLUE":
+            return {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": "call_search_clue",
+                        "tool": "scene_action",
+                        "args": {
+                            "actor_id": "pc_001",
+                            "action": "search",
+                            "target_id": "clue_source_001",
+                            "params": {},
+                        },
+                    }
+                ],
+            }
+        if token == "MOVE_TO_GATE":
+            return {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": "call_move_gate",
+                        "tool": "move",
+                        "args": {"actor_id": "pc_001", "to_area_id": "area_gate"},
+                    }
+                ],
+            }
+        if token == "ENTER_TARGET":
+            return {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": "call_enter_target",
+                        "tool": "move",
+                        "args": {"actor_id": "pc_001", "to_area_id": "area_target"},
+                    }
+                ],
+            }
+        return {
+            "assistant_text": "No action.",
+            "dialog_type": "scene_description",
+            "tool_calls": [],
+        }
+
+
 def _client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.chdir(tmp_path)
     app = create_app()
     return TestClient(app)
+
+
+def _scenario_generate_request(
+    *,
+    world_id: str,
+    name: str = "Scenario API World",
+) -> dict[str, object]:
+    preset = build_world_preset(DEV_KEY_GATE_SCENARIO_WORLD_ID)
+    assert preset is not None
+    return {
+        "world_id": world_id,
+        "name": name,
+        "generator_id": preset.generator.id,
+        "generator_params": dict(preset.generator.params),
+    }
 
 
 def _create_campaign(
@@ -128,6 +232,7 @@ def test_list_worlds_returns_minimal_summaries_sorted_by_updated_at_desc(
     body = response.json()
     assert [item["world_id"] for item in body] == [
         "world_new",
+        DEV_KEY_GATE_SCENARIO_WORLD_ID,
         "test_watchtower_world",
         "world_old",
     ]
@@ -135,6 +240,7 @@ def test_list_worlds_returns_minimal_summaries_sorted_by_updated_at_desc(
         "world_id": "world_new",
         "name": "Newer World",
         "generator": {"id": "alt"},
+        "scenario": None,
         "updated_at": "2026-03-05T00:00:00+00:00",
     }
 
@@ -155,9 +261,44 @@ def test_list_worlds_includes_watchtower_preset_without_storage_copy(
         "world_id": "test_watchtower_world",
         "name": "Test Watchtower World",
         "generator": {"id": "static_test_world"},
+        "scenario": None,
         "updated_at": stable_world_timestamp("test_watchtower_world"),
     }
     world_path = tmp_path / "storage" / "worlds" / "test_watchtower_world" / "world.json"
+    assert not world_path.exists()
+
+
+def test_list_worlds_includes_dev_scenario_preset_without_storage_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+
+    response = client.get("/api/v1/worlds/list")
+
+    assert response.status_code == 200
+    body = response.json()
+    scenario_preset = next(
+        item for item in body if item["world_id"] == DEV_KEY_GATE_SCENARIO_WORLD_ID
+    )
+    assert scenario_preset == {
+        "world_id": DEV_KEY_GATE_SCENARIO_WORLD_ID,
+        "name": "Dev Key Gate Scenario World",
+        "generator": {"id": "playable_scenario_v0"},
+        "scenario": {
+            "label": "Key Gate Scenario",
+            "template_id": "key_gate_scenario",
+            "area_count": 4,
+            "difficulty": "easy",
+        },
+        "updated_at": stable_world_timestamp(DEV_KEY_GATE_SCENARIO_WORLD_ID),
+    }
+    world_path = (
+        tmp_path
+        / "storage"
+        / "worlds"
+        / DEV_KEY_GATE_SCENARIO_WORLD_ID
+        / "world.json"
+    )
     assert not world_path.exists()
 
 
@@ -187,6 +328,7 @@ def test_list_worlds_skips_invalid_world_json_without_stub_side_effects(
     body = response.json()
     assert [item["world_id"] for item in body] == [
         "world_valid",
+        DEV_KEY_GATE_SCENARIO_WORLD_ID,
         "test_watchtower_world",
     ]
     assert not (tmp_path / "storage" / "worlds" / "world_missing").exists()
@@ -273,3 +415,140 @@ def test_generate_world_known_watchtower_preset_returns_static_metadata(
     assert body["start_area"] == "village_gate"
     assert body["objective"] == "Find the tower key in the old hut and enter the watchtower."
     assert body["generator"]["id"] == "static_test_world"
+
+
+def test_generate_world_can_create_scenario_backed_resource_with_normalized_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    request_body = _scenario_generate_request(world_id="world_api_scenario")
+
+    response = client.post("/api/v1/worlds/generate", json=request_body)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["world_id"] == "world_api_scenario"
+    assert body["name"] == "Scenario API World"
+    assert body["created"] is True
+    assert body["start_area"] == "area_start"
+    assert body["generator"] == {
+        "id": "playable_scenario_v0",
+        "version": "1",
+        "params": request_body["generator_params"],
+    }
+
+    repo = FileRepo(tmp_path / "storage")
+    world = repo.get_world("world_api_scenario")
+    assert world is not None
+    assert world.generator.model_dump() == body["generator"]
+
+    world_path = tmp_path / "storage" / "worlds" / "world_api_scenario" / "world.json"
+    payload = json.loads(world_path.read_text(encoding="utf-8"))
+    assert "map" not in payload
+    assert "areas" not in payload
+    assert "entities" not in payload
+    assert payload["generator"] == body["generator"]
+
+
+def test_generate_world_repeat_keeps_scenario_metadata_stable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    request_body = _scenario_generate_request(world_id="world_api_scenario_repeat")
+
+    first = client.post("/api/v1/worlds/generate", json=request_body)
+    second = client.post("/api/v1/worlds/generate", json=request_body)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_body = first.json()
+    second_body = second.json()
+    assert first_body["generator"] == second_body["generator"]
+    assert first_body["seed"] == second_body["seed"]
+    assert second_body["created"] is False
+
+
+def test_generate_world_normalizes_legacy_scenario_layout_input(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    request_body = _scenario_generate_request(world_id="world_api_scenario_legacy")
+    request_body["generator_params"] = {
+        **request_body["generator_params"],
+        "layout_type": "branched",
+    }
+
+    response = client.post("/api/v1/worlds/generate", json=request_body)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["generator"]["params"]["layout_type"] == "branch"
+
+
+def test_generate_world_rejects_unsupported_scenario_template(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    request_body = _scenario_generate_request(world_id="world_bad_template")
+    request_body["generator_params"] = {
+        **request_body["generator_params"],
+        "template_id": "unsupported_template",
+    }
+
+    response = client.post("/api/v1/worlds/generate", json=request_body)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "unsupported scenario_template: unsupported_template"
+
+
+def test_api_generated_scenario_world_is_discoverable_and_playable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    response = client.post(
+        "/api/v1/worlds/generate",
+        json=_scenario_generate_request(world_id="world_api_scenario_smoke"),
+    )
+    assert response.status_code == 200
+
+    list_response = client.get("/api/v1/worlds/list")
+    assert list_response.status_code == 200
+    listed_worlds = list_response.json()
+    assert "world_api_scenario_smoke" in [item["world_id"] for item in listed_worlds]
+    scenario_summary = next(
+        item for item in listed_worlds if item["world_id"] == "world_api_scenario_smoke"
+    )
+    assert scenario_summary["scenario"] == {
+        "label": "Key Gate Scenario",
+        "template_id": "key_gate_scenario",
+        "area_count": 4,
+        "difficulty": "easy",
+    }
+
+    repo = FileRepo(tmp_path / "storage")
+    service = TurnService(repo)
+    service.llm = _ScenarioApiRuntimeLLM()
+
+    campaign_id = service.create_campaign(
+        world_id="world_api_scenario_smoke",
+        map_id="map_generated",
+        party_character_ids=["pc_001"],
+        active_actor_id="pc_001",
+    )
+
+    talk = service.submit_turn(campaign_id, "TALK_HINT")
+    assert talk["applied_actions"][0]["tool"] == "scene_action"
+
+    service.submit_turn(campaign_id, "MOVE_TO_CLUE")
+    search = service.submit_turn(campaign_id, "SEARCH_CLUE")
+    assert search["state_summary"]["active_actor_inventory"] == {"required_item_001": 1}
+
+    service.submit_turn(campaign_id, "MOVE_TO_GATE")
+    entered = service.submit_turn(campaign_id, "ENTER_TARGET")
+    assert entered["applied_actions"][0]["tool"] == "move"
+    assert entered["state_summary"]["active_area_id"] == "area_target"
+
+    campaign = repo.get_campaign(campaign_id)
+    assert campaign.goal.status == "completed"
+    assert campaign.lifecycle.ended is True
+    assert campaign.lifecycle.reason == "goal_achieved"

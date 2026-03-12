@@ -1,3 +1,5 @@
+const SCENARIO_GENERATOR_ID = "playable_scenario_v0";
+
 function captureFocusState(root) {
   const active = document.activeElement;
   if (!(active instanceof HTMLElement) || !root.contains(active)) {
@@ -34,7 +36,30 @@ function restoreFocusState(root, snapshot) {
   }
 }
 
-function formatWorldSummary(world) {
+export function describeScenarioWorld(world) {
+  const scenario =
+    world && typeof world.scenario === "object" && !Array.isArray(world.scenario)
+      ? world.scenario
+      : null;
+  if (!scenario) {
+    return "";
+  }
+  const parts = ["scenario-backed"];
+  if (typeof scenario.label === "string" && scenario.label.trim()) {
+    parts.push(scenario.label.trim());
+  } else if (typeof scenario.template_id === "string" && scenario.template_id.trim()) {
+    parts.push(scenario.template_id.trim());
+  }
+  if (Number.isInteger(scenario.area_count)) {
+    parts.push(`${scenario.area_count} areas`);
+  }
+  if (typeof scenario.difficulty === "string" && scenario.difficulty.trim()) {
+    parts.push(scenario.difficulty.trim());
+  }
+  return parts.join(" | ");
+}
+
+export function formatWorldSummary(world) {
   const worldId =
     world && typeof world.world_id === "string" && world.world_id.trim()
       ? world.world_id.trim()
@@ -51,6 +76,13 @@ function formatWorldSummary(world) {
     world && typeof world.updated_at === "string" && world.updated_at.trim()
       ? world.updated_at.trim()
       : "-";
+  const scenarioDescription = describeScenarioWorld(world);
+  if (scenarioDescription) {
+    return `${name} (${worldId}) | ${scenarioDescription} | updated=${updatedAt}`;
+  }
+  if (generatorId === SCENARIO_GENERATOR_ID) {
+    return `${name} (${worldId}) | scenario-backed | updated=${updatedAt}`;
+  }
   return `${name} (${worldId}) | generator=${generatorId} | updated=${updatedAt}`;
 }
 
@@ -92,6 +124,7 @@ export function initPanel(store) {
       worldState.generate_form && typeof worldState.generate_form === "object"
         ? worldState.generate_form
         : {};
+    const scenarioMode = createForm.mode === "scenario";
     const busy = worldState.status === "creating" || worldState.status === "loading";
 
     mount.innerHTML = "";
@@ -148,9 +181,32 @@ export function initPanel(store) {
 
     const note = document.createElement("div");
     note.className = "note";
-    note.textContent =
-      "This creates or normalizes a world resource only. It does not bind any campaign.";
+    note.textContent = scenarioMode
+      ? "Scenario mode stores normalized generator metadata only. Playable structure is rebuilt later during campaign bootstrap."
+      : "This creates or normalizes a world resource only. It does not bind any campaign.";
     mount.appendChild(note);
+
+    const modeField = document.createElement("label");
+    modeField.className = "field";
+    modeField.innerHTML = '<span class="field-label">Mode</span>';
+    const modeSelect = document.createElement("select");
+    modeSelect.setAttribute("data-focus-key", "world-generate-mode");
+    modeSelect.disabled = busy;
+    for (const option of [
+      { value: "stub", label: "Normal / Stub" },
+      { value: "scenario", label: "Scenario-backed" },
+    ]) {
+      const element = document.createElement("option");
+      element.value = option.value;
+      element.textContent = option.label;
+      modeSelect.appendChild(element);
+    }
+    modeSelect.value = scenarioMode ? "scenario" : "stub";
+    modeSelect.addEventListener("change", () => {
+      store.setWorldGenerateForm({ mode: modeSelect.value });
+    });
+    modeField.appendChild(modeSelect);
+    mount.appendChild(modeField);
 
     const worldIdField = document.createElement("label");
     worldIdField.className = "field";
@@ -179,6 +235,102 @@ export function initPanel(store) {
     });
     nameField.appendChild(nameInput);
     mount.appendChild(nameField);
+
+    if (scenarioMode) {
+      const templateField = document.createElement("label");
+      templateField.className = "field";
+      templateField.innerHTML = '<span class="field-label">Template</span>';
+      const templateSelect = document.createElement("select");
+      templateSelect.setAttribute("data-focus-key", "world-generate-scenario-template");
+      templateSelect.disabled = busy;
+      const templateOption = document.createElement("option");
+      templateOption.value = "key_gate_scenario";
+      templateOption.textContent = "Key Gate Scenario";
+      templateSelect.appendChild(templateOption);
+      templateSelect.value = createForm.scenario_template || "key_gate_scenario";
+      templateSelect.addEventListener("change", () => {
+        store.setWorldGenerateForm({ scenario_template: templateSelect.value });
+      });
+      templateField.appendChild(templateSelect);
+      mount.appendChild(templateField);
+
+      const themeField = document.createElement("label");
+      themeField.className = "field";
+      themeField.innerHTML = '<span class="field-label">Theme</span>';
+      const themeInput = document.createElement("input");
+      themeInput.setAttribute("data-focus-key", "world-generate-scenario-theme");
+      themeInput.placeholder = "watchtower";
+      themeInput.value = createForm.scenario_theme || "watchtower";
+      themeInput.disabled = busy;
+      themeInput.addEventListener("input", () => {
+        store.setWorldGenerateForm({ scenario_theme: themeInput.value });
+      });
+      themeField.appendChild(themeInput);
+      mount.appendChild(themeField);
+
+      const areaCountField = document.createElement("label");
+      areaCountField.className = "field";
+      areaCountField.innerHTML = '<span class="field-label">Area Count</span>';
+      const areaCountSelect = document.createElement("select");
+      areaCountSelect.setAttribute("data-focus-key", "world-generate-scenario-area-count");
+      areaCountSelect.disabled = busy;
+      for (const areaCount of ["4", "5", "6", "7", "8"]) {
+        const option = document.createElement("option");
+        option.value = areaCount;
+        option.textContent = areaCount;
+        areaCountSelect.appendChild(option);
+      }
+      areaCountSelect.value = createForm.scenario_area_count || "6";
+      areaCountSelect.addEventListener("change", () => {
+        store.setWorldGenerateForm({ scenario_area_count: areaCountSelect.value });
+      });
+      areaCountField.appendChild(areaCountSelect);
+      mount.appendChild(areaCountField);
+
+      const layoutField = document.createElement("label");
+      layoutField.className = "field";
+      layoutField.innerHTML = '<span class="field-label">Layout</span>';
+      const layoutSelect = document.createElement("select");
+      layoutSelect.setAttribute("data-focus-key", "world-generate-scenario-layout");
+      layoutSelect.disabled = busy;
+      for (const option of [
+        { value: "linear", label: "Linear" },
+        { value: "branch", label: "Branch" },
+      ]) {
+        const element = document.createElement("option");
+        element.value = option.value;
+        element.textContent = option.label;
+        layoutSelect.appendChild(element);
+      }
+      layoutSelect.value = createForm.scenario_layout_type || "branch";
+      layoutSelect.addEventListener("change", () => {
+        store.setWorldGenerateForm({ scenario_layout_type: layoutSelect.value });
+      });
+      layoutField.appendChild(layoutSelect);
+      mount.appendChild(layoutField);
+
+      const difficultyField = document.createElement("label");
+      difficultyField.className = "field";
+      difficultyField.innerHTML = '<span class="field-label">Difficulty</span>';
+      const difficultySelect = document.createElement("select");
+      difficultySelect.setAttribute("data-focus-key", "world-generate-scenario-difficulty");
+      difficultySelect.disabled = busy;
+      for (const option of [
+        { value: "easy", label: "Easy" },
+        { value: "standard", label: "Standard" },
+      ]) {
+        const element = document.createElement("option");
+        element.value = option.value;
+        element.textContent = option.label;
+        difficultySelect.appendChild(element);
+      }
+      difficultySelect.value = createForm.scenario_difficulty || "easy";
+      difficultySelect.addEventListener("change", () => {
+        store.setWorldGenerateForm({ scenario_difficulty: difficultySelect.value });
+      });
+      difficultyField.appendChild(difficultySelect);
+      mount.appendChild(difficultyField);
+    }
 
     const generateButton = document.createElement("button");
     generateButton.className = "primary";

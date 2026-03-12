@@ -6,7 +6,11 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from backend.app.actor_service import spawn_actor
 from backend.app.character_facade_factory import create_runtime_character_facade
-from backend.app.world_presets import is_goal_area, required_item_for_move
+from backend.app.scenario_runtime_mapper import (
+    is_scenario_world_goal_area,
+    required_item_for_scenario_world_move,
+)
+from backend.app.world_presets import build_world_preset, is_goal_area, required_item_for_move
 from backend.app.world_service import generate_world
 from backend.domain.character_access import (
     CharacterFacade,
@@ -161,7 +165,14 @@ def _apply_tool_call(
 ) -> Tuple[Optional[AppliedAction], Optional[str]]:
     timestamp = datetime.now(timezone.utc).isoformat()
     if call.tool == "move":
-        return _apply_move(campaign, actor_id, call, timestamp, character_facade)
+        return _apply_move(
+            campaign,
+            actor_id,
+            call,
+            timestamp,
+            character_facade,
+            repo=repo,
+        )
     if call.tool == "hp_delta":
         action = _apply_hp_delta(campaign, call, timestamp, character_facade)
         return action, "invalid_args" if action is None else None
@@ -195,6 +206,8 @@ def _apply_move(
     call: ToolCall,
     timestamp: str,
     character_facade: CharacterFacade,
+    *,
+    repo: Optional[FileRepo] = None,
 ) -> Tuple[Optional[AppliedAction], Optional[str]]:
     actor_id = _resolve_call_actor_id(effective_actor_id, call)
     to_area_id = call.args.get("to_area_id")
@@ -214,9 +227,20 @@ def _apply_move(
         return None, "invalid_args"
     if not _is_connected(campaign, from_area_id, to_area_id):
         return None, "invalid_args"
+    world = repo.get_world(campaign.selected.world_id) if repo is not None else None
+    if world is None:
+        world = build_world_preset(campaign.selected.world_id)
     required_item_id = required_item_for_move(
         campaign.selected.world_id, from_area_id, to_area_id
     )
+    # V0 compatibility path: only consult scenario metadata if the hand-authored
+    # preset lookup did not already define the gate requirement.
+    if required_item_id is None and world is not None:
+        required_item_id = required_item_for_scenario_world_move(
+            world,
+            from_area_id,
+            to_area_id,
+        )
     if required_item_id is not None:
         actor = campaign.actors.get(actor_id)
         inventory = actor.inventory if actor is not None and isinstance(actor.inventory, dict) else {}
@@ -232,7 +256,10 @@ def _apply_move(
             character_state=actor_state.character_state,
         ),
     )
-    if is_goal_area(campaign.selected.world_id, to_area_id):
+    reached_goal_area = is_goal_area(campaign.selected.world_id, to_area_id)
+    if not reached_goal_area and world is not None:
+        reached_goal_area = is_scenario_world_goal_area(world, to_area_id)
+    if reached_goal_area:
         campaign.goal.status = "completed"
     return AppliedAction(
         tool="move",
