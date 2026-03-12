@@ -6,6 +6,7 @@
 - Closed baseline coverage: world generation, explicit world-aware campaign creation, repeatable play loop, read-only World Preview, authoritative Map Panel, backend narrative fallback for successful tool-only turns, and stable Character Library typing during Play-page rerenders.
 - Remaining tracked follow-up items are post-baseline polish only: null-position actor closure and current-turn result visibility cleanup.
 - Current baseline is suitable as the next-stage starting point without reopening the closed playable loop.
+- Additional fixed regression baseline: `test_watchtower_world` was verified end-to-end on 2026-03-11 and now serves as the source example for Scenario Template 0 extraction.
 
 ## 1. Architecture Overview
 
@@ -99,8 +100,11 @@ Runtime system:
 
 ## 8. Next Development Candidates
 
-- full world generator beyond deterministic stub
-- world content and entity expansion
+- parameterized playable scenario generator v0
+  - first template only: `key_gate_scenario`
+  - source example: `test_watchtower_world`
+  - target output: one small solvable scenario compatible with the current runtime
+- limited world content and entity expansion in support of the scenario generator
 - UI improvements beyond the current panel MVP
 - multiplayer/session coordination
 - broader AI behavior and content-quality improvements

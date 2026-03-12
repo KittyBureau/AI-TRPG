@@ -537,13 +537,38 @@ Explicitly out of current P1 closure:
 
 ## P2 (Post-v1 / Optimization)
 
-### P2-01 Additional world generator variants
-- Status: `TODO`
-- Why: enrich content variety without blocking v1 loop.
-- Scope: `backend/domain/world_models.py`, `backend/infra/file_repo.py`
-- Acceptance: optional generator variants keep world contract unchanged.
-- Tests: `backend/tests/test_world_api.py`, `backend/tests/test_world_generate_tool.py`
-- Rollback: disable variant selection and keep stub generator.
+Current P2 priority override (2026-03-12):
+
+- Pause other open P2 work until the minimal playable scenario generator direction is design-reviewed.
+- Use `test_watchtower_world` as Scenario Template 0 and regression reference.
+- Keep scope to one template-driven, solvable, immediately playable scenario instance.
+
+### P2-01 Playable scenario generator v0 (`key_gate_scenario`)
+- Status: `WIP`
+- Why: the next content step is not a broad world generator; it is a parameterized playable scenario generator that can reproduce the fixed watchtower loop structurally while staying compatible with the current runtime.
+- Scope:
+  - design source doc: `docs/90_playable/P2_PLAYABLE_SCENARIO_GENERATOR_V0.md`
+  - current reference scenario: `backend/app/world_presets.py`, `backend/tests/test_watchtower_world.py`, `backend/tests/test_watchtower_world_turn_api.py`
+  - likely future implementation seam: `backend/app/world_presets.py`, `backend/app/world_service.py`, `backend/app/turn_service.py`, `backend/app/tool_executor.py`
+- Required design constraints:
+  - first supported template only: `key_gate_scenario`
+  - target size: `4-8` areas
+  - fixed role set: `start`, `clue area`, `clue source`, `key item`, `gate area`, `gate entity`, `target area`, `enter-target success rule`
+  - generated output must remain compatible with the existing world model, campaign creation, movement, `scene_action`, inventory authority, gate logic, and goal completion
+  - prioritize guaranteed solvability over content richness
+- Current design status:
+  - watchtower baseline extracted as the source structural pattern
+  - minimal parameter model, generation pipeline, integration plan, and solvability rules documented on 2026-03-12
+  - runtime implementation intentionally not started in this round
+- Acceptance:
+  - watchtower baseline is documented as Scenario Template 0
+  - `key_gate_scenario` template definition is explicit about fixed logic vs parameterized content
+  - minimal parameter model and solvability validation rules are documented
+  - repo-aligned integration points are identified without introducing a parallel runtime architecture
+- Tests:
+  - design phase: `backend/tests/test_watchtower_world.py`, `backend/tests/test_watchtower_world_turn_api.py`, `docs/20_runtime/testing/test_watchtower_world_manual_test.md`
+  - future implementation phase: targeted generator/validation tests plus watchtower regression rerun
+- Rollback: keep `test_watchtower_world` as the only fixed playable scenario and defer generator implementation until the design is confirmed.
 
 ### P2-02 Tool policy schema tightening
 - Status: `TODO`

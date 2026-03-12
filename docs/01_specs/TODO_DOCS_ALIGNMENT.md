@@ -34,3 +34,16 @@ TODOs across docs.
 - Evidence:
   - `backend/app/turn_service.py`
   - `backend/tests/test_turn_response_contract_api.py`
+
+## Playable scenario generator v0 design alignment (2026-03-12)
+- Status: design documented; runtime implementation pending.
+- Scope:
+  - `docs/90_playable/P2_PLAYABLE_SCENARIO_GENERATOR_V0.md` now records the watchtower extraction, `key_gate_scenario` template definition, parameter model, solvability rules, and minimal integration plan.
+  - This document is intentionally design-only for now and must not be read as implemented runtime behavior.
+- Recommendation:
+  - Keep the design doc aligned to the current code seams in `backend/app/world_presets.py`, `backend/app/turn_service.py`, and `backend/app/tool_executor.py`.
+  - Do not claim generated scenario support in user-facing runtime docs until campaign bootstrap and move/goal rule lookup are actually wired.
+- Evidence:
+  - `backend/app/world_presets.py`
+  - `backend/app/turn_service.py`
+  - `backend/app/tool_executor.py`

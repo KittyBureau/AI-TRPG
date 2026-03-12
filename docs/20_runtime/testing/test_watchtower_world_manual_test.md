@@ -4,6 +4,7 @@ Last updated: 2026-03-11
 
 This guide verifies the fixed smoke-test world `test_watchtower_world` through the existing Play flow.
 Use it as the reusable watchtower regression scenario for smoke retests.
+It is also the source behavior reference for `key_gate_scenario` Scenario Template 0 design work.
 
 ## Scope
 
