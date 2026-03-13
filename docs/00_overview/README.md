@@ -19,6 +19,7 @@
 ## Core Specs (Authoritative)
 
 - `docs/01_specs/architecture.md`
+- `docs/01_specs/item_system_v2.md`
 - `docs/01_specs/storage_layout.md`
 - `docs/01_specs/settings.md`
 - `docs/01_specs/dialog_types.md`

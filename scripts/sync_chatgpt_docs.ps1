@@ -108,6 +108,7 @@ $FileMappings = @(
     [pscustomobject]@{ RelativePath = "docs/00_overview/PROJECT_STATUS.md" },
     [pscustomobject]@{ RelativePath = "docs/00_overview/DOCS_PATH_MAPPING.md" },
     [pscustomobject]@{ RelativePath = "docs/01_specs/architecture.md" },
+    [pscustomobject]@{ RelativePath = "docs/01_specs/item_system_v2.md" },
     [pscustomobject]@{ RelativePath = "docs/01_specs/DOC_SYNC_BASELINE.md" },
     [pscustomobject]@{ RelativePath = "docs/01_specs/TODO_DOCS_ALIGNMENT.md" },
     [pscustomobject]@{ RelativePath = "docs/20_runtime/storage_authority.md" },
