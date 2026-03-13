@@ -14,6 +14,13 @@ from backend.app.item_operations import (
     get_stack_or_none,
     is_area_root_stack_visible,
     is_direct_actor_stack,
+    is_stack_container,
+    is_stack_locked,
+    is_stack_open,
+    is_stack_visible_to_actor,
+    search_area_item_sources,
+    search_stack_container_contents,
+    set_stack_opened,
     transfer_stack_parent,
     would_exceed_actor_carry_limit,
 )
@@ -665,7 +672,7 @@ def _apply_scene_action(
     is_area_search = False
     if normalized_action not in {"wait"}:
         target = campaign.entities.get(normalized_target_id)
-        if target is None and normalized_action in {"take", "drop"}:
+        if target is None and normalized_action in {"take", "drop", "open", "search"}:
             target_stack = get_stack_or_none(campaign, normalized_target_id)
         if target is None and target_stack is None:
             if (
@@ -751,6 +758,61 @@ def _apply_scene_action(
             )
 
         if normalized_action == "open":
+            if target_stack is not None:
+                if not is_stack_visible_to_actor(
+                    campaign,
+                    target_stack.stack_id,
+                    actor_id=actor_id,
+                    current_area_id=current_area_id,
+                ):
+                    return _scene_action_applied(
+                        call,
+                        timestamp,
+                        _scene_action_result(
+                            ok=False,
+                            narrative=f"{target_stack.label} is not reachable right now.",
+                            error_code="not_reachable",
+                            error_message=f"target not reachable: {target_stack.stack_id}",
+                        ),
+                    )
+                if not is_stack_container(target_stack):
+                    return _scene_action_applied(
+                        call,
+                        timestamp,
+                        _scene_action_result(
+                            ok=False,
+                            narrative=f"You cannot open {target_stack.label}.",
+                            error_code="not_allowed",
+                            error_message=f"target is not a container: {target_stack.stack_id}",
+                        ),
+                    )
+                if is_stack_locked(target_stack):
+                    return _scene_action_applied(
+                        call,
+                        timestamp,
+                        _scene_action_result(
+                            ok=False,
+                            narrative=f"{target_stack.label} is locked.",
+                            error_code="locked",
+                            error_message=f"target locked: {target_stack.stack_id}",
+                            entity_patches=entity_patches,
+                            new_entities=new_entities,
+                            removed_entities=removed_entities,
+                        ),
+                    )
+                if not is_stack_open(target_stack):
+                    set_stack_opened(campaign, target_stack.stack_id, opened=True)
+                return _scene_action_applied(
+                    call,
+                    timestamp,
+                    _scene_action_result(
+                        ok=True,
+                        narrative=f"You open {target_stack.label}.",
+                        entity_patches=entity_patches,
+                        new_entities=new_entities,
+                        removed_entities=removed_entities,
+                    ),
+                )
             if target is None:
                 return None
             if target.state.get("locked") is True:
@@ -824,12 +886,99 @@ def _apply_scene_action(
                                 removed_entities=removed_entities,
                             ),
                         )
+                stack_discovery = search_area_item_sources(campaign, current_area_id)
+                if stack_discovery is not None:
+                    source_stack, found_stack = stack_discovery
+                    narrative = (
+                        f"You search the area and find {found_stack.label} in {source_stack.label}."
+                        if found_stack is not None
+                        else f"You search the area and notice {source_stack.label}."
+                    )
+                    return _scene_action_applied(
+                        call,
+                        timestamp,
+                        _scene_action_result(
+                            ok=True,
+                            narrative=narrative,
+                            entity_patches=entity_patches,
+                            new_entities=new_entities,
+                            removed_entities=removed_entities,
+                        ),
+                    )
                 return _scene_action_applied(
                     call,
                     timestamp,
                     _scene_action_result(
                         ok=True,
                         narrative="You search the area but find nothing new.",
+                        entity_patches=entity_patches,
+                        new_entities=new_entities,
+                        removed_entities=removed_entities,
+                    ),
+                )
+            if target_stack is not None:
+                if not is_stack_visible_to_actor(
+                    campaign,
+                    target_stack.stack_id,
+                    actor_id=actor_id,
+                    current_area_id=current_area_id,
+                ):
+                    return _scene_action_applied(
+                        call,
+                        timestamp,
+                        _scene_action_result(
+                            ok=False,
+                            narrative=f"{target_stack.label} is not reachable right now.",
+                            error_code="not_reachable",
+                            error_message=f"target not reachable: {target_stack.stack_id}",
+                        ),
+                    )
+                if not is_stack_container(target_stack):
+                    return _scene_action_applied(
+                        call,
+                        timestamp,
+                        _scene_action_result(
+                            ok=False,
+                            narrative=f"You cannot search {target_stack.label}.",
+                            error_code="not_allowed",
+                            error_message=f"target is not searchable: {target_stack.stack_id}",
+                        ),
+                    )
+                if not is_stack_open(target_stack):
+                    return _scene_action_applied(
+                        call,
+                        timestamp,
+                        _scene_action_result(
+                            ok=False,
+                            narrative=f"You need to open {target_stack.label} first.",
+                            error_code="not_allowed",
+                            error_message=f"target not opened: {target_stack.stack_id}",
+                        ),
+                    )
+                child_stacks = search_stack_container_contents(
+                    campaign,
+                    target_stack.stack_id,
+                    actor_id=actor_id,
+                    current_area_id=current_area_id,
+                )
+                if child_stacks:
+                    return _scene_action_applied(
+                        call,
+                        timestamp,
+                        _scene_action_result(
+                            ok=True,
+                            narrative=f"You search {target_stack.label} and find {child_stacks[0].label}.",
+                            entity_patches=entity_patches,
+                            new_entities=new_entities,
+                            removed_entities=removed_entities,
+                        ),
+                    )
+                return _scene_action_applied(
+                    call,
+                    timestamp,
+                    _scene_action_result(
+                        ok=True,
+                        narrative=f"You search {target_stack.label} but find nothing useful.",
                         entity_patches=entity_patches,
                         new_entities=new_entities,
                         removed_entities=removed_entities,

@@ -328,6 +328,275 @@ def test_scene_action_drop_actor_stack_transfers_parent_to_area() -> None:
     assert campaign.actors["pc_001"].inventory == {}
 
 
+def test_scene_action_open_stack_container_sets_opened_state() -> None:
+    campaign = _base_campaign()
+    crate_stack = create_runtime_item_stack(
+        definition_id="crate_01",
+        quantity=1,
+        parent_type="area",
+        parent_id="area_001",
+        label="Old Crate",
+        tags=["container"],
+        stackable=False,
+        is_container=True,
+        state={"opened": False},
+        stack_id_salt="test_scene_action_open_stack_container",
+    )
+    campaign.items = {crate_stack.stack_id: crate_stack}
+    call = ToolCall(
+        id="call_open_stack_container",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "open",
+            "target_id": crate_stack.stack_id,
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is True
+    assert result["narrative"] == "You open Old Crate."
+    assert campaign.items[crate_stack.stack_id].state["opened"] is True
+
+
+def test_scene_action_search_closed_stack_container_requires_open() -> None:
+    campaign = _base_campaign()
+    crate_stack = create_runtime_item_stack(
+        definition_id="crate_01",
+        quantity=1,
+        parent_type="area",
+        parent_id="area_001",
+        label="Old Crate",
+        tags=["container"],
+        stackable=False,
+        is_container=True,
+        state={"opened": False},
+        stack_id_salt="test_scene_action_search_closed_stack_container:crate",
+    )
+    child_stack = create_runtime_item_stack(
+        definition_id="coin",
+        quantity=1,
+        parent_type="item",
+        parent_id=crate_stack.stack_id,
+        label="Coin",
+        stack_id_salt="test_scene_action_search_closed_stack_container:coin",
+    )
+    campaign.items = {
+        crate_stack.stack_id: crate_stack,
+        child_stack.stack_id: child_stack,
+    }
+    call = ToolCall(
+        id="call_search_closed_stack_container",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "search",
+            "target_id": crate_stack.stack_id,
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is False
+    assert result["error"]["code"] == "not_allowed"
+    assert "open Old Crate first" in result["narrative"]
+    assert campaign.items[crate_stack.stack_id].state["opened"] is False
+
+
+def test_scene_action_search_opened_stack_container_finds_child() -> None:
+    campaign = _base_campaign()
+    crate_stack = create_runtime_item_stack(
+        definition_id="crate_01",
+        quantity=1,
+        parent_type="area",
+        parent_id="area_001",
+        label="Old Crate",
+        tags=["container"],
+        stackable=False,
+        is_container=True,
+        state={"opened": True},
+        stack_id_salt="test_scene_action_search_opened_stack_container:crate",
+    )
+    child_stack = create_runtime_item_stack(
+        definition_id="coin",
+        quantity=1,
+        parent_type="item",
+        parent_id=crate_stack.stack_id,
+        label="Coin",
+        stack_id_salt="test_scene_action_search_opened_stack_container:coin",
+    )
+    campaign.items = {
+        crate_stack.stack_id: crate_stack,
+        child_stack.stack_id: child_stack,
+    }
+    call = ToolCall(
+        id="call_search_opened_stack_container",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "search",
+            "target_id": crate_stack.stack_id,
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is True
+    assert result["narrative"] == "You search Old Crate and find Coin."
+    assert campaign.items[child_stack.stack_id].parent_type == "item"
+    assert campaign.items[child_stack.stack_id].parent_id == crate_stack.stack_id
+
+
+def test_scene_action_search_fixed_entity_grant_source_still_works() -> None:
+    campaign = _base_campaign()
+    campaign.entities["old_hut_clue"] = Entity(
+        id="old_hut_clue",
+        kind="object",
+        label="Dusty Table",
+        tags=["clue"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "search"],
+        state={"inventory_item_id": "tower_key", "inventory_quantity": 1},
+        props={},
+    )
+    call = ToolCall(
+        id="call_search_entity_grant_source",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "search",
+            "target_id": "old_hut_clue",
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is True
+    assert "tower_key" in result["narrative"]
+    assert campaign.actors["pc_001"].inventory == {"tower_key": 1}
+
+
+def test_scene_action_area_search_prefers_entity_grant_source_before_stack_discovery() -> None:
+    campaign = _base_campaign()
+    campaign.entities["old_hut_clue"] = Entity(
+        id="old_hut_clue",
+        kind="object",
+        label="Dusty Table",
+        tags=["clue"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "search"],
+        state={"inventory_item_id": "tower_key", "inventory_quantity": 1},
+        props={},
+    )
+    crate_stack = create_runtime_item_stack(
+        definition_id="crate_01",
+        quantity=1,
+        parent_type="area",
+        parent_id="area_001",
+        label="Old Crate",
+        tags=["container"],
+        stackable=False,
+        is_container=True,
+        state={"opened": True},
+        stack_id_salt="test_scene_action_area_search_prefers_entity:crate",
+    )
+    child_stack = create_runtime_item_stack(
+        definition_id="coin",
+        quantity=1,
+        parent_type="item",
+        parent_id=crate_stack.stack_id,
+        label="Coin",
+        stack_id_salt="test_scene_action_area_search_prefers_entity:coin",
+    )
+    campaign.items = {
+        crate_stack.stack_id: crate_stack,
+        child_stack.stack_id: child_stack,
+    }
+    call = ToolCall(
+        id="call_area_search_entity_before_stack",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "search",
+            "target_id": "area_001",
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is True
+    assert result["narrative"] == "You search the area and find tower_key in Dusty Table."
+    assert campaign.actors["pc_001"].inventory == {"tower_key": 1}
+
+
+def test_scene_action_area_search_falls_back_to_visible_stack_discovery() -> None:
+    campaign = _base_campaign()
+    crate_stack = create_runtime_item_stack(
+        definition_id="crate_01",
+        quantity=1,
+        parent_type="area",
+        parent_id="area_001",
+        label="Old Crate",
+        tags=["container"],
+        stackable=False,
+        is_container=True,
+        state={"opened": True},
+        stack_id_salt="test_scene_action_area_search_stack_fallback:crate",
+    )
+    child_stack = create_runtime_item_stack(
+        definition_id="coin",
+        quantity=1,
+        parent_type="item",
+        parent_id=crate_stack.stack_id,
+        label="Coin",
+        stack_id_salt="test_scene_action_area_search_stack_fallback:coin",
+    )
+    campaign.items = {
+        crate_stack.stack_id: crate_stack,
+        child_stack.stack_id: child_stack,
+    }
+    call = ToolCall(
+        id="call_area_search_stack_fallback",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "search",
+            "target_id": "area_001",
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is True
+    assert result["narrative"] == "You search the area and find Coin in Old Crate."
+    assert campaign.actors["pc_001"].inventory == {}
+
+
 def test_scene_action_stack_take_uses_hybrid_carry_mass_counting() -> None:
     campaign = _base_campaign()
     campaign.actors["pc_001"].meta["carry_mass_limit"] = 10

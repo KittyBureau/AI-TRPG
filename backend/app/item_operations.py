@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from backend.app.item_runtime import (
     resolve_stack_root,
@@ -55,18 +55,55 @@ def build_area_root_stack_views(
 ) -> List[Dict[str, Any]]:
     views: List[Dict[str, Any]] = []
     for stack in list_area_root_stacks(campaign, area_id):
-        views.append(
-            {
-                "id": stack.stack_id,
-                "item_id": stack.definition_id,
-                "label": stack.label,
-                "quantity": stack.quantity,
-                "tags": list(stack.tags),
-                "verbs": ["take"],
-                "is_container": bool(stack.is_container),
-            }
-        )
+        view = {
+            "id": stack.stack_id,
+            "item_id": stack.definition_id,
+            "label": stack.label,
+            "quantity": stack.quantity,
+            "tags": list(stack.tags),
+            "verbs": _stack_area_view_verbs(stack),
+            "is_container": bool(stack.is_container),
+            "opened": is_stack_open(stack),
+        }
+        if stack.is_container and is_stack_open(stack):
+            contents = [
+                _stack_content_summary(child_stack)
+                for child_stack in list_visible_area_container_child_stacks(
+                    campaign,
+                    stack.stack_id,
+                    area_id=area_id,
+                )
+            ]
+            if contents:
+                view["contents"] = contents
+        views.append(view)
     return views
+
+
+def is_stack_container(stack: RuntimeItemStack) -> bool:
+    return bool(stack.is_container)
+
+
+def is_stack_open(stack: RuntimeItemStack) -> bool:
+    return bool(stack.state.get("opened")) if stack.is_container else False
+
+
+def is_stack_locked(stack: RuntimeItemStack) -> bool:
+    return bool(stack.state.get("locked")) if stack.is_container else False
+
+
+def set_stack_opened(
+    campaign: Campaign,
+    stack_id: str,
+    *,
+    opened: bool = True,
+) -> RuntimeItemStack:
+    stack = get_stack_or_none(campaign, stack_id)
+    if stack is None:
+        raise ValueError(f"missing item stack: {stack_id}")
+    stack.state["opened"] = bool(opened)
+    validate_and_sync_campaign_items(campaign)
+    return stack
 
 
 def is_stack_reachable(
@@ -87,6 +124,33 @@ def is_stack_reachable(
         return root_id == actor_id
     if root_type == "area":
         return isinstance(current_area_id, str) and root_id == current_area_id
+    return False
+
+
+def is_stack_visible_to_actor(
+    campaign: Campaign,
+    stack_id: str,
+    *,
+    actor_id: str,
+    current_area_id: str | None,
+) -> bool:
+    stack = get_stack_or_none(campaign, stack_id)
+    if stack is None:
+        return False
+    current = stack
+    visited = {stack.stack_id}
+    while current.parent_type == "item":
+        parent = get_stack_or_none(campaign, current.parent_id)
+        if parent is None or parent.stack_id in visited:
+            return False
+        if not parent.is_container or not is_stack_open(parent):
+            return False
+        visited.add(parent.stack_id)
+        current = parent
+    if current.parent_type == "area":
+        return isinstance(current_area_id, str) and current.parent_id == current_area_id
+    if current.parent_type == "actor":
+        return current.parent_id == actor_id
     return False
 
 
@@ -117,6 +181,104 @@ def is_direct_actor_stack(
         and stack.parent_type == "actor"
         and stack.parent_id == actor_id
     )
+
+
+def list_container_child_stacks(
+    campaign: Campaign,
+    container_stack_id: str,
+) -> List[RuntimeItemStack]:
+    container = get_stack_or_none(campaign, container_stack_id)
+    if container is None or not container.is_container:
+        return []
+    children: List[RuntimeItemStack] = []
+    for stack_id in sorted(campaign.items.keys()):
+        stack = get_stack_or_none(campaign, stack_id)
+        if stack is None:
+            continue
+        if stack.parent_type != "item" or stack.parent_id != container.stack_id:
+            continue
+        children.append(stack)
+    return children
+
+
+def list_visible_container_child_stacks(
+    campaign: Campaign,
+    container_stack_id: str,
+    *,
+    actor_id: str,
+    current_area_id: str | None,
+) -> List[RuntimeItemStack]:
+    container = get_stack_or_none(campaign, container_stack_id)
+    if container is None or not container.is_container or not is_stack_open(container):
+        return []
+    if not is_stack_visible_to_actor(
+        campaign,
+        container.stack_id,
+        actor_id=actor_id,
+        current_area_id=current_area_id,
+    ):
+        return []
+    return [
+        stack
+        for stack in list_container_child_stacks(campaign, container.stack_id)
+        if is_stack_visible_to_actor(
+            campaign,
+            stack.stack_id,
+            actor_id=actor_id,
+            current_area_id=current_area_id,
+        )
+    ]
+
+
+def list_visible_area_container_child_stacks(
+    campaign: Campaign,
+    container_stack_id: str,
+    *,
+    area_id: str | None,
+) -> List[RuntimeItemStack]:
+    if not isinstance(area_id, str) or not area_id.strip():
+        return []
+    return list_visible_container_child_stacks(
+        campaign,
+        container_stack_id,
+        actor_id="",
+        current_area_id=area_id,
+    )
+
+
+def search_stack_container_contents(
+    campaign: Campaign,
+    stack_id: str,
+    *,
+    actor_id: str,
+    current_area_id: str | None,
+) -> List[RuntimeItemStack]:
+    return list_visible_container_child_stacks(
+        campaign,
+        stack_id,
+        actor_id=actor_id,
+        current_area_id=current_area_id,
+    )
+
+
+def search_area_item_sources(
+    campaign: Campaign,
+    area_id: str | None,
+) -> Optional[Tuple[RuntimeItemStack, Optional[RuntimeItemStack]]]:
+    for stack in list_area_root_stacks(campaign, area_id):
+        if stack.is_container:
+            if not is_stack_open(stack):
+                continue
+            children = list_visible_area_container_child_stacks(
+                campaign,
+                stack.stack_id,
+                area_id=area_id,
+            )
+            if children:
+                return stack, children[0]
+            continue
+        return stack, None
+    return None
 
 
 def transfer_stack_parent(
@@ -202,6 +364,48 @@ def would_exceed_actor_carry_limit(
     return current_mass + normalized_additional_mass > carry_mass_limit(campaign, actor_id)
 
 
+def _stack_area_view_verbs(stack: RuntimeItemStack) -> List[str]:
+    verbs = _normalize_text_list(stack.verbs)
+    if stack.parent_type == "area" and "take" not in verbs:
+        verbs.append("take")
+    if stack.is_container:
+        if "open" not in verbs:
+            verbs.append("open")
+        if is_stack_open(stack):
+            if "search" not in verbs:
+                verbs.append("search")
+        else:
+            verbs = [verb for verb in verbs if verb != "search"]
+        return verbs
+    return [verb for verb in verbs if verb not in {"open", "search"}]
+
+
+def _stack_content_summary(stack: RuntimeItemStack) -> Dict[str, Any]:
+    return {
+        "item_id": stack.definition_id,
+        "label": stack.label,
+        "quantity": stack.quantity,
+        "is_container": bool(stack.is_container),
+        "opened": is_stack_open(stack),
+    }
+
+
+def _normalize_text_list(values: object) -> List[str]:
+    if not isinstance(values, list):
+        return []
+    normalized: List[str] = []
+    seen: set[str] = set()
+    for raw_value in values:
+        if not isinstance(raw_value, str):
+            continue
+        value = raw_value.strip().lower()
+        if not value or value in seen:
+            continue
+        normalized.append(value)
+        seen.add(value)
+    return normalized
+
+
 __all__ = [
     "build_area_root_stack_views",
     "carry_mass_limit",
@@ -210,9 +414,19 @@ __all__ = [
     "compute_stack_mass",
     "get_stack_or_none",
     "is_area_root_stack_visible",
+    "is_stack_container",
+    "is_stack_locked",
+    "is_stack_open",
     "is_direct_actor_stack",
     "is_stack_reachable",
+    "is_stack_visible_to_actor",
+    "list_container_child_stacks",
     "list_area_root_stacks",
+    "list_visible_area_container_child_stacks",
+    "list_visible_container_child_stacks",
+    "search_area_item_sources",
+    "search_stack_container_contents",
+    "set_stack_opened",
     "transfer_stack_parent",
     "would_exceed_actor_carry_limit",
 ]

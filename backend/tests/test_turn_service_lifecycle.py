@@ -359,6 +359,7 @@ def test_turn_prompt_scene_surfaces_area_root_item_stacks(
         tags=["container"],
         stackable=False,
         is_container=True,
+        state={"opened": False},
         stack_id_salt="test_turn_prompt_scene:crate",
     )
     child_stack = create_runtime_item_stack(
@@ -393,8 +394,75 @@ def test_turn_prompt_scene_surfaces_area_root_item_stacks(
             "label": "Old Crate",
             "quantity": 1,
             "tags": ["container"],
-            "verbs": ["take"],
+            "verbs": ["take", "open"],
             "is_container": True,
+            "opened": False,
+        }
+    ]
+
+
+def test_turn_prompt_scene_surfaces_opened_stack_container_contents(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_scene_prompt_open_container")
+    campaign.map.areas["area_001"] = MapArea(id="area_001", name="Start")
+    crate_stack = create_runtime_item_stack(
+        definition_id="crate_01",
+        quantity=1,
+        parent_type="area",
+        parent_id="area_001",
+        label="Old Crate",
+        tags=["container"],
+        stackable=False,
+        is_container=True,
+        state={"opened": True},
+        stack_id_salt="test_turn_prompt_scene_opened:crate",
+    )
+    child_stack = create_runtime_item_stack(
+        definition_id="coin",
+        quantity=1,
+        parent_type="item",
+        parent_id=crate_stack.stack_id,
+        label="Coin",
+        stack_id_salt="test_turn_prompt_scene_opened:coin",
+    )
+    campaign.items = {
+        crate_stack.stack_id: crate_stack,
+        child_stack.stack_id: child_stack,
+    }
+    repo.save_campaign(campaign)
+    llm = _StubLLM(
+        {
+            "assistant_text": "ok",
+            "dialog_type": "scene_description",
+            "tool_calls": [],
+        }
+    )
+    service.llm = llm
+
+    service.submit_turn("camp_scene_prompt_open_container", "look around")
+
+    context = _extract_prompt_context(llm.system_prompt)
+    assert context["scene"]["items_in_area"] == [
+        {
+            "id": crate_stack.stack_id,
+            "item_id": "crate_01",
+            "label": "Old Crate",
+            "quantity": 1,
+            "tags": ["container"],
+            "verbs": ["take", "open", "search"],
+            "is_container": True,
+            "opened": True,
+            "contents": [
+                {
+                    "item_id": "coin",
+                    "label": "Coin",
+                    "quantity": 1,
+                    "is_container": False,
+                    "opened": False,
+                }
+            ],
         }
     ]
 
