@@ -7,10 +7,12 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from backend.app.actor_service import spawn_actor
 from backend.app.character_facade_factory import create_runtime_character_facade
 from backend.app.item_operations import (
+    can_actor_use_stack,
     carry_mass_limit,
     compute_actor_item_mass,
     compute_entity_mass,
     compute_stack_mass,
+    consume_stack_quantity,
     get_stack_or_none,
     is_area_root_stack_visible,
     is_direct_actor_stack,
@@ -18,9 +20,11 @@ from backend.app.item_operations import (
     is_stack_locked,
     is_stack_open,
     is_stack_visible_to_actor,
+    resolve_usable_stack,
     search_area_item_sources,
     search_stack_container_contents,
     set_stack_opened,
+    should_consume_stack_on_use,
     transfer_stack_parent,
     would_exceed_actor_carry_limit,
 )
@@ -64,6 +68,8 @@ def execute_tool_calls(
     tool_calls: List[ToolCall],
     *,
     repo: Optional[FileRepo] = None,
+    selected_stack_id: Optional[str] = None,
+    selected_item_id: Optional[str] = None,
 ) -> Tuple[List[AppliedAction], Optional[ToolFeedback]]:
     applied_actions: List[AppliedAction] = []
     failed_calls: List[FailedCall] = []
@@ -111,7 +117,13 @@ def execute_tool_calls(
             continue
 
         action, error_reason = _apply_tool_call(
-            campaign, actor_id, call, character_facade, repo=repo
+            campaign,
+            actor_id,
+            call,
+            character_facade,
+            repo=repo,
+            selected_stack_id=selected_stack_id,
+            selected_item_id=selected_item_id,
         )
         if action is None:
             failed_calls.append(
@@ -188,6 +200,8 @@ def _apply_tool_call(
     character_facade: CharacterFacade,
     *,
     repo: Optional[FileRepo],
+    selected_stack_id: Optional[str] = None,
+    selected_item_id: Optional[str] = None,
 ) -> Tuple[Optional[AppliedAction], Optional[str]]:
     timestamp = datetime.now(timezone.utc).isoformat()
     if call.tool == "move":
@@ -220,7 +234,13 @@ def _apply_tool_call(
         return _apply_actor_spawn(campaign, actor_id, call, timestamp)
     if call.tool == "scene_action":
         action = _apply_scene_action(
-            campaign, actor_id, call, timestamp, character_facade
+            campaign,
+            actor_id,
+            call,
+            timestamp,
+            character_facade,
+            selected_stack_id=selected_stack_id,
+            selected_item_id=selected_item_id,
         )
         return action, "invalid_args" if action is None else None
     return None, "invalid_args"
@@ -637,6 +657,9 @@ def _apply_scene_action(
     call: ToolCall,
     timestamp: str,
     character_facade: CharacterFacade,
+    *,
+    selected_stack_id: Optional[str] = None,
+    selected_item_id: Optional[str] = None,
 ) -> Optional[AppliedAction]:
     actor_id = _resolve_call_actor_id(effective_actor_id, call)
     action = call.args.get("action")
@@ -655,7 +678,7 @@ def _apply_scene_action(
     if normalized_action not in SCENE_ACTIONS:
         return None
 
-    if normalized_action == "wait":
+    if normalized_action in {"wait", "use"}:
         normalized_target_id = target_id.strip() if isinstance(target_id, str) else ""
     else:
         if not isinstance(target_id, str):
@@ -670,7 +693,7 @@ def _apply_scene_action(
     target: Optional[Entity] = None
     target_stack: Optional[RuntimeItemStack] = None
     is_area_search = False
-    if normalized_action not in {"wait"}:
+    if normalized_action not in {"wait"} and normalized_target_id:
         target = campaign.entities.get(normalized_target_id)
         if target is None and normalized_action in {"take", "drop", "open", "search"}:
             target_stack = get_stack_or_none(campaign, normalized_target_id)
@@ -1291,12 +1314,10 @@ def _apply_scene_action(
             )
 
         if normalized_action == "use":
-            if target is None:
-                return None
-            item_id = params.get("item_id")
-            item_label = ""
-            if item_id is not None:
-                if not isinstance(item_id, str):
+            explicit_item_ref = params.get("item_id")
+            normalized_explicit_item_ref: Optional[str] = None
+            if explicit_item_ref is not None:
+                if not isinstance(explicit_item_ref, str):
                     return _scene_action_applied(
                         call,
                         timestamp,
@@ -1307,8 +1328,8 @@ def _apply_scene_action(
                             error_message="params.item_id must be string",
                         ),
                     )
-                normalized_item_id = item_id.strip()
-                if not normalized_item_id:
+                normalized_explicit_item_ref = explicit_item_ref.strip()
+                if not normalized_explicit_item_ref:
                     return _scene_action_applied(
                         call,
                         timestamp,
@@ -1319,10 +1340,20 @@ def _apply_scene_action(
                             error_message="params.item_id must be non-empty",
                         ),
                     )
-                item = campaign.entities.get(normalized_item_id)
-                if item is None or not (
-                    item.loc.type == "actor" and item.loc.id == actor_id
-                ):
+
+            selection_hint_present = any(
+                isinstance(value, str) and value.strip()
+                for value in (selected_stack_id, selected_item_id)
+            )
+            use_stack: Optional[RuntimeItemStack] = None
+            if normalized_explicit_item_ref is not None:
+                use_stack = resolve_usable_stack(
+                    campaign,
+                    actor_id,
+                    current_area_id=current_area_id,
+                    explicit_item_ref=normalized_explicit_item_ref,
+                )
+                if use_stack is None:
                     return _scene_action_applied(
                         call,
                         timestamp,
@@ -1330,18 +1361,77 @@ def _apply_scene_action(
                             ok=False,
                             narrative="That item is not in your inventory.",
                             error_code="missing_item",
-                            error_message=f"item not in actor inventory: {normalized_item_id}",
+                            error_message=f"item not in actor inventory: {normalized_explicit_item_ref}",
                         ),
                     )
-                item_label = item.label
-            before = _entity_to_dict(target)
-            target.state["used"] = not bool(target.state.get("used"))
-            _append_entity_patch(entity_patches, target, before)
-            use_narrative = (
-                f"You use {item_label} on {target.label}."
-                if item_label
-                else f"You use {target.label}."
-            )
+            elif selection_hint_present:
+                use_stack = resolve_usable_stack(
+                    campaign,
+                    actor_id,
+                    current_area_id=current_area_id,
+                    selected_stack_id=selected_stack_id,
+                    selected_item_id=selected_item_id,
+                )
+                if use_stack is None:
+                    return _scene_action_applied(
+                        call,
+                        timestamp,
+                        _scene_action_result(
+                            ok=False,
+                            narrative="That item is no longer available.",
+                            error_code="missing_item",
+                            error_message="selected item not in actor inventory",
+                        ),
+                    )
+
+            if target is None and use_stack is None:
+                return _scene_action_applied(
+                    call,
+                    timestamp,
+                    _scene_action_result(
+                        ok=False,
+                        narrative="You need something to use.",
+                        error_code="invalid_args",
+                        error_message="use requires item or target",
+                    ),
+                )
+
+            item_label = use_stack.label if use_stack is not None else ""
+            if use_stack is not None and not can_actor_use_stack(
+                campaign,
+                use_stack.stack_id,
+                actor_id=actor_id,
+                current_area_id=current_area_id,
+            ):
+                return _scene_action_applied(
+                    call,
+                    timestamp,
+                    _scene_action_result(
+                        ok=False,
+                        narrative="That item is not ready to use right now.",
+                        error_code="missing_item",
+                        error_message=f"item not usable: {use_stack.stack_id}",
+                    ),
+                )
+
+            if use_stack is not None and should_consume_stack_on_use(use_stack):
+                consume_stack_quantity(
+                    campaign,
+                    stack_id=use_stack.stack_id,
+                    quantity=1,
+                )
+
+            if target is not None:
+                before = _entity_to_dict(target)
+                target.state["used"] = not bool(target.state.get("used"))
+                _append_entity_patch(entity_patches, target, before)
+
+            if target is not None and item_label:
+                use_narrative = f"You use {item_label} on {target.label}."
+            elif target is not None:
+                use_narrative = f"You use {target.label}."
+            else:
+                use_narrative = f"You use {item_label}."
             return _scene_action_applied(
                 call,
                 timestamp,

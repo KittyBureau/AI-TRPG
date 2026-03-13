@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from backend.app.item_runtime import (
     resolve_stack_root,
+    resolve_selected_stack,
     validate_and_sync_campaign_items,
 )
 from backend.domain.models import Campaign, Entity, RuntimeItemStack
@@ -281,6 +282,116 @@ def search_area_item_sources(
     return None
 
 
+def can_actor_use_stack(
+    campaign: Campaign,
+    stack_id: str,
+    *,
+    actor_id: str,
+    current_area_id: str | None,
+) -> bool:
+    stack = get_stack_or_none(campaign, stack_id)
+    if stack is None:
+        return False
+    try:
+        root_type, root_id = resolve_stack_root(campaign, stack_id)
+    except ValueError:
+        return False
+    if root_type != "actor" or root_id != actor_id:
+        return False
+    return is_stack_visible_to_actor(
+        campaign,
+        stack_id,
+        actor_id=actor_id,
+        current_area_id=current_area_id,
+    )
+
+
+def resolve_usable_stack(
+    campaign: Campaign,
+    actor_id: str,
+    *,
+    current_area_id: str | None,
+    explicit_item_ref: str | None = None,
+    selected_stack_id: str | None = None,
+    selected_item_id: str | None = None,
+) -> Optional[RuntimeItemStack]:
+    normalized_explicit_ref = _read_string(explicit_item_ref)
+    if normalized_explicit_ref:
+        stack = resolve_selected_stack(
+            campaign,
+            actor_id,
+            selected_stack_id=normalized_explicit_ref,
+        )
+        if stack is None:
+            stack = resolve_selected_stack(
+                campaign,
+                actor_id,
+                selected_item_id=normalized_explicit_ref,
+            )
+        if stack is None:
+            return None
+        return (
+            stack
+            if can_actor_use_stack(
+                campaign,
+                stack.stack_id,
+                actor_id=actor_id,
+                current_area_id=current_area_id,
+            )
+            else None
+        )
+
+    stack = resolve_selected_stack(
+        campaign,
+        actor_id,
+        selected_stack_id=_read_string(selected_stack_id),
+        selected_item_id=_read_string(selected_item_id),
+    )
+    if stack is None:
+        return None
+    return (
+        stack
+        if can_actor_use_stack(
+            campaign,
+            stack.stack_id,
+            actor_id=actor_id,
+            current_area_id=current_area_id,
+        )
+        else None
+    )
+
+
+def should_consume_stack_on_use(stack: RuntimeItemStack) -> bool:
+    state_flag = stack.state.get("consume_on_use")
+    if isinstance(state_flag, bool):
+        return state_flag
+    props_flag = stack.props.get("consume_on_use")
+    return bool(props_flag) if isinstance(props_flag, bool) else False
+
+
+def consume_stack_quantity(
+    campaign: Campaign,
+    *,
+    stack_id: str,
+    quantity: int = 1,
+) -> Optional[RuntimeItemStack]:
+    stack = get_stack_or_none(campaign, stack_id)
+    if stack is None:
+        raise ValueError(f"missing item stack: {stack_id}")
+    normalized_quantity = quantity if isinstance(quantity, int) else 0
+    if normalized_quantity <= 0:
+        raise ValueError("consume quantity must be positive")
+    if stack.quantity < normalized_quantity:
+        raise ValueError(f"insufficient stack quantity: {stack_id}")
+    stack.quantity -= normalized_quantity
+    if stack.quantity <= 0:
+        del campaign.items[stack.stack_id]
+        validate_and_sync_campaign_items(campaign)
+        return None
+    validate_and_sync_campaign_items(campaign)
+    return stack
+
+
 def transfer_stack_parent(
     campaign: Campaign,
     *,
@@ -406,12 +517,21 @@ def _normalize_text_list(values: object) -> List[str]:
     return normalized
 
 
+def _read_string(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
 __all__ = [
     "build_area_root_stack_views",
+    "can_actor_use_stack",
     "carry_mass_limit",
     "compute_actor_item_mass",
     "compute_entity_mass",
     "compute_stack_mass",
+    "consume_stack_quantity",
     "get_stack_or_none",
     "is_area_root_stack_visible",
     "is_stack_container",
@@ -424,9 +544,11 @@ __all__ = [
     "list_area_root_stacks",
     "list_visible_area_container_child_stacks",
     "list_visible_container_child_stacks",
+    "resolve_usable_stack",
     "search_area_item_sources",
     "search_stack_container_contents",
     "set_stack_opened",
+    "should_consume_stack_on_use",
     "transfer_stack_parent",
     "would_exceed_actor_carry_limit",
 ]

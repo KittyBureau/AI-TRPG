@@ -605,7 +605,12 @@ class TurnService:
                 )
                 state_before = _snapshot_state(campaign)
                 applied_actions, tool_feedback = execute_tool_calls(
-                    campaign, effective_actor_id, tool_calls, repo=self.repo
+                    campaign,
+                    effective_actor_id,
+                    tool_calls,
+                    repo=self.repo,
+                    selected_stack_id=selected_stack_id,
+                    selected_item_id=selected_item_id,
                 )
                 if suppressed_failed_calls:
                     failed_calls = list(suppressed_failed_calls)

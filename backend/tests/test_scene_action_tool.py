@@ -597,6 +597,274 @@ def test_scene_action_area_search_falls_back_to_visible_stack_discovery() -> Non
     assert campaign.actors["pc_001"].inventory == {}
 
 
+def test_scene_action_use_explicit_stack_id_succeeds_for_actor_held_stack() -> None:
+    campaign = _base_campaign()
+    lever = Entity(
+        id="lever_01",
+        kind="object",
+        label="Ancient Lever",
+        tags=["mechanism"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "use"],
+        state={"used": False},
+        props={},
+    )
+    torch_stack = create_runtime_item_stack(
+        definition_id="torch",
+        quantity=2,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="Torch",
+        state={"consume_on_use": True},
+        stack_id_salt="test_scene_action_use_explicit_stack",
+    )
+    campaign.entities[lever.id] = lever
+    campaign.items = {torch_stack.stack_id: torch_stack}
+    call = ToolCall(
+        id="call_use_explicit_stack",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "use",
+            "target_id": lever.id,
+            "params": {"item_id": torch_stack.stack_id},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is True
+    assert result["narrative"] == "You use Torch on Ancient Lever."
+    assert campaign.entities[lever.id].state["used"] is True
+    assert campaign.items[torch_stack.stack_id].quantity == 1
+    assert campaign.actors["pc_001"].inventory == {"torch": 1}
+
+
+def test_scene_action_use_explicit_item_id_falls_back_to_actor_stack() -> None:
+    campaign = _base_campaign()
+    brazier = Entity(
+        id="brazier_01",
+        kind="object",
+        label="Cold Brazier",
+        tags=["fire"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "use"],
+        state={"used": False},
+        props={},
+    )
+    torch_stack = create_runtime_item_stack(
+        definition_id="torch",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="Torch",
+        stack_id_salt="test_scene_action_use_item_id_fallback",
+    )
+    campaign.entities[brazier.id] = brazier
+    campaign.items = {torch_stack.stack_id: torch_stack}
+    call = ToolCall(
+        id="call_use_item_id_fallback",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "use",
+            "target_id": brazier.id,
+            "params": {"item_id": "torch"},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is True
+    assert result["narrative"] == "You use Torch on Cold Brazier."
+    assert campaign.entities[brazier.id].state["used"] is True
+    assert campaign.items[torch_stack.stack_id].quantity == 1
+
+
+def test_scene_action_use_falls_back_to_selected_stack_id() -> None:
+    campaign = _base_campaign()
+    shrine = Entity(
+        id="shrine_01",
+        kind="object",
+        label="Hidden Shrine",
+        tags=["altar"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "use"],
+        state={"used": False},
+        props={},
+    )
+    key_stack = create_runtime_item_stack(
+        definition_id="rusty_key",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="Rusty Key",
+        stack_id_salt="test_scene_action_use_selected_stack",
+    )
+    campaign.entities[shrine.id] = shrine
+    campaign.items = {key_stack.stack_id: key_stack}
+    call = ToolCall(
+        id="call_use_selected_stack",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "use",
+            "target_id": shrine.id,
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [call],
+        selected_stack_id=key_stack.stack_id,
+    )
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is True
+    assert result["narrative"] == "You use Rusty Key on Hidden Shrine."
+    assert campaign.entities[shrine.id].state["used"] is True
+
+
+def test_scene_action_use_invalid_selected_stack_fails_cleanly() -> None:
+    campaign = _base_campaign()
+    shrine = Entity(
+        id="shrine_01",
+        kind="object",
+        label="Hidden Shrine",
+        tags=["altar"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "use"],
+        state={"used": False},
+        props={},
+    )
+    campaign.entities[shrine.id] = shrine
+    call = ToolCall(
+        id="call_use_missing_selected_stack",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "use",
+            "target_id": shrine.id,
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [call],
+        selected_stack_id="stk_missing_item_001",
+    )
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is False
+    assert result["error"]["code"] == "missing_item"
+    assert campaign.entities[shrine.id].state["used"] is False
+
+
+def test_scene_action_use_item_only_consumes_stack_and_deletes_zero_quantity() -> None:
+    campaign = _base_campaign()
+    tonic_stack = create_runtime_item_stack(
+        definition_id="healing_tonic",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="Healing Tonic",
+        state={"consume_on_use": True},
+        stack_id_salt="test_scene_action_use_item_only",
+    )
+    campaign.items = {tonic_stack.stack_id: tonic_stack}
+    call = ToolCall(
+        id="call_use_item_only",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "use",
+            "params": {"item_id": tonic_stack.stack_id},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is True
+    assert result["narrative"] == "You use Healing Tonic."
+    assert tonic_stack.stack_id not in campaign.items
+    assert campaign.actors["pc_001"].inventory == {}
+
+
+def test_scene_action_use_exception_rolls_back_item_and_entity_changes(
+    monkeypatch,
+) -> None:
+    campaign = _base_campaign()
+    shrine = Entity(
+        id="shrine_01",
+        kind="object",
+        label="Hidden Shrine",
+        tags=["altar"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "use"],
+        state={"used": False},
+        props={},
+    )
+    key_stack = create_runtime_item_stack(
+        definition_id="rusty_key",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="Rusty Key",
+        state={"consume_on_use": True},
+        stack_id_salt="test_scene_action_use_rollback",
+    )
+    campaign.entities[shrine.id] = shrine
+    campaign.items = {key_stack.stack_id: key_stack}
+    tool_executor_module.normalize_campaign_items(campaign)
+    before = campaign.model_dump(mode="python")
+
+    def _boom(*args, **kwargs) -> None:
+        raise RuntimeError("patch failed")
+
+    monkeypatch.setattr(tool_executor_module, "_append_entity_patch", _boom)
+    call = ToolCall(
+        id="call_use_rollback",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "use",
+            "target_id": shrine.id,
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [call],
+        selected_stack_id=key_stack.stack_id,
+    )
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is False
+    assert result["error"]["code"] == "scene_action_failed"
+    assert campaign.model_dump(mode="python") == before
+
+
 def test_scene_action_stack_take_uses_hybrid_carry_mass_counting() -> None:
     campaign = _base_campaign()
     campaign.actors["pc_001"].meta["carry_mass_limit"] = 10
