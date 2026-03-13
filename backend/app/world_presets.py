@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-from backend.domain.models import Entity, EntityLocation, MapArea, MapData
+from backend.domain.models import Entity, EntityLocation, MapArea, MapData, RuntimeItemStack
 from backend.domain.world_models import World, WorldGenerator, stable_seed_from_world_id, stable_world_timestamp
 
 TEST_WATCHTOWER_WORLD_ID = "test_watchtower_world"
@@ -20,6 +20,7 @@ class CampaignWorldPreset:
     start_area_id: str
     goal_text: str
     map_data: MapData
+    items: Dict[str, RuntimeItemStack]
     entities: Dict[str, Entity]
 
 
@@ -136,6 +137,7 @@ def build_campaign_world_preset(world_id: str) -> Optional[CampaignWorldPreset]:
             },
             connections=[],
         ),
+        items={},
         entities={
             "npc_village_guard": Entity(
                 id="npc_village_guard",

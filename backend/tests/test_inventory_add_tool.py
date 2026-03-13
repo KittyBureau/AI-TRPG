@@ -122,6 +122,12 @@ def test_inventory_add_applies_and_updates_actor_inventory() -> None:
         "new_quantity": 2,
     }
     assert campaign.actors["pc_001"].inventory["torch"] == 2
+    assert len(campaign.items) == 1
+    only_stack = next(iter(campaign.items.values()))
+    assert only_stack.definition_id == "torch"
+    assert only_stack.quantity == 2
+    assert only_stack.parent_type == "actor"
+    assert only_stack.parent_id == "pc_001"
     assert campaign.positions == {}
     assert campaign.hp == {}
     assert campaign.character_states == {}
@@ -218,6 +224,12 @@ def test_inventory_add_persists_via_turn_service(
     assert payload["state"]["positions"] == {}
     assert payload["state"]["positions_parent"] == {}
     assert payload["state"]["positions_child"] == {}
+    assert len(payload["items"]) == 1
+    stored_stack = next(iter(payload["items"].values()))
+    assert stored_stack["definition_id"] == "medkit"
+    assert stored_stack["quantity"] == 1
+    assert stored_stack["parent_type"] == "actor"
+    assert stored_stack["parent_id"] == "pc_001"
 
 
 def test_regular_turn_does_not_change_inventory_without_inventory_add(

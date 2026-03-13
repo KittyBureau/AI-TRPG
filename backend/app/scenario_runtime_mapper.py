@@ -7,7 +7,7 @@ from backend.app.scenario_bootstrap_adapter import build_scenario_bootstrap_frag
 from backend.app.scenario_bridge import build_scenario_runtime_bridge
 from backend.app.scenario_builder import build_materialized_scenario
 from backend.app.scenario_templates import normalize_scenario_params
-from backend.domain.models import Entity, EntityLocation, MapArea, MapData
+from backend.domain.models import Entity, EntityLocation, MapArea, MapData, RuntimeItemStack
 from backend.domain.scenario_bootstrap_models import ScenarioBootstrapFragment
 from backend.domain.world_models import World
 
@@ -20,6 +20,7 @@ class ScenarioRuntimeBootstrapPayload:
     start_area_id: str
     goal_text: str
     map_data: MapData
+    items: Dict[str, RuntimeItemStack]
     entities: Dict[str, Entity]
     fragment: ScenarioBootstrapFragment
 
@@ -36,6 +37,7 @@ def build_runtime_bootstrap_from_world(
         start_area_id=fragment.start_area_id,
         goal_text="Find the required item and enter the target area.",
         map_data=_build_map_data(fragment),
+        items={},
         entities=_build_entities(fragment),
         fragment=fragment,
     )

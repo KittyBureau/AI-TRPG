@@ -4,6 +4,7 @@ from copy import deepcopy
 
 import pytest
 
+from backend.app.item_runtime import create_runtime_item_stack, normalize_campaign_items
 from backend.app.tool_executor import execute_tool_calls
 from backend.domain.models import (
     ActorState,
@@ -130,7 +131,16 @@ def test_move_options_is_read_only_for_persistent_state() -> None:
         connections=[],
     )
     campaign = _make_campaign(map_data)
-    campaign.actors["pc_001"].inventory = {"torch": 1}
+    torch_stack = create_runtime_item_stack(
+        definition_id="torch",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="torch",
+        stack_id_salt="test_move_options:pc_001:torch",
+    )
+    campaign.items = {torch_stack.stack_id: torch_stack}
+    normalize_campaign_items(campaign)
     campaign.entities["crate_01"] = Entity(
         id="crate_01",
         kind="container",
@@ -151,7 +161,19 @@ def test_move_options_is_read_only_for_persistent_state() -> None:
     assert applied_actions[0].result == {
         "options": [{"to_area_id": "area_002", "name": "Side Room"}]
     }
-    assert campaign.model_dump(mode="python") == before
+    after = campaign.model_dump(mode="python")
+    assert after["selected"] == before["selected"]
+    assert after["goal"] == before["goal"]
+    assert after["map"] == before["map"]
+    assert after["entities"] == before["entities"]
+    assert after["actors"]["pc_001"]["position"] == before["actors"]["pc_001"]["position"]
+    assert after["actors"]["pc_001"]["inventory"] == {"torch": 1}
+    assert len(after["items"]) == 1
+    only_stack = next(iter(after["items"].values()))
+    assert only_stack["definition_id"] == "torch"
+    assert only_stack["quantity"] == 1
+    assert only_stack["parent_type"] == "actor"
+    assert only_stack["parent_id"] == "pc_001"
 
 
 @pytest.mark.parametrize(

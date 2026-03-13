@@ -236,11 +236,13 @@ def _assert_state_summary_contract(summary: Dict[str, Any]) -> None:
         "hp",
         "character_states",
         "inventories",
+        "inventory_stack_ids",
         "objective",
         "active_area_id",
         "active_area_name",
         "active_area_description",
         "active_actor_inventory",
+        "active_actor_inventory_stack_ids",
     ):
         assert key in summary
 
@@ -333,7 +335,11 @@ def test_chat_turn_tool_response_contract_keeps_applied_actions_and_tool_feedbac
     ]
     assert payload["conflict_report"] is None
     assert payload["state_summary"]["active_actor_inventory"] == {"torch": 1}
+    assert payload["state_summary"]["active_actor_inventory_stack_ids"] == {
+        "torch": payload["state_summary"]["inventory_stack_ids"]["pc_001"]["torch"]
+    }
     assert payload["state_summary"]["inventories"] == {"pc_001": {"torch": 1}}
+    assert len(payload["state_summary"]["inventory_stack_ids"]["pc_001"]["torch"]) == 1
     assert payload["narrative_text"] == "The action was performed."
 
 

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from backend.app.item_runtime import create_runtime_item_stack
 from backend.app.tool_executor import execute_tool_calls
 from backend.domain.models import (
     ActorState,
@@ -61,7 +62,15 @@ def _make_campaign() -> Campaign:
 
 def test_move_succeeds_with_explicit_actor_id() -> None:
     campaign = _make_campaign()
-    campaign.actors["pc_001"].inventory = {"torch": 1}
+    torch_stack = create_runtime_item_stack(
+        definition_id="torch",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="torch",
+        stack_id_salt="test_move:pc_001:torch",
+    )
+    campaign.items = {torch_stack.stack_id: torch_stack}
     call = ToolCall(
         id="call_move_001",
         tool="move",

@@ -60,6 +60,14 @@ test("refreshCampaign syncs party and active actor from backend authority", asyn
           inventory: { rope: 2 },
         },
       },
+      inventory_stack_ids: {
+        pc_001: {
+          torch: ["stk_torch_0001"],
+        },
+        pc_002: {
+          rope: ["stk_rope_0002"],
+        },
+      },
       map: {
         areas: {
           area_001: {
@@ -108,6 +116,10 @@ test("refreshCampaign syncs party and active actor from backend authority", asyn
   assert.deepEqual(store.getState().inventoryByActor, {
     pc_001: { torch: 1 },
     pc_002: { rope: 2 },
+  });
+  assert.deepEqual(store.getState().inventoryStackIdsByActor, {
+    pc_001: { torch: ["stk_torch_0001"] },
+    pc_002: { rope: ["stk_rope_0002"] },
   });
   assert.deepEqual(store.getState().campaign.map, {
     areas: {
@@ -423,11 +435,24 @@ test("selected item state stays isolated by actor and follows active actor switc
         pc_001: { torch: 1, rope: 1 },
         pc_002: { potion: 2 },
       },
+      inventory_stack_ids: {
+        pc_001: {
+          torch: ["stk_torch_0001"],
+          rope: ["stk_rope_0001"],
+        },
+        pc_002: {
+          potion: ["stk_potion_0001"],
+        },
+      },
     },
   });
 
   assert.equal(store.setSelectedItemForActor("pc_001", "torch"), true);
   assert.equal(store.setSelectedItemForActor("pc_002", "potion"), true);
+  assert.deepEqual(store.getState().selectedStackIdByActor, {
+    pc_001: "stk_torch_0001",
+    pc_002: "stk_potion_0001",
+  });
   assert.deepEqual(store.getState().selectedItemIdByActor, {
     pc_001: "torch",
     pc_002: "potion",
@@ -476,6 +501,11 @@ test("refreshCampaign seeds inventoryByActor from campaign/get actor inventory a
           inventory: { rope: 1 },
         },
       },
+      inventory_stack_ids: {
+        pc_001: {
+          rope: ["stk_rope_0001"],
+        },
+      },
       status: {
         ended: false,
         reason: null,
@@ -499,6 +529,12 @@ test("refreshCampaign seeds inventoryByActor from campaign/get actor inventory a
       inventories: {
         pc_001: { torch: 1, rope: 1 },
       },
+      inventory_stack_ids: {
+        pc_001: {
+          torch: ["stk_torch_0001"],
+          rope: ["stk_rope_0001"],
+        },
+      },
     },
   });
   assert.equal(store.setSelectedItemForActor("pc_001", "torch"), true);
@@ -509,6 +545,7 @@ test("refreshCampaign seeds inventoryByActor from campaign/get actor inventory a
   assert.deepEqual(store.getState().inventoryByActor, {
     pc_001: { rope: 1 },
   });
+  assert.equal(store.getState().selectedStackIdByActor.pc_001, null);
   assert.equal(store.getState().selectedItemIdByActor.pc_001, null);
 });
 
@@ -524,9 +561,16 @@ test("recordTurnResult clears selected item when inventory snapshot removes it",
       inventories: {
         pc_001: { torch: 1, rope: 1 },
       },
+      inventory_stack_ids: {
+        pc_001: {
+          torch: ["stk_torch_0001"],
+          rope: ["stk_rope_0001"],
+        },
+      },
     },
   });
   assert.equal(store.setSelectedItemForActor("pc_001", "torch"), true);
+  assert.equal(store.getState().selectedStackIdByActor.pc_001, "stk_torch_0001");
   assert.equal(store.getState().selectedItemIdByActor.pc_001, "torch");
 
   store.recordTurnResult({
@@ -536,12 +580,18 @@ test("recordTurnResult clears selected item when inventory snapshot removes it",
       inventories: {
         pc_001: { rope: 1 },
       },
+      inventory_stack_ids: {
+        pc_001: {
+          rope: ["stk_rope_0001"],
+        },
+      },
     },
   });
 
   assert.deepEqual(store.getState().inventoryByActor, {
     pc_001: { rope: 1 },
   });
+  assert.equal(store.getState().selectedStackIdByActor.pc_001, null);
   assert.equal(store.getState().selectedItemIdByActor.pc_001, null);
 });
 
@@ -557,6 +607,11 @@ test("recordTurnResult clears selected item when inventory becomes empty", async
       inventories: {
         pc_001: { torch: 1 },
       },
+      inventory_stack_ids: {
+        pc_001: {
+          torch: ["stk_torch_0001"],
+        },
+      },
     },
   });
   assert.equal(store.setSelectedItemForActor("pc_001", "torch"), true);
@@ -568,12 +623,58 @@ test("recordTurnResult clears selected item when inventory becomes empty", async
       inventories: {
         pc_001: {},
       },
+      inventory_stack_ids: {
+        pc_001: {},
+      },
     },
   });
 
   assert.deepEqual(store.getState().inventoryByActor, {
     pc_001: {},
   });
+  assert.equal(store.getState().selectedStackIdByActor.pc_001, null);
+  assert.equal(store.getState().selectedItemIdByActor.pc_001, null);
+});
+
+test("recordTurnResult clears selected item when the selected stack disappears but the item id remains", async () => {
+  const store = await loadStoreModule();
+  store.setCampaignOptions([{ id: "camp_001", active_actor_id: "pc_001" }]);
+  store.setCampaignId("camp_001");
+
+  store.recordTurnResult({
+    effective_actor_id: "pc_001",
+    state_summary: {
+      active_actor_id: "pc_001",
+      inventories: {
+        pc_001: { torch: 2 },
+      },
+      inventory_stack_ids: {
+        pc_001: {
+          torch: ["stk_torch_old", "stk_torch_other"],
+        },
+      },
+    },
+  });
+  assert.equal(store.setSelectedItemForActor("pc_001", "torch"), true);
+  assert.equal(store.getState().selectedStackIdByActor.pc_001, "stk_torch_old");
+  assert.equal(store.getState().selectedItemIdByActor.pc_001, "torch");
+
+  store.recordTurnResult({
+    effective_actor_id: "pc_001",
+    state_summary: {
+      active_actor_id: "pc_001",
+      inventories: {
+        pc_001: { torch: 2 },
+      },
+      inventory_stack_ids: {
+        pc_001: {
+          torch: ["stk_torch_new", "stk_torch_other"],
+        },
+      },
+    },
+  });
+
+  assert.equal(store.getState().selectedStackIdByActor.pc_001, null);
   assert.equal(store.getState().selectedItemIdByActor.pc_001, null);
 });
 

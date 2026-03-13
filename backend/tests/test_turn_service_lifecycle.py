@@ -8,11 +8,13 @@ from typing import Any, Dict
 import pytest
 
 import backend.app.turn_service as turn_service_module
+from backend.app.item_runtime import create_runtime_item_stack
 from backend.app.turn_service import TurnService
 from backend.domain.models import (
     ActorState,
     Campaign,
     Goal,
+    MapArea,
     Milestone,
     Selected,
     SettingsSnapshot,
@@ -295,7 +297,15 @@ def test_turn_prompt_hygiene_keeps_adopted_profile_and_selected_item_but_filters
 ) -> None:
     service, repo = _make_service(tmp_path, monkeypatch)
     campaign = _create_campaign(repo, "camp_0007_hygiene")
-    campaign.actors["pc_001"].inventory = {"rusty_key": 1}
+    rusty_key_stack = create_runtime_item_stack(
+        definition_id="rusty_key",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="rusty_key",
+        stack_id_salt="test_turn_service_lifecycle:pc_001:rusty_key",
+    )
+    campaign.items = {rusty_key_stack.stack_id: rusty_key_stack}
     campaign.actors["pc_001"].meta = {
         "name": "Fallback Name",
         "summary": "fallback-summary",
@@ -323,11 +333,70 @@ def test_turn_prompt_hygiene_keeps_adopted_profile_and_selected_item_but_filters
     service.submit_turn("camp_0007_hygiene", "use the key", selected_item_id="rusty_key")
     context = _extract_prompt_context(llm.system_prompt)
     assert context["adopted_profiles_by_actor"]["pc_001"]["name"] == "Adopted Name"
-    assert context["selected_item"] == {"id": "rusty_key", "quantity": 1}
+    assert context["selected_item"] == {
+        "id": "rusty_key",
+        "stack_id": rusty_key_stack.stack_id,
+        "quantity": 1,
+    }
     assert context["actors"]["pc_001"]["meta"] == {
         "name": "Fallback Name",
         "summary": "fallback-summary",
     }
+
+
+def test_turn_prompt_scene_surfaces_area_root_item_stacks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_scene_prompt_items")
+    campaign.map.areas["area_001"] = MapArea(id="area_001", name="Start")
+    crate_stack = create_runtime_item_stack(
+        definition_id="crate_01",
+        quantity=1,
+        parent_type="area",
+        parent_id="area_001",
+        label="Old Crate",
+        tags=["container"],
+        stackable=False,
+        is_container=True,
+        stack_id_salt="test_turn_prompt_scene:crate",
+    )
+    child_stack = create_runtime_item_stack(
+        definition_id="coin",
+        quantity=1,
+        parent_type="item",
+        parent_id=crate_stack.stack_id,
+        label="Coin",
+        stack_id_salt="test_turn_prompt_scene:coin",
+    )
+    campaign.items = {
+        crate_stack.stack_id: crate_stack,
+        child_stack.stack_id: child_stack,
+    }
+    repo.save_campaign(campaign)
+    llm = _StubLLM(
+        {
+            "assistant_text": "ok",
+            "dialog_type": "scene_description",
+            "tool_calls": [],
+        }
+    )
+    service.llm = llm
+
+    service.submit_turn("camp_scene_prompt_items", "look around")
+
+    context = _extract_prompt_context(llm.system_prompt)
+    assert context["scene"]["items_in_area"] == [
+        {
+            "id": crate_stack.stack_id,
+            "item_id": "crate_01",
+            "label": "Old Crate",
+            "quantity": 1,
+            "tags": ["container"],
+            "verbs": ["take"],
+            "is_container": True,
+        }
+    ]
 
 
 def test_turn_profile_trace_debug_gated_by_setting(

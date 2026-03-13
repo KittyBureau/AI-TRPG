@@ -14,6 +14,7 @@ from backend.domain.state_utils import (
     ensure_actor,
     validate_actors_state,
 )
+from backend.app.item_runtime import normalize_campaign_items
 from backend.domain.world_models import (
     World,
     build_world_stub,
@@ -544,6 +545,7 @@ class FileRepo:
         campaign.state.positions_child = {}
         require_valid_map(campaign.map)
         normalize_map(campaign.map)
+        normalize_campaign_items(campaign)
         data = _model_to_dict(campaign)
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
@@ -574,6 +576,8 @@ class FileRepo:
             ensure_actor(campaign, campaign.selected.active_actor_id)
             updated = True
         if validate_actors_state(campaign, campaign.map):
+            updated = True
+        if normalize_campaign_items(campaign):
             updated = True
         normalize_map(campaign.map)
         if updated:

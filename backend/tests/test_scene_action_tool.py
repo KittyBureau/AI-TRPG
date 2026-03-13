@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import backend.app.tool_executor as tool_executor_module
 
+from backend.app.item_runtime import create_runtime_item_stack
 from backend.app.tool_executor import execute_tool_calls
 from backend.domain.models import (
     ActorState,
@@ -258,6 +259,135 @@ def test_scene_action_take_and_drop_updates_location() -> None:
     assert campaign.actors["pc_001"].position == "area_001"
 
 
+def test_scene_action_take_visible_area_stack_transfers_parent_to_actor() -> None:
+    campaign = _base_campaign()
+    crate_stack = create_runtime_item_stack(
+        definition_id="crate_01",
+        quantity=1,
+        parent_type="area",
+        parent_id="area_001",
+        label="Old Crate",
+        tags=["container"],
+        props={"mass": 8},
+        stackable=False,
+        is_container=True,
+        stack_id_salt="test_scene_action_take_stack",
+    )
+    campaign.items = {crate_stack.stack_id: crate_stack}
+    call = ToolCall(
+        id="call_take_stack",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "take",
+            "target_id": crate_stack.stack_id,
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    assert applied_actions[0].result["ok"] is True
+    assert campaign.items[crate_stack.stack_id].parent_type == "actor"
+    assert campaign.items[crate_stack.stack_id].parent_id == "pc_001"
+    assert campaign.actors["pc_001"].inventory == {"crate_01": 1}
+
+
+def test_scene_action_drop_actor_stack_transfers_parent_to_area() -> None:
+    campaign = _base_campaign()
+    ration_stack = create_runtime_item_stack(
+        definition_id="field_ration",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="Field Ration",
+        props={"mass": 2},
+        stack_id_salt="test_scene_action_drop_stack",
+    )
+    campaign.items = {ration_stack.stack_id: ration_stack}
+    call = ToolCall(
+        id="call_drop_stack",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "drop",
+            "target_id": ration_stack.stack_id,
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    assert applied_actions[0].result["ok"] is True
+    assert campaign.items[ration_stack.stack_id].parent_type == "area"
+    assert campaign.items[ration_stack.stack_id].parent_id == "area_001"
+    assert campaign.actors["pc_001"].inventory == {}
+
+
+def test_scene_action_stack_take_uses_hybrid_carry_mass_counting() -> None:
+    campaign = _base_campaign()
+    campaign.actors["pc_001"].meta["carry_mass_limit"] = 10
+    campaign.entities["bag_01"] = Entity(
+        id="bag_01",
+        kind="item",
+        label="Bag",
+        tags=["bag"],
+        loc=EntityLocation(type="actor", id="pc_001"),
+        verbs=["inspect", "drop"],
+        state={},
+        props={"mass": 5},
+    )
+    carried_stack = create_runtime_item_stack(
+        definition_id="toolkit",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="Toolkit",
+        props={"mass": 4},
+        stackable=False,
+        stack_id_salt="test_scene_action_hybrid_mass:carried",
+    )
+    target_stack = create_runtime_item_stack(
+        definition_id="anvil",
+        quantity=1,
+        parent_type="area",
+        parent_id="area_001",
+        label="Anvil",
+        props={"mass": 2},
+        stackable=False,
+        stack_id_salt="test_scene_action_hybrid_mass:target",
+    )
+    campaign.items = {
+        carried_stack.stack_id: carried_stack,
+        target_stack.stack_id: target_stack,
+    }
+    call = ToolCall(
+        id="call_take_stack_limit",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "take",
+            "target_id": target_stack.stack_id,
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is False
+    assert result["error"]["code"] == "carry_limit"
+    assert campaign.items[target_stack.stack_id].parent_type == "area"
+    assert campaign.items[target_stack.stack_id].parent_id == "area_001"
+    assert campaign.actors["pc_001"].inventory == {"toolkit": 1}
+
+
 def test_scene_action_exception_rolls_back_entity_changes(
     monkeypatch,
 ) -> None:
@@ -285,6 +415,51 @@ def test_scene_action_exception_rolls_back_entity_changes(
             "actor_id": "pc_001",
             "action": "take",
             "target_id": "apple_01",
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is False
+    assert result["error"]["code"] == "scene_action_failed"
+    assert campaign.model_dump(mode="python") == before
+
+
+def test_scene_action_exception_rolls_back_item_changes(
+    monkeypatch,
+) -> None:
+    campaign = _base_campaign()
+    crate_stack = create_runtime_item_stack(
+        definition_id="crate_01",
+        quantity=1,
+        parent_type="area",
+        parent_id="area_001",
+        label="Old Crate",
+        props={"mass": 8},
+        stackable=False,
+        is_container=True,
+        stack_id_salt="test_scene_action_stack_rollback",
+    )
+    campaign.items = {crate_stack.stack_id: crate_stack}
+    before = campaign.model_dump(mode="python")
+    real_transfer = tool_executor_module.transfer_stack_parent
+
+    def _boom(*args, **kwargs):
+        real_transfer(*args, **kwargs)
+        raise RuntimeError("transfer failed")
+
+    monkeypatch.setattr(tool_executor_module, "transfer_stack_parent", _boom)
+    call = ToolCall(
+        id="call_take_stack_boom",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "take",
+            "target_id": crate_stack.stack_id,
             "params": {},
         },
     )

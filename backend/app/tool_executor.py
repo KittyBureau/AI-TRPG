@@ -6,6 +6,23 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from backend.app.actor_service import spawn_actor
 from backend.app.character_facade_factory import create_runtime_character_facade
+from backend.app.item_operations import (
+    carry_mass_limit,
+    compute_actor_item_mass,
+    compute_entity_mass,
+    compute_stack_mass,
+    get_stack_or_none,
+    is_area_root_stack_visible,
+    is_direct_actor_stack,
+    transfer_stack_parent,
+    would_exceed_actor_carry_limit,
+)
+from backend.app.item_runtime import (
+    derive_actor_inventory,
+    get_actor_item_quantity_from_items_only,
+    grant_item_to_actor,
+    normalize_campaign_items,
+)
 from backend.app.scenario_runtime_mapper import (
     is_scenario_world_goal_area,
     required_item_for_scenario_world_move,
@@ -22,6 +39,7 @@ from backend.domain.models import (
     Entity,
     EntityLocation,
     FailedCall,
+    RuntimeItemStack,
     ToolCall,
     ToolFeedback,
 )
@@ -43,6 +61,7 @@ def execute_tool_calls(
     applied_actions: List[AppliedAction] = []
     failed_calls: List[FailedCall] = []
     character_facade = create_runtime_character_facade()
+    normalize_campaign_items(campaign)
 
     for call in tool_calls:
         actor_context_ok, actor_context_reason = _check_actor_context_consistency(
@@ -242,10 +261,10 @@ def _apply_move(
             to_area_id,
         )
     if required_item_id is not None:
-        actor = campaign.actors.get(actor_id)
-        inventory = actor.inventory if actor is not None and isinstance(actor.inventory, dict) else {}
-        quantity = inventory.get(required_item_id)
-        if not isinstance(quantity, int) or quantity <= 0:
+        quantity = get_actor_item_quantity_from_items_only(
+            campaign, actor_id, required_item_id
+        )
+        if quantity <= 0:
             return None, "missing_required_item"
     character_facade.set_state(
         campaign,
@@ -603,8 +622,6 @@ SCENE_ACTIONS = {
 }
 
 PORTABLE_ENTITY_KINDS = {"item", "object", "container"}
-DEFAULT_CARRY_MASS_LIMIT = 60.0
-DEFAULT_ENTITY_MASS = 1.0
 
 
 def _apply_scene_action(
@@ -644,10 +661,13 @@ def _apply_scene_action(
     current_area_id = actor_state.position
 
     target: Optional[Entity] = None
+    target_stack: Optional[RuntimeItemStack] = None
     is_area_search = False
     if normalized_action not in {"wait"}:
         target = campaign.entities.get(normalized_target_id)
-        if target is None:
+        if target is None and normalized_action in {"take", "drop"}:
+            target_stack = get_stack_or_none(campaign, normalized_target_id)
+        if target is None and target_stack is None:
             if (
                 normalized_action == "search"
                 and isinstance(current_area_id, str)
@@ -696,6 +716,8 @@ def _apply_scene_action(
     new_entities: List[Dict[str, Any]] = []
     removed_entities: List[Dict[str, Any]] = []
     entities_before = deepcopy(campaign.entities)
+    items_before = deepcopy(campaign.items)
+    actors_before = deepcopy(campaign.actors)
     try:
         if normalized_action == "inspect":
             label = target.label if target is not None else "the scene"
@@ -894,6 +916,61 @@ def _apply_scene_action(
             )
 
         if normalized_action == "take":
+            if target_stack is not None:
+                if target_stack.parent_type == "actor" and target_stack.parent_id == actor_id:
+                    return _scene_action_applied(
+                        call,
+                        timestamp,
+                        _scene_action_result(
+                            ok=False,
+                            narrative=f"{target_stack.label} is already in your inventory.",
+                            error_code="not_allowed",
+                            error_message="target already in actor inventory",
+                        ),
+                    )
+                if not is_area_root_stack_visible(
+                    campaign,
+                    target_stack.stack_id,
+                    area_id=current_area_id,
+                ):
+                    return _scene_action_applied(
+                        call,
+                        timestamp,
+                        _scene_action_result(
+                            ok=False,
+                            narrative=f"{target_stack.label} is not reachable right now.",
+                            error_code="not_reachable",
+                            error_message=f"target not reachable: {target_stack.stack_id}",
+                        ),
+                    )
+                if _exceeds_stack_carry_limit(campaign, actor_id, target_stack):
+                    return _scene_action_applied(
+                        call,
+                        timestamp,
+                        _scene_action_result(
+                            ok=False,
+                            narrative=f"{target_stack.label} is too heavy to carry.",
+                            error_code="carry_limit",
+                            error_message=f"carry limit exceeded by target: {target_stack.stack_id}",
+                        ),
+                    )
+                transfer_stack_parent(
+                    campaign,
+                    stack_id=target_stack.stack_id,
+                    parent_type="actor",
+                    parent_id=actor_id,
+                )
+                return _scene_action_applied(
+                    call,
+                    timestamp,
+                    _scene_action_result(
+                        ok=True,
+                        narrative=f"You take {target_stack.label}.",
+                        entity_patches=entity_patches,
+                        new_entities=new_entities,
+                        removed_entities=removed_entities,
+                    ),
+                )
             if target is None:
                 return None
             if target.kind == "npc":
@@ -948,6 +1025,50 @@ def _apply_scene_action(
             )
 
         if normalized_action == "drop":
+            if target_stack is not None:
+                if not isinstance(current_area_id, str) or not current_area_id.strip():
+                    return _scene_action_applied(
+                        call,
+                        timestamp,
+                        _scene_action_result(
+                            ok=False,
+                            narrative="You cannot drop items without a valid area.",
+                            error_code="not_reachable",
+                            error_message="actor has no active area",
+                        ),
+                    )
+                if not is_direct_actor_stack(
+                    campaign,
+                    target_stack.stack_id,
+                    actor_id=actor_id,
+                ):
+                    return _scene_action_applied(
+                        call,
+                        timestamp,
+                        _scene_action_result(
+                            ok=False,
+                            narrative=f"{target_stack.label} is not in your inventory.",
+                            error_code="not_allowed",
+                            error_message=f"target not in actor inventory: {target_stack.stack_id}",
+                        ),
+                    )
+                transfer_stack_parent(
+                    campaign,
+                    stack_id=target_stack.stack_id,
+                    parent_type="area",
+                    parent_id=current_area_id,
+                )
+                return _scene_action_applied(
+                    call,
+                    timestamp,
+                    _scene_action_result(
+                        ok=True,
+                        narrative=f"You drop {target_stack.label}.",
+                        entity_patches=entity_patches,
+                        new_entities=new_entities,
+                        removed_entities=removed_entities,
+                    ),
+                )
             if target is None:
                 return None
             if not isinstance(current_area_id, str) or not current_area_id.strip():
@@ -1100,6 +1221,8 @@ def _apply_scene_action(
         return None
     except Exception:
         campaign.entities = entities_before
+        campaign.items = items_before
+        campaign.actors = actors_before
         return _scene_action_applied(
             call,
             timestamp,
@@ -1264,37 +1387,33 @@ def _append_entity_patch(
 
 
 def _actor_inventory_mass(campaign: Campaign, actor_id: str) -> float:
-    total = 0.0
-    for entity in campaign.entities.values():
-        if entity.loc.type != "actor" or entity.loc.id != actor_id:
-            continue
-        if entity.kind not in PORTABLE_ENTITY_KINDS:
-            continue
-        total += _entity_mass(entity)
-    return total
+    return compute_actor_item_mass(campaign, actor_id)
 
 
 def _entity_mass(entity: Entity) -> float:
-    raw_mass = entity.props.get("mass")
-    if isinstance(raw_mass, (int, float)) and raw_mass > 0:
-        return float(raw_mass)
-    return DEFAULT_ENTITY_MASS
+    return compute_entity_mass(entity)
 
 
 def _carry_mass_limit(campaign: Campaign, actor_id: str) -> float:
-    actor = campaign.actors.get(actor_id)
-    if actor is None or not isinstance(actor.meta, dict):
-        return DEFAULT_CARRY_MASS_LIMIT
-    raw_limit = actor.meta.get("carry_mass_limit")
-    if isinstance(raw_limit, (int, float)) and raw_limit > 0:
-        return float(raw_limit)
-    return DEFAULT_CARRY_MASS_LIMIT
+    return carry_mass_limit(campaign, actor_id)
 
 
 def _exceeds_carry_limit(campaign: Campaign, actor_id: str, entity: Entity) -> bool:
-    current_mass = _actor_inventory_mass(campaign, actor_id)
-    limit = _carry_mass_limit(campaign, actor_id)
-    return current_mass + _entity_mass(entity) > limit
+    return would_exceed_actor_carry_limit(
+        campaign,
+        actor_id,
+        additional_mass=compute_entity_mass(entity),
+    )
+
+
+def _exceeds_stack_carry_limit(
+    campaign: Campaign, actor_id: str, stack: RuntimeItemStack
+) -> bool:
+    return would_exceed_actor_carry_limit(
+        campaign,
+        actor_id,
+        additional_mass=compute_stack_mass(stack),
+    )
 
 
 def _is_connected(campaign: Campaign, from_area_id: str, to_area_id: str) -> bool:
@@ -1348,16 +1467,18 @@ def _grant_inventory_from_source(
     if source.state.get("inventory_granted") is True:
         return None, "item_source_depleted"
     before = _entity_to_dict(source) if entity_patches is not None else {}
-    if not isinstance(actor.inventory, dict):
-        actor.inventory = {}
-    current_qty = actor.inventory.get(item_id, 0)
-    if not isinstance(current_qty, int) or current_qty < 0:
-        current_qty = 0
-    new_qty = current_qty + quantity
-    actor.inventory[item_id] = new_qty
+    grant_item_to_actor(
+        campaign,
+        actor_id=actor_id,
+        definition_id=item_id,
+        quantity=quantity,
+        label=item_id,
+        stack_id_salt=f"source:{source_entity_id}:{actor_id}:{item_id}",
+    )
     source.state["inventory_granted"] = True
     if entity_patches is not None:
         _append_entity_patch(entity_patches, source, before)
+    new_qty = derive_actor_inventory(campaign, actor_id).get(item_id, 0)
     return new_qty, None
 
 

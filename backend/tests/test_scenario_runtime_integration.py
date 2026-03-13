@@ -338,6 +338,7 @@ def test_guarded_bootstrap_branch_only_activates_for_supported_scenario_metadata
 
     assert campaign.actors["pc_001"].position == "area_001"
     assert "npc_guide_01" in campaign.entities
+    assert [stack.definition_id for stack in campaign.items.values()] == ["crate_01"]
     assert "area_target" not in campaign.map.areas
     assert campaign.goal.text == "Define the main objective"
 
@@ -363,7 +364,8 @@ def test_non_scenario_world_still_uses_existing_bootstrap_path_unchanged(
     campaign = repo.get_campaign(campaign_id)
 
     assert campaign.actors["pc_001"].position == "area_001"
-    assert sorted(campaign.entities.keys()) == ["crate_01", "door_01", "npc_guide_01"]
+    assert sorted(campaign.entities.keys()) == ["door_01", "npc_guide_01"]
+    assert [stack.definition_id for stack in campaign.items.values()] == ["crate_01"]
     assert sorted(campaign.map.areas.keys()) == ["area_001", "area_002"]
     assert campaign.goal.text == "Define the main objective"
 

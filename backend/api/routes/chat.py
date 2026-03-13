@@ -23,6 +23,7 @@ class TurnExecutionContext(BaseModel):
 
 
 class TurnContextHints(BaseModel):
+    selected_stack_id: Optional[str] = None
     selected_item_id: Optional[str] = None
 
 
@@ -55,6 +56,9 @@ def submit_turn(request: TurnRequest) -> TurnResponse:
             request.user_input,
             actor_id=request.actor_id,
             execution_actor_id=request.execution.actor_id if request.execution else None,
+            selected_stack_id=(
+                request.context_hints.selected_stack_id if request.context_hints else None
+            ),
             selected_item_id=(
                 request.context_hints.selected_item_id if request.context_hints else None
             ),

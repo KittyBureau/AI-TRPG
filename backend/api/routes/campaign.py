@@ -8,8 +8,12 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, ValidationError
 
 from backend.app.debug_resources import build_template_usage_debug
+from backend.app.item_runtime import (
+    derive_actor_inventory_from_items_only,
+    derive_all_actor_inventory_stack_ids_from_items_only,
+)
 from backend.app.turn_service import TurnService
-from backend.domain.models import ActorState, Campaign
+from backend.domain.models import Campaign
 from backend.infra.file_repo import FileRepo
 
 router = APIRouter(prefix="/campaign", tags=["campaign"])
@@ -113,6 +117,7 @@ class CampaignGetResponse(BaseModel):
     actors: dict[str, CampaignActorResponse] = Field(default_factory=dict)
     map: CampaignMapResponse = Field(default_factory=CampaignMapResponse)
     status: CampaignStatusSnapshotResponse
+    inventory_stack_ids: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
 
 
 def _load_campaign_for_get(repo: FileRepo, campaign_id: str) -> Campaign:
@@ -143,8 +148,8 @@ def _build_campaign_status_snapshot(campaign: Campaign) -> CampaignStatusSnapsho
     )
 
 
-def _serialize_actor_inventory(actor: ActorState) -> dict[str, int]:
-    inventory = actor.inventory if isinstance(actor.inventory, dict) else {}
+def _serialize_actor_inventory(campaign: Campaign, actor_id: str) -> dict[str, int]:
+    inventory = derive_actor_inventory_from_items_only(campaign, actor_id)
     payload: dict[str, int] = {}
     for raw_item_id, raw_quantity in inventory.items():
         if not isinstance(raw_item_id, str):
@@ -221,7 +226,10 @@ def get_campaign(campaign_id: str) -> CampaignGetResponse:
                 position=campaign.actors[actor_id].position,
                 hp=campaign.actors[actor_id].hp,
                 character_state=campaign.actors[actor_id].character_state,
-                inventory=_serialize_actor_inventory(campaign.actors[actor_id]),
+                inventory=_serialize_actor_inventory(
+                    campaign,
+                    actor_id,
+                ),
             )
             for actor_id in sorted(campaign.actors.keys())
         },
@@ -238,6 +246,7 @@ def get_campaign(campaign_id: str) -> CampaignGetResponse:
             }
         ),
         status=_build_campaign_status_snapshot(campaign),
+        inventory_stack_ids=derive_all_actor_inventory_stack_ids_from_items_only(campaign),
     )
 
 

@@ -11,6 +11,17 @@ from typing import Dict, List, Optional
 from backend.app.character_facade_factory import create_runtime_character_facade
 from backend.app.conflict_detector import detect_conflicts
 from backend.app.debug_resources import build_resources_payload
+from backend.app.item_operations import build_area_root_stack_views
+from backend.app.item_runtime import (
+    create_runtime_item_stack,
+    derive_actor_inventory_from_items_only,
+    derive_all_actor_inventories_from_items_only,
+    derive_actor_inventory_stack_ids_from_items_only,
+    derive_all_actor_inventory_stack_ids_from_items_only,
+    get_actor_item_quantity_from_items_only,
+    normalize_campaign_items,
+    resolve_selected_stack,
+)
 from backend.app.scenario_runtime_mapper import build_runtime_bootstrap_from_world
 from backend.app.scene_entities import build_area_local_entity_views
 from backend.app.tool_executor import execute_tool_calls
@@ -466,9 +477,11 @@ class TurnService:
             milestone=Milestone(current="intro", last_advanced_turn=0),
             map=bootstrap["map"],
             actors=actors,
+            items=bootstrap["items"],
             entities=bootstrap["entities"],
         )
         normalize_map(campaign.map)
+        normalize_campaign_items(campaign)
         self.repo.create_campaign(campaign)
         trace_enabled = bool(
             campaign.settings_snapshot.dialog.turn_profile_trace_enabled
@@ -491,6 +504,7 @@ class TurnService:
         actor_id: Optional[str] = None,
         *,
         execution_actor_id: Optional[str] = None,
+        selected_stack_id: Optional[str] = None,
         selected_item_id: Optional[str] = None,
     ) -> Dict[str, object]:
         campaign_lock = _CAMPAIGN_TURN_LOCKS.try_acquire(campaign_id)
@@ -516,6 +530,7 @@ class TurnService:
             selected_item = _resolve_selected_item_context(
                 campaign,
                 effective_actor_id,
+                selected_stack_id=selected_stack_id,
                 selected_item_id=selected_item_id,
                 repo_root=self.repo.storage_root.parent,
             )
@@ -680,6 +695,9 @@ class TurnService:
                 entry.state_summary.hp = hp
                 entry.state_summary.character_states = character_states
                 entry.state_summary.inventories = _all_actor_inventories(campaign)
+                entry.state_summary.inventory_stack_ids = _all_actor_inventory_stack_ids(
+                    campaign
+                )
                 entry.state_summary.objective = campaign.goal.text.strip()
                 (
                     entry.state_summary.active_area_id,
@@ -688,6 +706,9 @@ class TurnService:
                 ) = _active_area_context(campaign, effective_actor_id)
                 entry.state_summary.active_actor_inventory = _active_actor_inventory(
                     campaign, effective_actor_id
+                )
+                entry.state_summary.active_actor_inventory_stack_ids = (
+                    _active_actor_inventory_stack_ids(campaign, effective_actor_id)
                 )
                 self.repo.append_turn_log(campaign_id, entry)
                 return _build_success_response(
@@ -734,16 +755,6 @@ def _starter_entities() -> Dict[str, Entity]:
             state={"locked": True, "opened": False},
             props={"mass": 40, "size": "large"},
         ),
-        "crate_01": Entity(
-            id="crate_01",
-            kind="container",
-            label="Old Crate",
-            tags=["container", "wood"],
-            loc=EntityLocation(type="area", id="area_001"),
-            verbs=["inspect", "open", "search", "take"],
-            state={"locked": False, "opened": False},
-            props={"mass": 12, "size": "medium"},
-        ),
         "npc_guide_01": Entity(
             id="npc_guide_01",
             kind="npc",
@@ -755,6 +766,24 @@ def _starter_entities() -> Dict[str, Entity]:
             props={"mass": 70, "size": "medium"},
         ),
     }
+
+
+def _starter_items() -> Dict[str, object]:
+    crate = create_runtime_item_stack(
+        definition_id="crate_01",
+        quantity=1,
+        parent_type="area",
+        parent_id="area_001",
+        label="Old Crate",
+        tags=["container", "wood"],
+        verbs=["inspect", "open", "search", "take"],
+        state={"locked": False, "opened": False},
+        props={"mass": 12, "size": "medium"},
+        stackable=False,
+        is_container=True,
+        stack_id_salt="starter:crate_01",
+    )
+    return {crate.stack_id: crate}
 
 
 def _build_campaign_bootstrap(
@@ -774,6 +803,7 @@ def _build_campaign_bootstrap(
                 "start_area_id": scenario_bootstrap.start_area_id,
                 "goal_text": scenario_bootstrap.goal_text,
                 "map": scenario_bootstrap.map_data,
+                "items": scenario_bootstrap.items,
                 "entities": scenario_bootstrap.entities,
             }
     preset = build_campaign_world_preset(world_id)
@@ -782,12 +812,14 @@ def _build_campaign_bootstrap(
             "start_area_id": preset.start_area_id,
             "goal_text": preset.goal_text,
             "map": preset.map_data,
+            "items": preset.items,
             "entities": preset.entities,
         }
     return {
         "start_area_id": "area_001",
         "goal_text": "Define the main objective",
         "map": _default_starter_map(),
+        "items": _starter_items(),
         "entities": _starter_entities(),
     }
 
@@ -797,12 +829,17 @@ def _ensure_minimum_state(
     repo: Optional[FileRepo] = None,
 ) -> bool:
     updated = False
+    if not isinstance(campaign.items, dict):
+        campaign.items = {}
+        updated = True
     if not isinstance(campaign.entities, dict):
         campaign.entities = {}
         updated = True
     if not campaign.map.areas:
         bootstrap = _build_campaign_bootstrap(campaign.selected.world_id, repo)
         campaign.map = bootstrap["map"]
+        if not campaign.items:
+            campaign.items = bootstrap["items"]
         if not campaign.entities:
             campaign.entities = bootstrap["entities"]
         if not campaign.goal.text.strip():
@@ -839,6 +876,8 @@ def _ensure_minimum_state(
         )
         updated = True
     normalize_map(campaign.map)
+    if normalize_campaign_items(campaign):
+        updated = True
     return updated
 
 
@@ -880,6 +919,7 @@ def _snapshot_state(campaign: Campaign) -> Dict[str, object]:
     ) = _derive_character_state_maps(campaign)
     return {
         "actors": deepcopy(campaign.actors),
+        "items": deepcopy(campaign.items),
         "entities": deepcopy(campaign.entities),
         "state": deepcopy(campaign.state),
         "campaign_positions": deepcopy(campaign.positions),
@@ -896,6 +936,7 @@ def _snapshot_state(campaign: Campaign) -> Dict[str, object]:
 
 def _restore_state(campaign: Campaign, snapshot: Dict[str, object]) -> None:
     campaign.actors = snapshot["actors"]
+    campaign.items = snapshot["items"]
     campaign.entities = snapshot["entities"]
     campaign.state = snapshot["state"]
     campaign.positions = snapshot["campaign_positions"]
@@ -925,11 +966,15 @@ def _state_summary_dict(
         "hp": hp,
         "character_states": character_states,
         "inventories": _all_actor_inventories(campaign),
+        "inventory_stack_ids": _all_actor_inventory_stack_ids(campaign),
         "objective": campaign.goal.text.strip(),
         "active_area_id": active_area_id,
         "active_area_name": active_area_name,
         "active_area_description": active_area_description,
         "active_actor_inventory": _active_actor_inventory(campaign, resolved_actor_id),
+        "active_actor_inventory_stack_ids": _active_actor_inventory_stack_ids(
+            campaign, resolved_actor_id
+        ),
     }
 
 
@@ -948,6 +993,7 @@ def _build_actor_prompt_payloads(
 ) -> tuple[Dict[str, Dict[str, object]], Dict[str, Dict[str, object]]]:
     actors_payload: Dict[str, Dict[str, object]] = {}
     adopted_profiles_by_actor: Dict[str, Dict[str, object]] = {}
+    inventories = _all_actor_inventories(campaign)
     for actor_id in sorted(campaign.actors.keys()):
         actor = campaign.actors[actor_id]
         actor_meta = actor.meta if isinstance(actor.meta, dict) else {}
@@ -956,7 +1002,7 @@ def _build_actor_prompt_payloads(
             "position": actor.position,
             "hp": actor.hp,
             "character_state": actor.character_state,
-            "inventory": _active_actor_inventory(campaign, actor_id),
+            "inventory": inventories.get(actor_id, {}),
             "meta": meta_payload,
         }
         profile_payload = actor_meta.get("profile")
@@ -1010,6 +1056,7 @@ def _scene_prompt_payload(campaign: Campaign, actor_id: str) -> Dict[str, object
     return {
         "active_area_id": area_id,
         "entities_in_area": build_area_local_entity_views(campaign, area_id),
+        "items_in_area": build_area_root_stack_views(campaign, area_id),
     }
 
 
@@ -1445,6 +1492,7 @@ def _build_failure_response(
     state_summary.hp = hp
     state_summary.character_states = character_states
     state_summary.inventories = _all_actor_inventories(campaign)
+    state_summary.inventory_stack_ids = _all_actor_inventory_stack_ids(campaign)
     state_summary.objective = campaign.goal.text.strip()
     (
         state_summary.active_area_id,
@@ -1452,6 +1500,9 @@ def _build_failure_response(
         state_summary.active_area_description,
     ) = _active_area_context(campaign, effective_actor_id)
     state_summary.active_actor_inventory = _active_actor_inventory(
+        campaign, effective_actor_id
+    )
+    state_summary.active_actor_inventory_stack_ids = _active_actor_inventory_stack_ids(
         campaign, effective_actor_id
     )
     response = {
@@ -1482,41 +1533,42 @@ def _active_area_context(
 
 
 def _active_actor_inventory(campaign: Campaign, actor_id: str) -> Dict[str, int]:
-    actor = campaign.actors.get(actor_id)
-    if actor is None or not isinstance(actor.inventory, dict):
-        return {}
-    inventory: Dict[str, int] = {}
-    for item_id, qty in actor.inventory.items():
-        if not isinstance(item_id, str):
-            continue
-        normalized_id = item_id.strip()
-        if not normalized_id:
-            continue
-        if not isinstance(qty, int) or qty <= 0:
-            continue
-        inventory[normalized_id] = qty
-    return inventory
+    return derive_actor_inventory_from_items_only(campaign, actor_id)
+
+
+def _active_actor_inventory_stack_ids(
+    campaign: Campaign, actor_id: str
+) -> Dict[str, List[str]]:
+    return derive_actor_inventory_stack_ids_from_items_only(campaign, actor_id)
 
 
 def _resolve_selected_item_context(
     campaign: Campaign,
     effective_actor_id: str,
     *,
+    selected_stack_id: Optional[str],
     selected_item_id: Optional[str],
     repo_root: Path,
 ) -> Optional[Dict[str, object]]:
-    normalized_item_id = _normalize_item_id(selected_item_id)
-    if not normalized_item_id:
+    selected_stack = resolve_selected_stack(
+        campaign,
+        effective_actor_id,
+        selected_stack_id=selected_stack_id,
+        selected_item_id=selected_item_id,
+    )
+    if selected_stack is None:
         return None
-    inventory = _active_actor_inventory(campaign, effective_actor_id)
-    quantity = inventory.get(normalized_item_id)
-    if not isinstance(quantity, int) or quantity <= 0:
+    quantity = get_actor_item_quantity_from_items_only(
+        campaign, effective_actor_id, selected_stack.definition_id
+    )
+    if quantity <= 0:
         return None
     selected_item = {
-        "id": normalized_item_id,
+        "id": selected_stack.definition_id,
+        "stack_id": selected_stack.stack_id,
         "quantity": quantity,
     }
-    item_metadata = load_item_catalog(repo_root).get(normalized_item_id, {})
+    item_metadata = load_item_catalog(repo_root).get(selected_stack.definition_id, {})
     if isinstance(item_metadata, dict):
         name = item_metadata.get("name")
         description = item_metadata.get("description")
@@ -1528,10 +1580,11 @@ def _resolve_selected_item_context(
 
 
 def _all_actor_inventories(campaign: Campaign) -> Dict[str, Dict[str, int]]:
-    inventories: Dict[str, Dict[str, int]] = {}
-    for actor_id in sorted(campaign.actors.keys()):
-        inventories[actor_id] = _active_actor_inventory(campaign, actor_id)
-    return inventories
+    return derive_all_actor_inventories_from_items_only(campaign)
+
+
+def _all_actor_inventory_stack_ids(campaign: Campaign) -> Dict[str, Dict[str, List[str]]]:
+    return derive_all_actor_inventory_stack_ids_from_items_only(campaign)
 
 
 def _assert_turn_writable(campaign: Campaign, active_actor_id: str) -> None:

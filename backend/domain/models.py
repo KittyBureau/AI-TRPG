@@ -111,6 +111,22 @@ class Entity(BaseModel):
     props: Dict[str, Any] = Field(default_factory=dict)
 
 
+class RuntimeItemStack(BaseModel):
+    stack_id: str
+    definition_id: str
+    quantity: int = 1
+    parent_type: Literal["actor", "area", "item"]
+    parent_id: str
+    label: str = ""
+    description: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    verbs: List[str] = Field(default_factory=list)
+    state: Dict[str, Any] = Field(default_factory=dict)
+    props: Dict[str, Any] = Field(default_factory=dict)
+    stackable: bool = True
+    is_container: bool = False
+
+
 class ActorState(BaseModel):
     position: Optional[str] = None
     hp: int = 10
@@ -139,6 +155,7 @@ class Campaign(BaseModel):
     map: MapData = Field(default_factory=MapData)
     state: CampaignState = Field(default_factory=CampaignState)
     actors: Dict[str, ActorState] = Field(default_factory=dict)
+    items: Dict[str, RuntimeItemStack] = Field(default_factory=dict)
     entities: Dict[str, Entity] = Field(default_factory=dict)
     positions: Dict[str, str] = Field(default_factory=dict)
     hp: Dict[str, int] = Field(default_factory=dict)
@@ -200,11 +217,13 @@ class StateSummary(BaseModel):
     hp: Dict[str, int] = Field(default_factory=dict)
     character_states: Dict[str, str] = Field(default_factory=dict)
     inventories: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+    inventory_stack_ids: Dict[str, Dict[str, List[str]]] = Field(default_factory=dict)
     objective: str = ""
     active_area_id: Optional[str] = None
     active_area_name: str = ""
     active_area_description: str = ""
     active_actor_inventory: Dict[str, int] = Field(default_factory=dict)
+    active_actor_inventory_stack_ids: Dict[str, List[str]] = Field(default_factory=dict)
 
 
 class TurnLogEntry(BaseModel):

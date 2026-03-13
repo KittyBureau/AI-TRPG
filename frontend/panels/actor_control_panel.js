@@ -142,14 +142,25 @@ export function initPanel(store) {
       user_input: userInput,
       execution: { actor_id: actorId },
     };
+    const selectedStackId =
+      state.selectedStackIdByActor && typeof state.selectedStackIdByActor === "object"
+        ? state.selectedStackIdByActor[actorId]
+        : null;
     const selectedItemId =
       state.selectedItemIdByActor && typeof state.selectedItemIdByActor === "object"
         ? state.selectedItemIdByActor[actorId]
         : null;
-    if (typeof selectedItemId === "string" && selectedItemId.trim()) {
-      payload.context_hints = {
-        selected_item_id: selectedItemId.trim(),
-      };
+    if (
+      (typeof selectedStackId === "string" && selectedStackId.trim()) ||
+      (typeof selectedItemId === "string" && selectedItemId.trim())
+    ) {
+      payload.context_hints = {};
+      if (typeof selectedStackId === "string" && selectedStackId.trim()) {
+        payload.context_hints.selected_stack_id = selectedStackId.trim();
+      }
+      if (typeof selectedItemId === "string" && selectedItemId.trim()) {
+        payload.context_hints.selected_item_id = selectedItemId.trim();
+      }
     }
     const result = await chatTurn(state.baseUrl, payload);
     if (!result.ok || !result.data) {

@@ -11,6 +11,7 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from backend.api.main import create_app
+from backend.app.item_runtime import create_runtime_item_stack
 from backend.domain.models import (
     ActorState,
     Campaign,
@@ -166,6 +167,36 @@ def test_map_view_returns_only_current_area_entities_from_campaign_authority(
     assert entities[0]["state"] == {}
     assert entities[1]["state"] == {"opened": False}
     assert all(entity["id"] != "coin_01" for entity in entities)
+
+
+def test_map_view_does_not_surface_area_item_stacks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    campaign_id = "camp_map_scene_items_hidden"
+    _seed_campaign(tmp_path, campaign_id)
+    repo = FileRepo(tmp_path / "storage")
+    campaign = repo.get_campaign(campaign_id)
+    ration_stack = create_runtime_item_stack(
+        definition_id="field_ration",
+        quantity=1,
+        parent_type="area",
+        parent_id="area_001",
+        label="Field Ration",
+        stack_id_salt="test_map_scene:hidden_area_stack",
+    )
+    campaign.items = {ration_stack.stack_id: ration_stack}
+    repo.save_campaign(campaign)
+    client = _client(tmp_path, monkeypatch)
+
+    response = client.get(
+        "/api/v1/map/view",
+        params={"campaign_id": campaign_id, "actor_id": "pc_001"},
+    )
+    assert response.status_code == 200
+    entities = response.json()["entities_in_area"]
+    assert [entity["id"] for entity in entities] == ["apple_01", "crate_01"]
+    assert all(entity["id"] != "field_ration" for entity in entities)
 
 
 def test_map_view_reflects_entity_state_changes_from_scene_action_turn(

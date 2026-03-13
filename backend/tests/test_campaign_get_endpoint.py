@@ -9,6 +9,7 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from backend.api.main import create_app
+from backend.app.item_runtime import create_runtime_item_stack
 from backend.domain.models import (
     ActorState,
     Campaign,
@@ -33,8 +34,16 @@ def _client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     return TestClient(app)
 
 
-def _create_campaign(tmp_path: Path, campaign_id: str = "camp_get_001") -> str:
+def _create_campaign(tmp_path: Path, campaign_id: str = "camp_get_001") -> tuple[str, str]:
     repo = FileRepo(tmp_path / "storage")
+    torch_stack = create_runtime_item_stack(
+        definition_id="torch",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="torch",
+        stack_id_salt="test_campaign_get_endpoint:pc_001:torch",
+    )
     campaign = Campaign(
         id=campaign_id,
         selected=Selected(
@@ -51,10 +60,11 @@ def _create_campaign(tmp_path: Path, campaign_id: str = "camp_get_001") -> str:
                 position="area_001",
                 hp=10,
                 character_state="alive",
-                inventory={"torch": 1},
+                inventory={},
                 meta={},
             )
         },
+        items={torch_stack.stack_id: torch_stack},
         map={
             "areas": {
                 "area_001": MapArea(
@@ -67,14 +77,14 @@ def _create_campaign(tmp_path: Path, campaign_id: str = "camp_get_001") -> str:
         },
     )
     repo.create_campaign(campaign)
-    return campaign_id
+    return campaign_id, torch_stack.stack_id
 
 
 def test_campaign_get_reflects_party_load_and_select_actor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client = _client(tmp_path, monkeypatch)
-    campaign_id = _create_campaign(tmp_path)
+    campaign_id, torch_stack_id = _create_campaign(tmp_path)
 
     create_character_resp = client.post(
         "/api/v1/characters/library",
@@ -106,6 +116,8 @@ def test_campaign_get_reflects_party_load_and_select_actor(
     assert "position" in body["actors"]["ch_smoke_001"]
     assert body["actors"]["pc_001"]["inventory"] == {"torch": 1}
     assert body["actors"]["ch_smoke_001"]["inventory"] == {}
+    assert body["inventory_stack_ids"]["pc_001"] == {"torch": [torch_stack_id]}
+    assert body["inventory_stack_ids"]["ch_smoke_001"] == {}
     assert body["map"]["areas"]["area_001"]["name"] == "Camp"
 
 
@@ -113,7 +125,7 @@ def test_campaign_get_keeps_party_list_stable_after_repeated_party_load(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client = _client(tmp_path, monkeypatch)
-    campaign_id = _create_campaign(tmp_path, campaign_id="camp_get_repeat")
+    campaign_id, _ = _create_campaign(tmp_path, campaign_id="camp_get_repeat")
 
     create_character_resp = client.post(
         "/api/v1/characters/library",
