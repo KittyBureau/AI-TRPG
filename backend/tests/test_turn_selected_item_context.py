@@ -253,6 +253,17 @@ def test_chat_turn_injects_selected_item_metadata_when_catalog_has_entry(
         "id": "rusty_key",
         "has_metadata": True,
     }
+    assert payload["debug"]["selected_item_resolution"] == {
+        "requested_item_id": "rusty_key",
+        "requested_stack_id": "",
+        "resolved_item_id": "rusty_key",
+        "resolved_stack_id": stack_ids["rusty_key"],
+        "status": "item_fallback",
+        "reason": "item_match_found",
+        "label": "rusty_key",
+        "stack_quantity": 1,
+        "total_quantity": 1,
+    }
     context = _extract_prompt_context(_ContextCaptureLLM.last_system_prompt)
     assert context["selected_item"] == {
         "id": "rusty_key",
@@ -363,6 +374,14 @@ def test_chat_turn_omits_selected_item_debug_when_trace_is_on_but_hint_is_absent
     payload = response.json()
     assert "debug" in payload
     assert "selected_item" not in payload["debug"]
+    assert payload["debug"]["selected_item_resolution"] == {
+        "requested_item_id": "",
+        "requested_stack_id": "",
+        "resolved_item_id": "",
+        "resolved_stack_id": "",
+        "status": "none",
+        "reason": "no_hint",
+    }
     context = _extract_prompt_context(_ContextCaptureLLM.last_system_prompt)
     assert "selected_item" not in context
 
@@ -399,6 +418,14 @@ def test_chat_turn_still_ignores_invalid_selected_item_even_when_catalog_exists(
     assert payload["narrative_text"] == "Selected item context checked."
     assert "debug" in payload
     assert "selected_item" not in payload["debug"]
+    assert payload["debug"]["selected_item_resolution"] == {
+        "requested_item_id": "torch",
+        "requested_stack_id": "",
+        "resolved_item_id": "",
+        "resolved_stack_id": "",
+        "status": "none",
+        "reason": "item_match_missing",
+    }
     context = _extract_prompt_context(_ContextCaptureLLM.last_system_prompt)
     assert "selected_item" not in context
 
@@ -438,6 +465,14 @@ def test_chat_turn_does_not_fallback_from_invalid_selected_stack_to_item_hint(
     payload = response.json()
     assert "debug" in payload
     assert "selected_item" not in payload["debug"]
+    assert payload["debug"]["selected_item_resolution"] == {
+        "requested_item_id": "torch",
+        "requested_stack_id": "stk_missing_selected_item_001",
+        "resolved_item_id": "",
+        "resolved_stack_id": "",
+        "status": "none",
+        "reason": "explicit_stack_missing",
+    }
     context = _extract_prompt_context(_ContextCaptureLLM.last_system_prompt)
     assert "selected_item" not in context
 
@@ -478,6 +513,18 @@ def test_chat_turn_prefers_selected_stack_id_when_both_hints_are_present(
     )
 
     assert response.status_code == 200
+    payload = response.json()
+    assert payload["debug"]["selected_item_resolution"] == {
+        "requested_item_id": "rope",
+        "requested_stack_id": stack_ids["torch_b"],
+        "resolved_item_id": "torch",
+        "resolved_stack_id": stack_ids["torch_b"],
+        "status": "stack_explicit",
+        "reason": "explicit_stack_valid",
+        "label": "torch",
+        "stack_quantity": 1,
+        "total_quantity": 2,
+    }
     context = _extract_prompt_context(_ContextCaptureLLM.last_system_prompt)
     assert context["selected_item"] == {
         "id": "torch",

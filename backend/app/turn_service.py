@@ -584,6 +584,7 @@ class TurnService:
                     turn_templates,
                     turn_policies,
                     selected_item=selected_item,
+                    selected_item_resolution=selected_item_resolution,
                 )
                 if campaign.settings_snapshot.dialog.turn_profile_trace_enabled
                 else None
@@ -1177,6 +1178,7 @@ def _build_turn_debug_payload(
     template_resources: List[Dict[str, object]],
     policy_resources: List[Dict[str, object]],
     selected_item: Optional[Dict[str, object]] = None,
+    selected_item_resolution: Optional[SelectedStackResolution] = None,
 ) -> Dict[str, object]:
     _, adopted_profiles_by_actor = _build_actor_prompt_payloads(campaign)
     encoded = json.dumps(
@@ -1279,6 +1281,13 @@ def _build_turn_debug_payload(
     selected_item_debug = _build_selected_item_debug(selected_item)
     if selected_item_debug is not None:
         payload["selected_item"] = selected_item_debug
+    selected_item_resolution_debug = _build_selected_item_resolution_debug(
+        campaign,
+        active_actor_id,
+        selected_item_resolution,
+    )
+    if selected_item_resolution_debug is not None:
+        payload["selected_item_resolution"] = selected_item_resolution_debug
     return payload
 
 
@@ -1297,6 +1306,38 @@ def _build_selected_item_debug(
             or isinstance(selected_item.get("description"), str)
         ),
     }
+
+
+def _build_selected_item_resolution_debug(
+    campaign: Campaign,
+    active_actor_id: str,
+    selected_item_resolution: Optional[SelectedStackResolution],
+) -> Optional[Dict[str, object]]:
+    if not isinstance(selected_item_resolution, SelectedStackResolution):
+        return None
+    payload: Dict[str, object] = {
+        "requested_item_id": selected_item_resolution.requested_item_id,
+        "requested_stack_id": selected_item_resolution.requested_stack_id,
+        "resolved_item_id": selected_item_resolution.resolved_item_id,
+        "resolved_stack_id": selected_item_resolution.resolved_stack_id,
+        "status": selected_item_resolution.status,
+        "reason": selected_item_resolution.reason,
+    }
+    resolved_stack = selected_item_resolution.resolved_stack
+    if resolved_stack is None:
+        return payload
+    if isinstance(resolved_stack.label, str) and resolved_stack.label.strip():
+        payload["label"] = resolved_stack.label.strip()
+    if isinstance(resolved_stack.quantity, int) and resolved_stack.quantity > 0:
+        payload["stack_quantity"] = resolved_stack.quantity
+    total_quantity = get_actor_item_quantity_from_items_only(
+        campaign,
+        active_actor_id,
+        selected_item_resolution.resolved_item_id,
+    )
+    if total_quantity > 0:
+        payload["total_quantity"] = total_quantity
+    return payload
 
 
 def _build_debug_append(conflicts: List[object], campaign: Campaign) -> str:

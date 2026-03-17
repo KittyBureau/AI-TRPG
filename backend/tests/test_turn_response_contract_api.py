@@ -458,6 +458,15 @@ def test_chat_turn_trace_on_keeps_debug_resources_contract(
     assert isinstance(debug, dict)
     resources = debug.get("resources")
     assert isinstance(resources, dict)
+    assert debug.get("selected_item_resolution") == {
+        "requested_item_id": "",
+        "requested_stack_id": "",
+        "resolved_item_id": "",
+        "resolved_stack_id": "",
+        "status": "none",
+        "reason": "no_hint",
+    }
+    assert "selected_item" not in debug
     for key in (
         "prompts",
         "flows",
