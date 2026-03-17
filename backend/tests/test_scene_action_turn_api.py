@@ -514,6 +514,138 @@ def test_chat_turn_scene_action_use_defaults_to_selected_stack_id(
     assert updated.actors["pc_001"].inventory == {}
 
 
+def test_chat_turn_scene_action_use_defaults_to_selected_item_id_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    campaign_id = "camp_scene_turn_use_selected_item"
+    _create_campaign(tmp_path, campaign_id)
+    repo = FileRepo(tmp_path / "storage")
+    campaign = repo.get_campaign(campaign_id)
+    campaign.entities["shrine_01"] = Entity(
+        id="shrine_01",
+        kind="object",
+        label="Hidden Shrine",
+        tags=["altar"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "use"],
+        state={"used": False},
+        props={},
+    )
+    key_stack = create_runtime_item_stack(
+        definition_id="rusty_key",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="Rusty Key",
+        state={"consume_on_use": True},
+        stack_id_salt="test_scene_action_turn_api:use_selected_item",
+    )
+    campaign.items = {key_stack.stack_id: key_stack}
+    repo.save_campaign(campaign)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(turn_service_module, "LLMClient", _UseSelectedStackLLM)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/v1/chat/turn",
+        json={
+            "campaign_id": campaign_id,
+            "user_input": "[UI_FLOW_STEP] scene action item use",
+            "execution": {"actor_id": "pc_001"},
+            "context_hints": {"selected_item_id": "rusty_key"},
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["applied_actions"][0]["tool"] == "scene_action"
+    assert payload["applied_actions"][0]["result"]["ok"] is True
+    assert payload["applied_actions"][0]["result"]["narrative"] == (
+        "You use Rusty Key on Hidden Shrine."
+    )
+    assert payload["state_summary"]["active_actor_inventory"] == {}
+
+    updated = repo.get_campaign(campaign_id)
+    assert updated.entities["shrine_01"].state["used"] is True
+    assert key_stack.stack_id not in updated.items
+    assert updated.actors["pc_001"].inventory == {}
+
+
+def test_chat_turn_scene_action_use_invalid_selected_stack_does_not_fallback_to_item_hint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    campaign_id = "camp_scene_turn_use_stale_selected_stack"
+    _create_campaign(tmp_path, campaign_id)
+    repo = FileRepo(tmp_path / "storage")
+    campaign = repo.get_campaign(campaign_id)
+    campaign.entities["shrine_01"] = Entity(
+        id="shrine_01",
+        kind="object",
+        label="Hidden Shrine",
+        tags=["altar"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "use"],
+        state={"used": False},
+        props={},
+    )
+    torch_stack_a = create_runtime_item_stack(
+        stack_id="stk_torch_0001aaaa",
+        definition_id="torch",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="Torch",
+        props={"variant": "old"},
+    )
+    torch_stack_b = create_runtime_item_stack(
+        stack_id="stk_torch_ffff0002",
+        definition_id="torch",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="Torch",
+        props={"variant": "new"},
+    )
+    campaign.items = {
+        torch_stack_a.stack_id: torch_stack_a,
+        torch_stack_b.stack_id: torch_stack_b,
+    }
+    repo.save_campaign(campaign)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(turn_service_module, "LLMClient", _UseSelectedStackLLM)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/v1/chat/turn",
+        json={
+            "campaign_id": campaign_id,
+            "user_input": "[UI_FLOW_STEP] scene action stale selected stack use",
+            "execution": {"actor_id": "pc_001"},
+            "context_hints": {
+                "selected_stack_id": "stk_missing_selected_item_001",
+                "selected_item_id": "torch",
+            },
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["applied_actions"][0]["tool"] == "scene_action"
+    assert payload["applied_actions"][0]["result"]["ok"] is False
+    assert payload["applied_actions"][0]["result"]["narrative"] == (
+        "You have no valid selected item to use."
+    )
+    assert payload["applied_actions"][0]["result"]["error"] == {
+        "code": "missing_item",
+        "message": "no valid active selected item",
+    }
+    assert payload["state_summary"]["active_actor_inventory"] == {"torch": 2}
+
+    updated = repo.get_campaign(campaign_id)
+    assert updated.entities["shrine_01"].state["used"] is False
+    assert updated.actors["pc_001"].inventory == {"torch": 2}
+
+
 def test_chat_turn_scene_action_detach_creates_item_stack_and_removes_entity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

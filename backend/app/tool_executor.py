@@ -34,6 +34,7 @@ from backend.app.item_runtime import (
     get_actor_item_quantity_from_items_only,
     grant_item_to_actor,
     normalize_campaign_items,
+    resolve_selected_stack_resolution,
 )
 from backend.app.scenario_runtime_mapper import (
     is_scenario_world_goal_area,
@@ -1445,22 +1446,22 @@ def _apply_scene_action(
                         ),
                     )
             elif selection_hint_present:
-                use_stack = resolve_usable_stack(
+                selection_resolution = resolve_selected_stack_resolution(
                     campaign,
                     actor_id,
-                    current_area_id=current_area_id,
                     selected_stack_id=selected_stack_id,
                     selected_item_id=selected_item_id,
                 )
+                use_stack = selection_resolution.resolved_stack
                 if use_stack is None:
                     return _scene_action_applied(
                         call,
                         timestamp,
                         _scene_action_result(
                             ok=False,
-                            narrative="That item is no longer available.",
+                            narrative="You have no valid selected item to use.",
                             error_code="missing_item",
-                            error_message="selected item not in actor inventory",
+                            error_message="no valid active selected item",
                         ),
                     )
 

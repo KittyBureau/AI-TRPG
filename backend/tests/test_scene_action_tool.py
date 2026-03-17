@@ -1384,6 +1384,54 @@ def test_scene_action_use_falls_back_to_selected_stack_id() -> None:
     assert campaign.entities[shrine.id].state["used"] is True
 
 
+def test_scene_action_use_falls_back_to_selected_item_id() -> None:
+    campaign = _base_campaign()
+    brazier = Entity(
+        id="brazier_02",
+        kind="object",
+        label="Cold Brazier",
+        tags=["fire"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "use"],
+        state={"used": False},
+        props={},
+    )
+    torch_stack = create_runtime_item_stack(
+        definition_id="torch",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="Torch",
+        stack_id_salt="test_scene_action_use_selected_item",
+    )
+    campaign.entities[brazier.id] = brazier
+    campaign.items = {torch_stack.stack_id: torch_stack}
+    call = ToolCall(
+        id="call_use_selected_item",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "use",
+            "target_id": brazier.id,
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [call],
+        selected_item_id="torch",
+    )
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is True
+    assert result["narrative"] == "You use Torch on Cold Brazier."
+    assert campaign.entities[brazier.id].state["used"] is True
+
+
 def test_scene_action_use_invalid_selected_stack_fails_cleanly() -> None:
     campaign = _base_campaign()
     shrine = Entity(
@@ -1419,8 +1467,75 @@ def test_scene_action_use_invalid_selected_stack_fails_cleanly() -> None:
     assert len(applied_actions) == 1
     result = applied_actions[0].result
     assert result["ok"] is False
+    assert result["narrative"] == "You have no valid selected item to use."
     assert result["error"]["code"] == "missing_item"
+    assert result["error"]["message"] == "no valid active selected item"
     assert campaign.entities[shrine.id].state["used"] is False
+
+
+def test_scene_action_use_stale_selected_stack_does_not_fallback_to_item_hint() -> None:
+    campaign = _base_campaign()
+    shrine = Entity(
+        id="shrine_02",
+        kind="object",
+        label="Hidden Shrine",
+        tags=["altar"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "use"],
+        state={"used": False},
+        props={},
+    )
+    torch_stack_a = create_runtime_item_stack(
+        stack_id="stk_torch_0001aaaa",
+        definition_id="torch",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="Torch",
+        props={"variant": "old"},
+    )
+    torch_stack_b = create_runtime_item_stack(
+        stack_id="stk_torch_ffff0002",
+        definition_id="torch",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="Torch",
+        props={"variant": "new"},
+    )
+    campaign.entities[shrine.id] = shrine
+    campaign.items = {
+        torch_stack_a.stack_id: torch_stack_a,
+        torch_stack_b.stack_id: torch_stack_b,
+    }
+    call = ToolCall(
+        id="call_use_stale_selected_stack",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "use",
+            "target_id": shrine.id,
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [call],
+        selected_stack_id="stk_missing_item_001",
+        selected_item_id="torch",
+    )
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is False
+    assert result["narrative"] == "You have no valid selected item to use."
+    assert result["error"]["code"] == "missing_item"
+    assert result["error"]["message"] == "no valid active selected item"
+    assert campaign.entities[shrine.id].state["used"] is False
+    assert campaign.actors["pc_001"].inventory == {"torch": 2}
 
 
 def test_scene_action_use_item_only_consumes_stack_and_deletes_zero_quantity() -> None:
