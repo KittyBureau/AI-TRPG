@@ -1613,7 +1613,11 @@ def _resolve_selected_item_context(
         "id": selected_stack.definition_id,
         "stack_id": selected_stack.stack_id,
         "quantity": quantity,
+        "stack_quantity": selected_stack.quantity,
     }
+    label = selected_stack.label.strip()
+    if label:
+        selected_item["label"] = label
     item_metadata = load_item_catalog(repo_root).get(selected_stack.definition_id, {})
     if isinstance(item_metadata, dict):
         name = item_metadata.get("name")

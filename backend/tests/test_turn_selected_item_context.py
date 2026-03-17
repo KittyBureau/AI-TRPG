@@ -268,9 +268,11 @@ def test_chat_turn_injects_selected_item_metadata_when_catalog_has_entry(
     assert context["selected_item"] == {
         "id": "rusty_key",
         "stack_id": stack_ids["rusty_key"],
+        "label": "rusty_key",
         "name": "rusty key",
         "description": "an old iron key, possibly opens ancient locks",
         "quantity": 1,
+        "stack_quantity": 1,
     }
 
 
@@ -311,7 +313,9 @@ def test_chat_turn_falls_back_to_phase_b_shape_when_catalog_has_no_entry(
     assert context["selected_item"] == {
         "id": "rusty_key",
         "stack_id": stack_ids["rusty_key"],
+        "label": "rusty_key",
         "quantity": 1,
+        "stack_quantity": 1,
     }
 
 
@@ -341,7 +345,9 @@ def test_chat_turn_falls_back_to_phase_b_shape_when_catalog_is_invalid_and_trace
     assert context["selected_item"] == {
         "id": "rusty_key",
         "stack_id": stack_ids["rusty_key"],
+        "label": "rusty_key",
         "quantity": 1,
+        "stack_quantity": 1,
     }
 
 
@@ -529,9 +535,11 @@ def test_chat_turn_prefers_selected_stack_id_when_both_hints_are_present(
     assert context["selected_item"] == {
         "id": "torch",
         "stack_id": stack_ids["torch_b"],
+        "label": "torch",
         "name": "torch",
         "description": "a simple handheld torch for lighting dark areas",
         "quantity": 2,
+        "stack_quantity": 1,
     }
 
 
@@ -568,7 +576,9 @@ def test_chat_turn_falls_back_from_selected_item_id_to_deterministic_stack(
     assert context["selected_item"] == {
         "id": "torch",
         "stack_id": stack_ids["torch_a"],
+        "label": "torch",
         "name": "torch",
         "description": "a simple handheld torch for lighting dark areas",
         "quantity": 2,
+        "stack_quantity": 1,
     }

@@ -336,7 +336,9 @@ def test_turn_prompt_hygiene_keeps_adopted_profile_and_selected_item_but_filters
     assert context["selected_item"] == {
         "id": "rusty_key",
         "stack_id": rusty_key_stack.stack_id,
+        "label": "rusty_key",
         "quantity": 1,
+        "stack_quantity": 1,
     }
     assert context["actors"]["pc_001"]["meta"] == {
         "name": "Fallback Name",
