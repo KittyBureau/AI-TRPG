@@ -1109,6 +1109,68 @@ def test_scene_action_search_opened_stack_container_finds_child() -> None:
     assert campaign.items[child_stack.stack_id].parent_id == crate_stack.stack_id
 
 
+def test_scene_action_search_opened_entity_container_creates_stack_loot_not_entity() -> None:
+    campaign = _base_campaign()
+    campaign.entities["old_crate"] = Entity(
+        id="old_crate",
+        kind="container",
+        label="Old Crate",
+        tags=["container"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "search"],
+        state={"opened": True},
+        props={},
+    )
+    call = ToolCall(
+        id="call_search_opened_entity_container",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "search",
+            "target_id": "old_crate",
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is True
+    assert result["narrative"] == "You search Old Crate and find Old Crate Trinket."
+    assert result["patches"]["new_entities"] == []
+    assert result["patches"]["removed_entities"] == []
+    assert result["patches"]["entity_patches"] == [
+        {
+            "id": "old_crate",
+            "changes": {"state": {"opened": True, "search_generated_loot": True}},
+        }
+    ]
+    assert set(campaign.entities.keys()) == {"old_crate"}
+    assert not any(
+        entity.loc.type == "entity" and entity.loc.id == "old_crate"
+        for entity in campaign.entities.values()
+    )
+    assert len(campaign.items) == 1
+    only_stack = next(iter(campaign.items.values()))
+    assert only_stack.definition_id == "old_crate_loot_01"
+    assert only_stack.parent_type == "area"
+    assert only_stack.parent_id == "area_001"
+    assert only_stack.label == "Old Crate Trinket"
+    assert only_stack.stackable is False
+
+    repeated_actions, repeated_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert repeated_feedback is None
+    assert len(repeated_actions) == 1
+    repeated_result = repeated_actions[0].result
+    assert repeated_result["ok"] is True
+    assert repeated_result["narrative"] == "You search Old Crate but find nothing useful."
+    assert repeated_result["patches"]["new_entities"] == []
+    assert len(campaign.items) == 1
+
+
 def test_scene_action_search_fixed_entity_grant_source_still_works() -> None:
     campaign = _base_campaign()
     campaign.entities["old_hut_clue"] = Entity(

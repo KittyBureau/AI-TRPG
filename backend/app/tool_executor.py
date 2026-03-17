@@ -30,11 +30,13 @@ from backend.app.item_operations import (
     would_exceed_actor_carry_limit,
 )
 from backend.app.item_runtime import (
+    create_runtime_item_stack,
     derive_actor_inventory,
     get_actor_item_quantity_from_items_only,
     grant_item_to_actor,
     normalize_campaign_items,
     resolve_selected_stack_resolution,
+    validate_and_sync_campaign_items,
 )
 from backend.app.scenario_runtime_mapper import (
     is_scenario_world_goal_area,
@@ -1053,25 +1055,29 @@ def _apply_scene_action(
                     entity.loc.type == "entity" and entity.loc.id == target.id
                     for entity in campaign.entities.values()
                 )
+                if not has_nested and target.state.get("search_generated_loot") is not True:
+                    before = _entity_to_dict(target)
+                    spawned_stack = _create_entity_search_fallback_stack(campaign, target)
+                    if spawned_stack is not None:
+                        _append_entity_patch(entity_patches, target, before)
+                        return _scene_action_applied(
+                            call,
+                            timestamp,
+                            _scene_action_result(
+                                ok=True,
+                                narrative=f"You search {target.label} and find {spawned_stack.label}.",
+                                entity_patches=entity_patches,
+                                new_entities=new_entities,
+                                removed_entities=removed_entities,
+                            ),
+                        )
                 if not has_nested:
-                    spawned = Entity(
-                        id=_next_spawn_entity_id(campaign, target.id),
-                        kind="item",
-                        label=f"{target.label} Trinket",
-                        tags=["loot"],
-                        loc=EntityLocation(type="entity", id=target.id),
-                        verbs=["inspect", "take"],
-                        state={},
-                        props={"mass": 1},
-                    )
-                    campaign.entities[spawned.id] = spawned
-                    new_entities.append(_entity_to_dict(spawned))
                     return _scene_action_applied(
                         call,
                         timestamp,
                         _scene_action_result(
                             ok=True,
-                            narrative=f"You search {target.label} and find {spawned.label}.",
+                            narrative=f"You search {target.label} but find nothing useful.",
                             entity_patches=entity_patches,
                             new_entities=new_entities,
                             removed_entities=removed_entities,
@@ -1772,14 +1778,49 @@ def _resolve_root_location(
         location = parent.loc
 
 
-def _next_spawn_entity_id(campaign: Campaign, target_id: str) -> str:
+def _next_generated_loot_definition_id(campaign: Campaign, target_id: str) -> str:
     base = f"{target_id}_loot"
     counter = 1
     while True:
         candidate = f"{base}_{counter:02d}"
-        if candidate not in campaign.entities:
+        if candidate not in campaign.entities and all(
+            stack.definition_id != candidate for stack in campaign.items.values()
+        ):
             return candidate
         counter += 1
+
+
+def _create_entity_search_fallback_stack(
+    campaign: Campaign,
+    target: Entity,
+) -> Optional[RuntimeItemStack]:
+    root = _resolve_root_location(campaign, target, max_depth=3)
+    if root is None:
+        return None
+    root_type, root_id = root
+    if root_type not in {"actor", "area"}:
+        return None
+    definition_id = _next_generated_loot_definition_id(campaign, target.id)
+    stack = create_runtime_item_stack(
+        definition_id=definition_id,
+        quantity=1,
+        parent_type=root_type,
+        parent_id=root_id,
+        label=f"{target.label} Trinket",
+        tags=["loot"],
+        verbs=["inspect", "take"],
+        state={},
+        props={"mass": 1},
+        stackable=False,
+        stack_id_salt=f"search:{target.id}:{definition_id}:{root_type}:{root_id}",
+    )
+    campaign.items[stack.stack_id] = stack
+    target.state["search_generated_loot"] = True
+    validate_and_sync_campaign_items(campaign)
+    created = campaign.items.get(stack.stack_id)
+    if created is None:
+        return None
+    return created
 
 
 def _entity_to_dict(entity: Entity) -> Dict[str, Any]:
