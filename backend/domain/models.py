@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 class MapArea(BaseModel):
@@ -111,12 +111,18 @@ class Entity(BaseModel):
     props: Dict[str, Any] = Field(default_factory=dict)
 
 
+class RuntimeItemLocation(BaseModel):
+    type: Literal["actor", "area", "item"]
+    id: str
+
+
 class RuntimeItemStack(BaseModel):
     stack_id: str
     definition_id: str
     quantity: int = 1
     parent_type: Literal["actor", "area", "item"]
     parent_id: str
+    metadata: Dict[str, Any] = Field(default_factory=dict)
     label: str = ""
     description: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
@@ -125,6 +131,11 @@ class RuntimeItemStack(BaseModel):
     props: Dict[str, Any] = Field(default_factory=dict)
     stackable: bool = True
     is_container: bool = False
+
+    @computed_field
+    @property
+    def location(self) -> RuntimeItemLocation:
+        return RuntimeItemLocation(type=self.parent_type, id=self.parent_id)
 
 
 class ActorState(BaseModel):

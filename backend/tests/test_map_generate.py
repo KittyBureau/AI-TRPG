@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 import backend.app.tool_executor as tool_executor_module
+from backend.app.item_runtime import create_runtime_item_stack
 from backend.app.tool_executor import execute_tool_calls
 from backend.domain.map_models import require_valid_map
 from backend.domain.models import (
@@ -177,6 +178,15 @@ def test_map_generate_updates_only_map_authority() -> None:
     campaign = _make_campaign(map_data)
     campaign.selected.world_id = "world_keep"
     campaign.settings_revision = 9
+    rope_stack = create_runtime_item_stack(
+        definition_id="rope",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="rope",
+        stack_id_salt="test_map_authority:pc_001:rope",
+    )
+    campaign.items = {rope_stack.stack_id: rope_stack}
     campaign.actors["pc_001"].inventory = {"rope": 1}
     before_selected = deepcopy(campaign.selected)
     before_actor = deepcopy(campaign.actors["pc_001"])

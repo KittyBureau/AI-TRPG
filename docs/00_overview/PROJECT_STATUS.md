@@ -63,7 +63,8 @@ Runtime system:
 - tool execution and validation in the tool executor
 - deterministic stub `world_generate`
 - validated `map_generate` with rollback on invalid graphs
-- inventory authority through `inventory_add`
+- portable item authority through `campaign.items`
+- `actors[*].inventory` as a derived compatibility inventory view
 - scene interaction MVP through `scene_action`
 
 ## 5. Storage Model
@@ -72,6 +73,7 @@ Runtime system:
 - `storage/campaigns/<campaign_id>/turn_log.jsonl`
 - `storage/worlds/<world_id>/world.json`
 - `campaign.json.actors[*]` as runtime actor authority
+- `campaign.json.items[*]` as portable item authority
 - `campaign.json.entities` for scene interaction state
 - `turn_log.jsonl` for append-only turn audit
 

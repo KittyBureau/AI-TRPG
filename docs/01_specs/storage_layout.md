@@ -128,6 +128,34 @@ World lazy-create migration (v1):
       "meta": {}
     }
   },
+  "items": {
+    "stk_crate_01_7b8e3f4a": {
+      "stack_id": "stk_crate_01_7b8e3f4a",
+      "definition_id": "crate_01",
+      "quantity": 1,
+      "parent_type": "area",
+      "parent_id": "area_001",
+      "metadata": {},
+      "label": "Old Crate",
+      "description": null,
+      "tags": ["container", "wood"],
+      "verbs": ["inspect", "open", "search", "take"],
+      "state": {
+        "locked": false,
+        "opened": false
+      },
+      "props": {
+        "mass": 12,
+        "size": "medium"
+      },
+      "stackable": false,
+      "is_container": true,
+      "location": {
+        "type": "area",
+        "id": "area_001"
+      }
+    }
+  },
   "entities": {
     "door_01": {
       "id": "door_01",
@@ -212,8 +240,15 @@ World lazy-create migration (v1):
 | state.positions | object | Legacy position mirrors (empty after migration). |
 | state.positions_parent | object | Legacy position mirrors (empty after migration). |
 | state.positions_child | object | Legacy position mirrors (empty after migration). |
-| actors | object | Actor state keyed by actor id (`position` and `inventory` are authoritative). |
-| actors.*.inventory | object | Item quantities keyed by `item_id` (`Dict[str,int]`, positive ints only). |
+| actors | object | Actor state keyed by actor id (`position`, `hp`, and `character_state` are authoritative actor-state fields). |
+| actors.*.inventory | object | Derived compatibility inventory view keyed by `item_id`; synchronized from `items`. |
+| items | object | Authoritative portable-item runtime stacks keyed by `stack_id`. |
+| items.*.stack_id | string | Stable runtime stack id. |
+| items.*.definition_id | string | Logical item definition id used for compatibility aggregation. |
+| items.*.quantity | int | Positive quantity for the stack. |
+| items.*.parent_type / items.*.parent_id | string | Canonical runtime parent descriptor for `actor`, `area`, or `item`. |
+| items.*.metadata | object | Reserved metadata field for later phases; defaults to `{}`. |
+| items.*.location | object | Serialized location mirror for the parent descriptor: `{type,id}`. |
 | entities | object | Scene entities keyed by stable entity id (authoritative for scene interaction state). |
 | entities.*.loc | object | Location union: `{type:area|actor|entity,id:string}`. |
 | entities.*.verbs | array | Allowed scene verbs for `scene_action` checks. |
@@ -237,6 +272,7 @@ Frontend campaign refresh note:
 - `GET /api/v1/campaign/get` is the authoritative Play refresh snapshot.
 - It mirrors `selected`, `actors`, `map.areas`, and `status` from persisted campaign state.
 - `actors[*]` includes read-only runtime snapshot fields used by Play refresh, including `position`, `hp`, `character_state`, and `inventory`.
+- `actors[*].inventory` in that payload is derived from `campaign.items`; `campaign/get` also exposes `inventory_stack_ids` as a stack-aware companion map.
 - Play uses that shared-store snapshot for current actor/map situation; `/api/v1/map/view` remains optional inspection data, not the primary Play source of truth.
 
 ## Character access boundary (current)
@@ -432,12 +468,21 @@ Each line is a JSON object:
       },
       "pc_002": {}
     },
+    "inventory_stack_ids": {
+      "pc_001": {
+        "torch": ["stk_torch_example"]
+      },
+      "pc_002": {}
+    },
     "objective": "Explore the nearby areas and recover one useful item.",
     "active_area_id": "area_002",
     "active_area_name": "Side Room",
     "active_area_description": "A cramped side room with scattered crates.",
     "active_actor_inventory": {
       "torch": 1
+    },
+    "active_actor_inventory_stack_ids": {
+      "torch": ["stk_torch_example"]
     }
   }
 }
@@ -469,4 +514,4 @@ tool feedback may include reason `repeat_illegal_request`.
 | applied_actions | array | Applied tool results. |
 | tool_feedback | object | Failed tool calls with reasons; may be `null` when no failures occurred. |
 | conflict_report | object | Conflict info when retries occur; may be `null` on normal turns. |
-| state_summary | object | Stable v1 summary contract: `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, `inventories`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, `active_actor_inventory`. |
+| state_summary | object | Stable v1 summary contract: `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, `inventories`, `inventory_stack_ids`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, `active_actor_inventory`, `active_actor_inventory_stack_ids`. |

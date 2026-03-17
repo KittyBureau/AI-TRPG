@@ -209,7 +209,15 @@ def test_scene_action_detach_respects_carry_limit() -> None:
 
 def test_scene_action_take_and_drop_updates_location() -> None:
     campaign = _base_campaign()
-    campaign.actors["pc_001"].inventory = {"torch": 1}
+    torch_stack = create_runtime_item_stack(
+        definition_id="torch",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="torch",
+        stack_id_salt="test_scene_take_drop:pc_001:torch",
+    )
+    campaign.items = {torch_stack.stack_id: torch_stack}
     campaign.entities["apple_01"] = Entity(
         id="apple_01",
         kind="item",

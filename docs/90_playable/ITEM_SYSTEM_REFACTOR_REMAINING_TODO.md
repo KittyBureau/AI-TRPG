@@ -7,6 +7,9 @@ Last updated: 2026-03-13
 The following phases are complete:
 
 - Phase 1: portable item authority moved to `campaign.items`
+  - persisted stacks include canonical `parent_type` / `parent_id`, a serialized `location` mirror, and reserved `metadata`
+  - `actors[*].inventory` is synchronized as a derived compatibility view
+  - inventory-only campaign payloads are not supported
 - Phase 2: inventory read paths unified to pure item helpers
 - Phase 3: `selected_stack_id` introduced as internal selection authority
 - Phase 4A: stack-aware `scene_action take/drop`

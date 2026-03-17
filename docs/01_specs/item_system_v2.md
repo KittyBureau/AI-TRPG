@@ -339,11 +339,17 @@ Required fields:
 
 Optional fields:
 
+- `metadata: dict[str, object]`
 - `description: str`
 - `tags: list[str]`
 - `verbs: list[str]`
 - `state: dict[str, object]`
 - `props: dict[str, object]`
+
+Persisted compatibility/storage note:
+
+- runtime may also serialize a `location = { type, id }` mirror of `parent_type` / `parent_id`
+- `metadata` is reserved for later phases and defaults to `{}`
 
 Normalization defaults for merge comparison and persistence:
 
@@ -870,6 +876,7 @@ Recommended scope:
 - convert current preset/bootstrap/test fixture payloads into `campaign.items`
 - derive compatibility `actors[*].inventory` during transition
 - not intended as an end-user save migration system
+- inventory-only campaign payloads should be treated as unsupported once Phase 1 lands
 
 Do not build a heavy multi-version save loader for old external saves.
 

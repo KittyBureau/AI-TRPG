@@ -52,16 +52,26 @@ def _base_campaign(campaign_id: str = "camp_items_phase1") -> Campaign:
                 position="area_001",
                 hp=10,
                 character_state="alive",
-                inventory={"rope": 2},
+                inventory={},
                 meta={},
             )
         },
     )
 
 
-def test_repo_migrates_legacy_actor_inventory_into_campaign_items(tmp_path: Path) -> None:
+def test_repo_persists_campaign_items_and_derives_actor_inventory(tmp_path: Path) -> None:
     repo = FileRepo(tmp_path / "storage")
     campaign = _base_campaign()
+    rope_stack = create_runtime_item_stack(
+        definition_id="rope",
+        quantity=2,
+        parent_type="actor",
+        parent_id="pc_001",
+        metadata={"rarity": "common"},
+        label="rope",
+        stack_id_salt="test_phase1:pc_001:rope",
+    )
+    campaign.items = {rope_stack.stack_id: rope_stack}
 
     repo.create_campaign(campaign)
     reloaded = repo.get_campaign(campaign.id)
@@ -73,6 +83,17 @@ def test_repo_migrates_legacy_actor_inventory_into_campaign_items(tmp_path: Path
     assert only_stack.quantity == 2
     assert only_stack.parent_type == "actor"
     assert only_stack.parent_id == "pc_001"
+    assert only_stack.location.model_dump() == {"type": "actor", "id": "pc_001"}
+    assert only_stack.metadata == {"rarity": "common"}
+
+
+def test_repo_rejects_inventory_only_campaign_seed_without_items(tmp_path: Path) -> None:
+    repo = FileRepo(tmp_path / "storage")
+    campaign = _base_campaign("camp_items_inventory_only_invalid")
+    campaign.actors["pc_001"].inventory = {"rope": 2}
+
+    with pytest.raises(ValueError, match="initialize campaign.items"):
+        repo.create_campaign(campaign)
 
 
 def test_repo_rejects_item_parent_that_is_not_a_container(tmp_path: Path) -> None:

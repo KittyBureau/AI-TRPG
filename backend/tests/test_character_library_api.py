@@ -9,6 +9,7 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from backend.api.main import create_app
+from backend.app.item_runtime import create_runtime_item_stack
 from backend.domain.models import (
     ActorState,
     Campaign,
@@ -280,6 +281,15 @@ def test_party_load_is_idempotent_and_preserves_runtime_authority_fields(
     actor.hp = 4
     actor.character_state = "wounded"
     actor.inventory = {"torch": 2}
+    torch_stack = create_runtime_item_stack(
+        definition_id="torch",
+        quantity=2,
+        parent_type="actor",
+        parent_id="ch_repeat",
+        label="torch",
+        stack_id_salt="test_party_load_repeat:ch_repeat:torch",
+    )
+    campaign.items[torch_stack.stack_id] = torch_stack
     actor.meta["profile"]["custom_note"] = "keep"
     actor.meta["other_meta"] = "preserve"
     repo.save_campaign(campaign)
@@ -332,6 +342,15 @@ def test_party_load_backfills_profile_metadata_for_legacy_actor_without_resettin
             "profile": {"custom_note": "keep me"},
         },
     )
+    rope_stack = create_runtime_item_stack(
+        definition_id="rope",
+        quantity=1,
+        parent_type="actor",
+        parent_id="ch_legacy",
+        label="rope",
+        stack_id_salt="test_party_load_legacy:ch_legacy:rope",
+    )
+    campaign.items[rope_stack.stack_id] = rope_stack
     repo.save_campaign(campaign)
 
     load_resp = client.post(

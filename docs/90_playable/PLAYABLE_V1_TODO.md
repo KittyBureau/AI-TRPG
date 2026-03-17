@@ -432,7 +432,7 @@ Explicitly out of current P1 closure:
   - trace-gated observability closure
 - Status Note: Phase A frontend runtime-only item selection, Phase B optional request hint + minimal selected_item context injection, Phase C metadata enrichment, and Phase D trace-gated observability are complete. Verified on 2026-03-09 with `pytest -q`, `node --experimental-default-type=module --test frontend/tests/store_loop.test.mjs`, `scripts/smoke_full_gameplay.ps1`, and `scripts/smoke_frontend_flow.ps1`.
 - Design rules:
-  - Inventory storage format remains unchanged for now: `inventory: { item_id: quantity }`
+  - Frontend selection still consumes the aggregated compatibility view for now: `inventory: { item_id: quantity }`, derived from `campaign.items`
   - LLM should reason about how to use the selected item, not which item to use.
   - Item usage interaction flow:
     - `Player -> select item`

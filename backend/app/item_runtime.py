@@ -18,6 +18,7 @@ def create_runtime_item_stack(
     parent_type: str,
     parent_id: str,
     stack_id: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
     label: Optional[str] = None,
     description: Optional[str] = None,
     tags: Optional[Iterable[object]] = None,
@@ -51,6 +52,7 @@ def create_runtime_item_stack(
         quantity=normalized_quantity,
         parent_type=normalized_parent_type,  # type: ignore[arg-type]
         parent_id=normalized_parent_id,
+        metadata=dict(metadata) if isinstance(metadata, dict) else {},
         label=normalized_label,
         description=normalized_description,
         tags=_normalize_text_list(tags),
@@ -82,11 +84,10 @@ def normalize_campaign_items(campaign: Campaign) -> bool:
         if raw_key != stack.stack_id or raw_payload != stack.model_dump():
             updated = True
 
-    if not normalized_items:
-        migrated_items = _migrate_legacy_actor_inventory(campaign)
-        if migrated_items:
-            normalized_items.update(migrated_items)
-            updated = True
+    if not normalized_items and _campaign_has_legacy_inventory_only_state(campaign):
+        raise ValueError(
+            "inventory-only campaign payloads are unsupported; initialize campaign.items instead"
+        )
 
     campaign.items = normalized_items
     _validate_item_graph(campaign)
@@ -293,6 +294,7 @@ def _coerce_runtime_item_stack(raw_key: object, raw_value: object) -> RuntimeIte
         quantity=payload.get("quantity", 1),
         parent_type=_read_string(payload.get("parent_type")),
         parent_id=_read_string(payload.get("parent_id")),
+        metadata=payload.get("metadata"),
         label=payload.get("label"),
         description=payload.get("description"),
         tags=payload.get("tags"),
@@ -306,27 +308,6 @@ def _coerce_runtime_item_stack(raw_key: object, raw_value: object) -> RuntimeIte
         if isinstance(payload.get("is_container", False), bool)
         else False,
     )
-
-
-def _migrate_legacy_actor_inventory(campaign: Campaign) -> Dict[str, RuntimeItemStack]:
-    migrated: Dict[str, RuntimeItemStack] = {}
-    for actor_id, actor in sorted(campaign.actors.items()):
-        raw_inventory = actor.inventory if isinstance(actor.inventory, dict) else {}
-        for item_id, quantity in raw_inventory.items():
-            if not isinstance(item_id, str) or not item_id.strip():
-                continue
-            if not isinstance(quantity, int) or quantity <= 0:
-                continue
-            stack = create_runtime_item_stack(
-                definition_id=item_id.strip(),
-                quantity=quantity,
-                parent_type="actor",
-                parent_id=actor_id,
-                label=item_id.strip(),
-                stack_id_salt=f"legacy_actor_inventory:{actor_id}:{item_id.strip()}",
-            )
-            migrated[stack.stack_id] = stack
-    return migrated
 
 
 def _validate_item_graph(campaign: Campaign) -> None:
@@ -387,6 +368,21 @@ def _sync_derived_actor_inventories(campaign: Campaign) -> bool:
     return updated
 
 
+def _campaign_has_legacy_inventory_only_state(campaign: Campaign) -> bool:
+    for actor in campaign.actors.values():
+        if not isinstance(actor.inventory, dict):
+            continue
+        if any(
+            isinstance(item_id, str)
+            and item_id.strip()
+            and isinstance(quantity, int)
+            and quantity > 0
+            for item_id, quantity in actor.inventory.items()
+        ):
+            return True
+    return False
+
+
 def _find_merge_target(
     campaign: Campaign, candidate: RuntimeItemStack
 ) -> Optional[RuntimeItemStack]:
@@ -404,6 +400,7 @@ def _merge_signature(stack: RuntimeItemStack) -> Tuple[object, ...]:
         stack.definition_id,
         stack.parent_type,
         stack.parent_id,
+        tuple(sorted(stack.metadata.items())),
         stack.label,
         stack.description,
         tuple(stack.tags),

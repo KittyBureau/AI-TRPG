@@ -9,7 +9,19 @@ Authoritative runtime state is stored at:
 - `campaign.json.actors[actor_id].position`
 - `campaign.json.actors[actor_id].hp`
 - `campaign.json.actors[actor_id].character_state`
-- `campaign.json.actors[actor_id].inventory`
+
+### Portable item authority
+
+Authoritative portable-item runtime state is stored at:
+
+- `campaign.json.items[stack_id]`
+
+Current runtime policy:
+
+- `campaign.json.items` is the single authority for portable item stacks.
+- `campaign.json.actors[actor_id].inventory` is a derived compatibility view only.
+- inventory read paths should derive from `campaign.json.items`, not from stored actor inventory maps.
+- inventory-only campaign payloads are no longer supported for item initialization.
 
 ### Legacy mirrors
 
@@ -25,6 +37,12 @@ Current persistence path (`FileRepo.save_campaign`) clears these mirror maps on 
 ### Migration behavior
 
 When loading old campaign payloads without `actors`, runtime migrates legacy maps into `actors` and then clears mirrors.
+
+For items, there is no old-save migration path:
+
+- repository fixtures/bootstrap now initialize `campaign.json.items` directly
+- runtime syncs `actors[*].inventory` from `campaign.items`
+- inventory-only payloads are treated as invalid for Phase 1 item authority
 
 ## Planned / Non-goals for Playable v1
 

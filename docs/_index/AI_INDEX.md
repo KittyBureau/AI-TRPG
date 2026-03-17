@@ -22,11 +22,11 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - `/api/v1/chat/turn` stable top-level response keys are `effective_actor_id`, `narrative_text`, `dialog_type`, `tool_calls`, `applied_actions`, `tool_feedback`, `conflict_report`, and `state_summary`.
 - `/api/v1/chat/turn` omits top-level `debug` when trace is off; when trace is on, `debug.resources` is present and uses array categories.
 - `/api/v1/chat/turn` keeps `tool_calls` / `applied_actions` as arrays; `tool_feedback` and `conflict_report` may be `null` depending on turn outcome.
-- `/api/v1/chat/turn.state_summary` keeps stable v1 keys: `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, `inventories`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, `active_actor_inventory`.
-- `GET /api/v1/campaign/get` returns the authoritative selected/actors/map/status snapshot for a valid campaign; `actors` exposes read-only actor runtime snapshot fields needed by Play refresh, including `inventory`, `map.areas` exposes current reachability state, `status` carries lifecycle + milestone data from the same campaign snapshot, missing campaigns return `404`, and invalid persisted campaign payloads return `500` with a stable error detail.
+- `/api/v1/chat/turn.state_summary` keeps stable v1 keys: `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, `inventories`, `inventory_stack_ids`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, `active_actor_inventory`, `active_actor_inventory_stack_ids`.
+- `GET /api/v1/campaign/get` returns the authoritative selected/actors/map/status snapshot for a valid campaign; `actors` exposes read-only actor runtime snapshot fields needed by Play refresh, including derived `inventory`, `inventory_stack_ids` exposes the stack-aware companion view, `map.areas` exposes current reachability state, `status` carries lifecycle + milestone data from the same campaign snapshot, missing campaigns return `404`, and invalid persisted campaign payloads return `500` with a stable error detail.
 - `GET /api/v1/map/view` returns area context plus `entities_in_area` built directly from current `campaign.entities`, filtered to the actor's current area, with each entity's current `state`.
 - `/api/v1/chat/turn` actor context resolution uses `execution.actor_id` first, then top-level `actor_id`, then `campaign.selected.active_actor_id`; response includes `effective_actor_id`.
-- `/api/v1/chat/turn` accepts optional `context_hints.selected_item_id`; backend validates it against `actors[effective_actor_id].inventory` and injects `selected_item={id,quantity}` into turn context only when valid, with optional `name` / `description` when lightweight metadata is available.
+- `/api/v1/chat/turn` accepts optional `context_hints.selected_item_id`; backend resolves it against the actor-owned stacks derived from `campaign.items` and injects `selected_item={id,quantity}` into turn context only when valid, with optional `name` / `description` when lightweight metadata is available.
 - When trace is enabled and selected-item validation succeeds, `/api/v1/chat/turn.debug.selected_item` may expose minimal observability as `{id, has_metadata}`; top-level `debug` remains omitted when trace is off.
 - `/api/v1/chat/turn` runs under a per-campaign serial lock; concurrent same-campaign turns return `409`.
 - `GET /api/v1/runtime/status` returns `ready` + `reason` for keyring/config readiness, and frontend play/debug uses it before sending turn requests.
@@ -84,6 +84,7 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - Invalid args return `tool_feedback.failed_calls` with `status`=`error` or `rejected` and a documented `reason`.
 - Tool params and allowlist follow `docs/01_specs/tools.md`.
 - `scene_action` is the default non-move scene interaction tool; move remains a separate tool.
+- `campaign.items` is the authoritative portable-item runtime store; `actors[*].inventory` is a derived compatibility view only.
 - `Campaign.entities` is authoritative for scene object state and stable entity IDs.
 - `move_options` is read-only and must not change positions or other state.
 - Movement state changes require a `move` tool_call; narration alone does not change positions.
@@ -107,6 +108,7 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - LLM config lives at `storage/config/llm_config.json`; keyring at `storage/secrets/keyring.json` with no env fallback.
 - Backend startup runs a non-interactive LLM credential precheck only; passphrase entry happens via `python -m backend.tools.unlock_keyring`.
 - Storage fields match `docs/01_specs/storage_layout.md`.
+- Portable items persist under `campaign.json.items`; inventory-only campaign seeds are unsupported.
 - `docs/00_overview/PROJECT_STATUS.md` summarizes the current stable runtime/frontend/storage shape for Playable v1 handoff.
 **Checks**
 - Run the API test guide to verify files are written with expected shapes.

@@ -211,6 +211,10 @@ After tool calls, verify authority fields:
 - `campaign.json.actors[*].position`
 - `campaign.json.actors[*].hp`
 - `campaign.json.actors[*].character_state`
+- `campaign.json.items[*]`
+
+Derived compatibility field:
+
 - `campaign.json.actors[*].inventory`
 
 Legacy mirrors (`positions/hp/character_states/state.positions*`) are compatibility fields, not authority.

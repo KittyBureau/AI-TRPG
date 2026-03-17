@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from backend.api.main import create_app
 from backend.app.character_fact_generation import CharacterFactGenerationService
+from backend.app.item_runtime import create_runtime_item_stack
 from backend.domain.models import (
     ActorState,
     Campaign,
@@ -516,6 +517,15 @@ def test_adopt_fact_writes_sidecar_and_profile_idempotently(
             "note": "keep",
         },
     )
+    torch_stack = create_runtime_item_stack(
+        definition_id="torch",
+        quantity=1,
+        parent_type="actor",
+        parent_id=character_id,
+        label="torch",
+        stack_id_salt=f"test_adopt_profile:{character_id}:torch",
+    )
+    campaign.items[torch_stack.stack_id] = torch_stack
     repo.save_campaign(campaign)
 
     first_adopt = client.post(
@@ -581,6 +591,15 @@ def test_adopt_fact_backfills_profile_for_legacy_actor_without_meta(
         "character_state": "exhausted",
         "inventory": {"rope": 1},
     }
+    rope_stack = create_runtime_item_stack(
+        definition_id="rope",
+        quantity=1,
+        parent_type="actor",
+        parent_id=character_id,
+        label="rope",
+        stack_id_salt=f"test_adopt_legacy:{character_id}:rope",
+    )
+    campaign.items[rope_stack.stack_id] = rope_stack
     repo.save_campaign(campaign)
 
     adopted = client.post(
@@ -671,6 +690,15 @@ def test_adopt_invalid_acceptance_sidecar_returns_500_without_profile_write(
         inventory={"coin": 1},
         meta={"profile": {"legacy_only": "keep"}},
     )
+    coin_stack = create_runtime_item_stack(
+        definition_id="coin",
+        quantity=1,
+        parent_type="actor",
+        parent_id=character_id,
+        label="coin",
+        stack_id_salt=f"test_adopt_sidecar:{character_id}:coin",
+    )
+    campaign.items[coin_stack.stack_id] = coin_stack
     repo.save_campaign(campaign)
     acceptance_path = repo.character_fact_acceptance_path(campaign_id, character_id)
     acceptance_path.parent.mkdir(parents=True, exist_ok=True)

@@ -7,6 +7,7 @@ from typing import Any, Dict
 import pytest
 
 import backend.app.turn_service as turn_service_module
+from backend.app.item_runtime import create_runtime_item_stack
 from backend.app.tool_executor import execute_tool_calls
 from backend.app.turn_service import TurnService
 from backend.domain.models import (
@@ -230,6 +231,8 @@ def test_inventory_add_persists_via_turn_service(
     assert stored_stack["quantity"] == 1
     assert stored_stack["parent_type"] == "actor"
     assert stored_stack["parent_id"] == "pc_001"
+    assert stored_stack["location"] == {"type": "actor", "id": "pc_001"}
+    assert stored_stack["metadata"] == {}
 
 
 def test_regular_turn_does_not_change_inventory_without_inventory_add(
@@ -251,7 +254,15 @@ def test_regular_turn_does_not_change_inventory_without_inventory_add(
     repo = FileRepo(tmp_path / "storage")
     service = TurnService(repo)
     campaign = _make_campaign("camp_inventory_narrative")
-    campaign.actors["pc_001"].inventory = {"torch": 1}
+    torch_stack = create_runtime_item_stack(
+        definition_id="torch",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="torch",
+        stack_id_salt="test_inventory_narrative:pc_001:torch",
+    )
+    campaign.items = {torch_stack.stack_id: torch_stack}
     repo.create_campaign(campaign)
 
     response = service.submit_turn(
