@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from backend.app.item_runtime import (
+    create_runtime_item_stack,
     resolve_stack_root,
     resolve_selected_stack,
     validate_and_sync_campaign_items,
@@ -392,20 +393,173 @@ def consume_stack_quantity(
     return stack
 
 
+def split_stack(
+    campaign: Campaign,
+    *,
+    stack_id: str,
+    quantity: int,
+) -> RuntimeItemStack:
+    stack = get_stack_or_none(campaign, stack_id)
+    if stack is None:
+        raise ValueError(f"missing item stack: {stack_id}")
+    normalized_quantity = _normalize_positive_quantity(quantity, label="split quantity")
+    if normalized_quantity > stack.quantity:
+        raise ValueError(f"insufficient stack quantity: {stack_id}")
+    if normalized_quantity == stack.quantity:
+        return stack
+    if not stack.stackable:
+        raise ValueError(f"stack cannot be split: {stack_id}")
+
+    source_before = stack.model_copy(deep=True)
+    split_stack = _create_split_stack(
+        campaign,
+        source_stack=stack,
+        quantity=normalized_quantity,
+    )
+    stack.quantity -= normalized_quantity
+    campaign.items[split_stack.stack_id] = split_stack
+    try:
+        validate_and_sync_campaign_items(campaign)
+    except Exception:
+        campaign.items[source_before.stack_id] = source_before
+        campaign.items.pop(split_stack.stack_id, None)
+        validate_and_sync_campaign_items(campaign)
+        raise
+    created = get_stack_or_none(campaign, split_stack.stack_id)
+    if created is None:
+        raise ValueError(f"split stack missing after creation: {split_stack.stack_id}")
+    return created
+
+
+def move_stack_quantity(
+    campaign: Campaign,
+    *,
+    stack_id: str,
+    parent_type: str,
+    parent_id: str,
+    quantity: int | None = None,
+    allow_merge: bool = True,
+) -> RuntimeItemStack:
+    stack = get_stack_or_none(campaign, stack_id)
+    if stack is None:
+        raise ValueError(f"missing item stack: {stack_id}")
+    normalized_quantity = (
+        stack.quantity
+        if quantity is None
+        else _normalize_positive_quantity(quantity, label="move quantity")
+    )
+    if normalized_quantity > stack.quantity:
+        raise ValueError(f"insufficient stack quantity: {stack_id}")
+
+    normalized_parent_type, normalized_parent_id = _normalize_destination_parent(
+        stack,
+        parent_type=parent_type,
+        parent_id=parent_id,
+    )
+    merge_target = (
+        _find_merge_target_in_destination(
+            campaign,
+            source_stack=stack,
+            parent_type=normalized_parent_type,
+            parent_id=normalized_parent_id,
+            exclude_stack_id=stack.stack_id,
+        )
+        if allow_merge
+        else None
+    )
+
+    if normalized_quantity == stack.quantity:
+        if merge_target is not None:
+            stack_before = stack.model_copy(deep=True)
+            merge_target_before = merge_target.model_copy(deep=True)
+            merge_target.quantity += stack.quantity
+            del campaign.items[stack.stack_id]
+            try:
+                validate_and_sync_campaign_items(campaign)
+            except Exception:
+                campaign.items[stack_before.stack_id] = stack_before
+                campaign.items[merge_target_before.stack_id] = merge_target_before
+                validate_and_sync_campaign_items(campaign)
+                raise
+            merged = get_stack_or_none(campaign, merge_target.stack_id)
+            if merged is None:
+                raise ValueError(f"merged stack missing after move: {merge_target.stack_id}")
+            return merged
+
+        stack_before = stack.model_copy(deep=True)
+        stack.parent_type = normalized_parent_type  # type: ignore[assignment]
+        stack.parent_id = normalized_parent_id
+        try:
+            validate_and_sync_campaign_items(campaign)
+        except Exception:
+            campaign.items[stack_before.stack_id] = stack_before
+            validate_and_sync_campaign_items(campaign)
+            raise
+        moved = get_stack_or_none(campaign, stack.stack_id)
+        if moved is None:
+            raise ValueError(f"moved stack missing after transfer: {stack.stack_id}")
+        return moved
+
+    moved_stack = split_stack(campaign, stack_id=stack_id, quantity=normalized_quantity)
+    merge_target = (
+        _find_merge_target_in_destination(
+            campaign,
+            source_stack=moved_stack,
+            parent_type=normalized_parent_type,
+            parent_id=normalized_parent_id,
+            exclude_stack_id=moved_stack.stack_id,
+        )
+        if allow_merge
+        else None
+    )
+    if merge_target is not None:
+        moved_before = moved_stack.model_copy(deep=True)
+        merge_target_before = merge_target.model_copy(deep=True)
+        merge_target.quantity += moved_stack.quantity
+        del campaign.items[moved_stack.stack_id]
+        try:
+            validate_and_sync_campaign_items(campaign)
+        except Exception:
+            campaign.items[moved_before.stack_id] = moved_before
+            campaign.items[merge_target_before.stack_id] = merge_target_before
+            validate_and_sync_campaign_items(campaign)
+            raise
+        merged = get_stack_or_none(campaign, merge_target.stack_id)
+        if merged is None:
+            raise ValueError(f"merged stack missing after partial move: {merge_target.stack_id}")
+        return merged
+
+    moved_before = moved_stack.model_copy(deep=True)
+    moved_stack.parent_type = normalized_parent_type  # type: ignore[assignment]
+    moved_stack.parent_id = normalized_parent_id
+    try:
+        validate_and_sync_campaign_items(campaign)
+    except Exception:
+        campaign.items[moved_before.stack_id] = moved_before
+        validate_and_sync_campaign_items(campaign)
+        raise
+    moved = get_stack_or_none(campaign, moved_stack.stack_id)
+    if moved is None:
+        raise ValueError(f"moved stack missing after partial transfer: {moved_stack.stack_id}")
+    return moved
+
+
 def transfer_stack_parent(
     campaign: Campaign,
     *,
     stack_id: str,
     parent_type: str,
     parent_id: str,
+    allow_merge: bool = False,
 ) -> RuntimeItemStack:
-    stack = get_stack_or_none(campaign, stack_id)
-    if stack is None:
-        raise ValueError(f"missing item stack: {stack_id}")
-    stack.parent_type = parent_type  # type: ignore[assignment]
-    stack.parent_id = parent_id
-    validate_and_sync_campaign_items(campaign)
-    return stack
+    return move_stack_quantity(
+        campaign,
+        stack_id=stack_id,
+        parent_type=parent_type,
+        parent_id=parent_id,
+        quantity=None,
+        allow_merge=allow_merge,
+    )
 
 
 def compute_entity_mass(entity: Entity) -> float:
@@ -524,6 +678,111 @@ def _read_string(value: object) -> str | None:
     return normalized or None
 
 
+def _normalize_positive_quantity(value: object, *, label: str) -> int:
+    if not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{label} must be positive")
+    return value
+
+
+def _normalize_destination_parent(
+    stack: RuntimeItemStack,
+    *,
+    parent_type: str,
+    parent_id: str,
+) -> Tuple[str, str]:
+    candidate = create_runtime_item_stack(
+        stack_id=stack.stack_id,
+        definition_id=stack.definition_id,
+        quantity=stack.quantity,
+        parent_type=parent_type,
+        parent_id=parent_id,
+        metadata=stack.metadata,
+        label=stack.label,
+        description=stack.description,
+        tags=stack.tags,
+        verbs=stack.verbs,
+        state=stack.state,
+        props=stack.props,
+        stackable=stack.stackable,
+        is_container=stack.is_container,
+    )
+    return candidate.parent_type, candidate.parent_id
+
+
+def _find_merge_target_in_destination(
+    campaign: Campaign,
+    *,
+    source_stack: RuntimeItemStack,
+    parent_type: str,
+    parent_id: str,
+    exclude_stack_id: str,
+) -> Optional[RuntimeItemStack]:
+    if not source_stack.stackable:
+        return None
+    for candidate_stack_id in sorted(campaign.items.keys()):
+        candidate = get_stack_or_none(campaign, candidate_stack_id)
+        if candidate is None or candidate.stack_id == exclude_stack_id:
+            continue
+        if _can_merge_in_destination(
+            source_stack,
+            candidate,
+            parent_type=parent_type,
+            parent_id=parent_id,
+        ):
+            return candidate
+    return None
+
+
+def _can_merge_in_destination(
+    source_stack: RuntimeItemStack,
+    destination_stack: RuntimeItemStack,
+    *,
+    parent_type: str,
+    parent_id: str,
+) -> bool:
+    if not source_stack.stackable or not destination_stack.stackable:
+        return False
+    if destination_stack.parent_type != parent_type or destination_stack.parent_id != parent_id:
+        return False
+    if source_stack.definition_id != destination_stack.definition_id:
+        return False
+    return dict(source_stack.metadata) == dict(destination_stack.metadata)
+
+
+def _create_split_stack(
+    campaign: Campaign,
+    *,
+    source_stack: RuntimeItemStack,
+    quantity: int,
+) -> RuntimeItemStack:
+    counter = 0
+    while True:
+        salt = (
+            f"split:{source_stack.stack_id}:{quantity}"
+            if counter == 0
+            else f"split:{source_stack.stack_id}:{quantity}:{counter}"
+        )
+        split_candidate = create_runtime_item_stack(
+            definition_id=source_stack.definition_id,
+            quantity=quantity,
+            parent_type=source_stack.parent_type,
+            parent_id=source_stack.parent_id,
+            metadata=source_stack.metadata,
+            label=source_stack.label,
+            description=source_stack.description,
+            tags=source_stack.tags,
+            verbs=source_stack.verbs,
+            state=source_stack.state,
+            props=source_stack.props,
+            stackable=source_stack.stackable,
+            is_container=source_stack.is_container,
+            stack_id_salt=salt,
+        )
+        if split_candidate.stack_id not in campaign.items:
+            return split_candidate
+        counter += 1
+
+
 __all__ = [
     "build_area_root_stack_views",
     "can_actor_use_stack",
@@ -544,11 +803,13 @@ __all__ = [
     "list_area_root_stacks",
     "list_visible_area_container_child_stacks",
     "list_visible_container_child_stacks",
+    "move_stack_quantity",
     "resolve_usable_stack",
     "search_area_item_sources",
     "search_stack_container_contents",
     "set_stack_opened",
     "should_consume_stack_on_use",
+    "split_stack",
     "transfer_stack_parent",
     "would_exceed_actor_carry_limit",
 ]
