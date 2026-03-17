@@ -4,6 +4,7 @@
 
 - Playable v1 baseline closed on 2026-03-10.
 - Closed baseline coverage: world generation, explicit world-aware campaign creation, repeatable play loop, read-only World Preview, authoritative Map Panel, backend narrative fallback for successful tool-only turns, and stable Character Library typing during Play-page rerenders.
+- Item System Refactor was closed on 2026-03-17: portable item authority is stack-based through `campaign.items`, `/map/view` projects area-root ground-item stacks, and selected-item prompt/runtime/debug behavior is aligned on the same internal stack resolution model.
 - Remaining tracked follow-up items are post-baseline polish only: null-position actor closure and current-turn result visibility cleanup.
 - Current baseline is suitable as the next-stage starting point without reopening the closed playable loop.
 - Additional fixed regression baseline: `test_watchtower_world` was verified end-to-end on 2026-03-11 and now serves as the source example for Scenario Template 0 extraction.
@@ -65,6 +66,7 @@ Runtime system:
 - validated `map_generate` with rollback on invalid graphs
 - portable item authority through `campaign.items`
 - `actors[*].inventory` as a derived compatibility inventory view
+- stack-authoritative `take` / `drop` / `detach` / item-side `use`
 - scene interaction MVP through `scene_action`
 
 ## 5. Storage Model
@@ -89,6 +91,7 @@ Runtime system:
 - successful tool-only turns keep readable `narrative_text` via backend fallback
 - Character Library typing remains stable during normal rerender/refresh paths
 - move / inventory / scene action flow
+- prompt/runtime/debug selected-item compatibility aligned on stack-backed selection resolution
 - runtime unlock flow via status + explicit CLI
 - frontend recovery from not-ready backend
 - debug panel request/response inspection
@@ -102,10 +105,10 @@ Runtime system:
 
 ## 8. Next Development Candidates
 
-- parameterized playable scenario generator v0
-  - first template only: `key_gate_scenario`
-  - source example: `test_watchtower_world`
-  - target output: one small solvable scenario compatible with the current runtime
+- primary next track: `P2-11A Context Builder Infrastructure`
+  - introduce the context-builder seam before `_build_system_prompt()`
+  - keep authoritative runtime state outside the builder
+- scenario generator v0 is already stabilized enough to serve as a regression/content baseline rather than the next primary implementation track
 - limited world content and entity expansion in support of the scenario generator
 - UI improvements beyond the current panel MVP
 - multiplayer/session coordination

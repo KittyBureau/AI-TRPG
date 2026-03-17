@@ -1,94 +1,51 @@
-# Item System Refactor Remaining TODO
+# Item System Refactor Closure Note
 
-Last updated: 2026-03-13
+Last updated: 2026-03-17
 
-## 1. Current Refactor Status
+Status: complete. This file is retained as an archived closure summary, not an active work tracker.
 
-The following phases are complete:
+## 1. Implemented Runtime Baseline
 
-- Phase 1: portable item authority moved to `campaign.items`
-  - persisted stacks include canonical `parent_type` / `parent_id`, a serialized `location` mirror, and reserved `metadata`
-  - `actors[*].inventory` is synchronized as a derived compatibility view
-  - inventory-only campaign payloads are not supported
-- Phase 2: inventory read paths unified to pure item helpers
-- Phase 3: `selected_stack_id` introduced as internal selection authority
-- Phase 4A: stack-aware `scene_action take/drop`
-- Phase 4B: stack-backed container `open/search`
-- Phase 4C: `scene_action use` item-side migration to stack authority
+The Item System Refactor is now complete in the current repository baseline.
 
-These phases are complete and should be treated as baseline.
+Implemented outcomes:
 
-## 2. Remaining Refactor Work
+- `campaign.items` is the authoritative portable-item runtime store
+- `RuntimeItemStack` persists canonical `parent_type` / `parent_id`, a serialized `location` mirror, and reserved `metadata`
+- `actors[*].inventory` is synchronized as a read-only derived compatibility view
+- inventory read paths use pure item helpers
+- generic stack mutation primitives exist for split / move / merge support
+- `scene_action take`, `drop`, `detach`, and item-side `use` are stack-authoritative
+- legacy portable-entity `take` / `drop` paths convert to stacks and remove the original entity
+- portable loot is no longer created as authority-carrying entities
+- `/map/view` keeps its existing top-level shape and projects area-root ground-item stacks into `entities_in_area`
+- prompt, runtime, and trace/debug all use the same internal selected-stack resolution model
+- trace/debug exposes `debug.selected_item_resolution` while preserving `debug.selected_item` compatibility
 
-Primary remaining migration:
+## 2. Intentionally Deferred To Later Phases
 
-- Phase 4D: detach migration
+The following concerns were intentionally left out of the completed refactor and should be treated as later-phase work:
 
-Goal:
+- public request/response protocol migration from `selected_item_id` to `selected_stack_id`
+- frontend inventory UI redesign for first-class stack selection
+- broader stack-aware frontend/debug surfaces beyond current compatibility fields
+- richer item effect framework or deeper stack-to-stack interaction design
+- broader API redesign beyond the compatibility layer already implemented
 
-- Convert entity detach operations into stack-authoritative item creation
+## 3. Current Closure Interpretation
 
-Expected runtime behavior:
+This refactor should now be treated as closed for Playable v1 and current backend/runtime work.
 
-`entity target`
-`-> validate detachable entity`
-`-> create RuntimeItemStack`
-`-> parent_type="actor"`
-`-> remove entity from campaign.entities`
+Practical meaning:
 
-## 3. Planned Minimal Implementation Slice
+- portable item authority is stack-based
+- entity state may still gate or expose scene interactions, but it is no longer the runtime authority for portable items
+- compatibility fields remain in place for the existing frontend and request protocol
 
-Phase 4D-A
+## 4. Recommended Next Primary Track
 
-Scope:
+Recommended next implementation focus:
 
-- detach non-container entities
-- reject entity containers
-- reject entities with child entities
-- create stack with `quantity=1`
-- set `stackable=false`
-- use `definition_id = entity.id`
-- remove entity from `campaign.entities`
-- new stack becomes authoritative inventory item
+- `P2-11A Context Builder Infrastructure`
 
-## 4. Risks Noted In Audit
-
-- entity graph integrity
-- entity containers
-- child entities under detachable entities
-- hybrid carry-mass logic
-- rollback safety across `campaign.entities` and `campaign.items`
-- prompt visibility assumptions while scene/map remain partly entity-centric
-
-## 5. Likely Files Involved In Phase 4D Implementation
-
-Implementation files:
-
-- `backend/app/tool_executor.py`
-- `backend/app/item_operations.py`
-- `backend/app/item_runtime.py`
-- `backend/app/turn_service.py`
-
-Tests likely affected:
-
-- `backend/tests/test_scene_action_tool.py`
-- `backend/tests/test_scene_action_turn_api.py`
-- `backend/tests/test_map_view_scene_entities.py`
-
-## 6. Explicitly Out Of Scope For Now
-
-Do not include the following in detach migration:
-
-- stack-aware frontend redesign
-- map/view stack visibility redesign
-- stack-to-stack interaction
-- item effect framework redesign
-- broad API redesign
-
-## 7. Recommended Next Step When Development Resumes
-
-Implement **Phase 4D-A** only.
-
-Keep the implementation small and rollback-safe.
-
-Do not attempt full detach migration in one step.
+This file should remain in the repo as historical context for the completed refactor, but it should not be used as an active execution board.

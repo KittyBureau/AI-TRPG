@@ -430,7 +430,7 @@ Explicitly out of current P1 closure:
   - turn request selected-item hint
   - prompt/context builder injection
   - trace-gated observability closure
-- Status Note: Phase A frontend runtime-only item selection, Phase B optional request hint + minimal selected_item context injection, Phase C metadata enrichment, and Phase D trace-gated observability are complete. Verified on 2026-03-09 with `pytest -q`, `node --experimental-default-type=module --test frontend/tests/store_loop.test.mjs`, `scripts/smoke_full_gameplay.ps1`, and `scripts/smoke_frontend_flow.ps1`.
+- Status Note: Phase A frontend runtime-only item selection, Phase B optional request hint + prompt selected-item context injection, Phase C metadata enrichment, and Phase D trace-gated observability are complete. Backend resolution is now stack-authoritative internally, while the public/frontend contract remains compatibility-based. Verified on 2026-03-09 with `pytest -q`, `node --experimental-default-type=module --test frontend/tests/store_loop.test.mjs`, `scripts/smoke_full_gameplay.ps1`, and `scripts/smoke_frontend_flow.ps1`.
 - Design rules:
   - Frontend selection still consumes the aggregated compatibility view for now: `inventory: { item_id: quantity }`, derived from `campaign.items`
   - LLM should reason about how to use the selected item, not which item to use.
@@ -449,8 +449,10 @@ Explicitly out of current P1 closure:
   - Item selection works in Play UI
   - Prompt builder can inject selected item context
   - LLM receives item description and quantity
-  - No change to inventory storage model yet
+  - Backend item authority is stack-based via `campaign.items`; Play UI and request hints remain compatibility-based for now
   - Trace-enabled turns can expose minimal selected-item observability without changing the trace gate contract
+- Later-phase note:
+  - public `selected_stack_id` protocol migration and first-class stack-aware frontend UX are intentionally deferred beyond this completed refactor
 - Tests:
   - manual Play UI verification
   - prompt debug trace inspection
@@ -788,7 +790,7 @@ Current P2 priority override (2026-03-12):
 - Verification Evidence:
   - fixed world metadata now comes from `backend/app/world_presets.py` and is surfaced in `/api/v1/worlds/list` without requiring a committed `storage/worlds/**` file
   - campaign bootstrap switches to a static watchtower map/entity set only when `selected.world_id == "test_watchtower_world"`
-  - inventory authority for the smoke-test baseline is now grounded in reachable entity-backed sources; free-form `inventory_add` without a valid source is rejected
+  - portable item authority for the smoke-test baseline now persists in `campaign.items`; clue/source entities still gate one-time grants, and free-form `inventory_add` without a valid source is rejected
   - manual verification on 2026-03-11 passed for the full watchtower loop: hint, one-time key grant, truthful inventory rejection narration, locked gate, and `goal_achieved`
   - `backend/tests/test_watchtower_world.py` and `backend/tests/test_watchtower_world_turn_api.py` cover static bootstrap, surfaced NPC hint, one-time clue grant, truthful rejection narration, and blocked-then-successful gated entry
   - `backend/tests/test_world_api.py` keeps both the world resource path and world list path on the fixed preset instead of the generic stub

@@ -24,10 +24,10 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - `/api/v1/chat/turn` keeps `tool_calls` / `applied_actions` as arrays; `tool_feedback` and `conflict_report` may be `null` depending on turn outcome.
 - `/api/v1/chat/turn.state_summary` keeps stable v1 keys: `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, `inventories`, `inventory_stack_ids`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, `active_actor_inventory`, `active_actor_inventory_stack_ids`.
 - `GET /api/v1/campaign/get` returns the authoritative selected/actors/map/status snapshot for a valid campaign; `actors` exposes read-only actor runtime snapshot fields needed by Play refresh, including derived `inventory`, `inventory_stack_ids` exposes the stack-aware companion view, `map.areas` exposes current reachability state, `status` carries lifecycle + milestone data from the same campaign snapshot, missing campaigns return `404`, and invalid persisted campaign payloads return `500` with a stable error detail.
-- `GET /api/v1/map/view` returns area context plus `entities_in_area` built directly from current `campaign.entities`, filtered to the actor's current area, with each entity's current `state`.
+- `GET /api/v1/map/view` returns area context plus `entities_in_area` built from current `campaign.entities` with an additive map-only projection of area-root item stacks from `campaign.items`, filtered to the actor's current area, with each entry's current `state`.
 - `/api/v1/chat/turn` actor context resolution uses `execution.actor_id` first, then top-level `actor_id`, then `campaign.selected.active_actor_id`; response includes `effective_actor_id`.
-- `/api/v1/chat/turn` accepts optional `context_hints.selected_item_id`; backend resolves it against the actor-owned stacks derived from `campaign.items` and injects `selected_item={id,quantity}` into turn context only when valid, with optional `name` / `description` when lightweight metadata is available.
-- When trace is enabled and selected-item validation succeeds, `/api/v1/chat/turn.debug.selected_item` may expose minimal observability as `{id, has_metadata}`; top-level `debug` remains omitted when trace is off.
+- `/api/v1/chat/turn` accepts optional `context_hints.selected_item_id`; backend resolves it against the actor-owned stacks derived from `campaign.items` and injects `selected_item={id,stack_id,quantity,stack_quantity,label}` into turn context only when valid, with optional `name` / `description` when lightweight metadata is available. `quantity` remains aggregate actor-held quantity for the selected item id.
+- When trace is enabled, `/api/v1/chat/turn.debug.selected_item` remains the minimal compatibility block `{id, has_metadata}` when selection resolves, and `debug.selected_item_resolution` exposes requested/resolved ids plus status/reason and light stack snapshot fields. Top-level `debug` remains omitted when trace is off.
 - `/api/v1/chat/turn` runs under a per-campaign serial lock; concurrent same-campaign turns return `409`.
 - `GET /api/v1/runtime/status` returns `ready` + `reason` for keyring/config readiness, and frontend play/debug uses it before sending turn requests.
 - `POST /api/v1/runtime/unlock` is a local-only runtime unlock path used by `python -m backend.tools.unlock_keyring`; the frontend must not collect passphrases.
@@ -86,6 +86,7 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - `scene_action` is the default non-move scene interaction tool; move remains a separate tool.
 - `campaign.items` is the authoritative portable-item runtime store; `actors[*].inventory` is a derived compatibility view only.
 - `Campaign.entities` is authoritative for scene object state and stable entity IDs.
+- Portable items must not be created as authority-carrying entities; scene entities may still gate or expose interactions, but portable item persistence belongs in `campaign.items`.
 - `move_options` is read-only and must not change positions or other state.
 - Movement state changes require a `move` tool_call; narration alone does not change positions.
 - Inventory gain requires an `inventory_add` tool_call; narration alone does not change inventory.
