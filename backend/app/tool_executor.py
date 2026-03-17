@@ -1145,17 +1145,6 @@ def _apply_scene_action(
                 )
             if target is None:
                 return None
-            if target.kind == "npc":
-                return _scene_action_applied(
-                    call,
-                    timestamp,
-                    _scene_action_result(
-                        ok=False,
-                        narrative=f"You cannot take {target.label}.",
-                        error_code="not_allowed",
-                        error_message=f"target is not portable: {target.id}",
-                    ),
-                )
             if target.loc.type == "actor" and target.loc.id == actor_id:
                 return _scene_action_applied(
                     call,
@@ -1165,6 +1154,19 @@ def _apply_scene_action(
                         narrative=f"{target.label} is already in your inventory.",
                         error_code="not_allowed",
                         error_message="target already in actor inventory",
+                    ),
+                )
+            take_block = _take_entity_conversion_block(campaign, target)
+            if take_block is not None:
+                narrative, error_message = take_block
+                return _scene_action_applied(
+                    call,
+                    timestamp,
+                    _scene_action_result(
+                        ok=False,
+                        narrative=narrative,
+                        error_code="not_allowed",
+                        error_message=error_message,
                     ),
                 )
             if _exceeds_carry_limit(campaign, actor_id, target):
@@ -1178,12 +1180,22 @@ def _apply_scene_action(
                         error_message=f"carry limit exceeded by target: {target.id}",
                     ),
                 )
-            before = _entity_to_dict(target)
-            if target.kind == "object":
-                target.kind = "item"
-            target.loc = EntityLocation(type="actor", id=actor_id)
-            target.verbs = _verbs_for_inventory(target.verbs)
-            _append_entity_patch(entity_patches, target, before)
+            removed_entities.append(_entity_to_dict(target))
+            grant_item_to_actor(
+                campaign,
+                actor_id=actor_id,
+                definition_id=_portable_take_entity_definition_id(target),
+                quantity=1,
+                label=target.label,
+                tags=list(target.tags),
+                verbs=list(target.verbs),
+                state=dict(target.state),
+                props=dict(target.props),
+                stackable=False,
+                is_container=False,
+                stack_id_salt=f"take:{target.id}:{actor_id}",
+            )
+            del campaign.entities[target.id]
             return _scene_action_applied(
                 call,
                 timestamp,
@@ -1594,10 +1606,45 @@ def _detached_entity_definition_id(target: Entity) -> str:
     return target.id
 
 
+def _portable_take_entity_definition_id(target: Entity) -> str:
+    return target.id
+
+
 def _detached_entity_state(target: Entity) -> Dict[str, Any]:
     state = dict(target.state)
     state["detached"] = True
     return state
+
+
+def _take_entity_conversion_block(
+    campaign: Campaign, target: Entity
+) -> Optional[Tuple[str, str]]:
+    if target.kind == "npc":
+        return (
+            f"You cannot take {target.label}.",
+            f"take target is npc: {target.id}",
+        )
+    if target.kind == "container":
+        return (
+            f"You cannot take {target.label} while it is acting as a container.",
+            f"take target is container: {target.id}",
+        )
+    if target.kind not in {"item", "object"}:
+        return (
+            f"You cannot take {target.label}.",
+            f"take target has unsupported kind: {target.id}",
+        )
+    if _entity_has_child_entities(campaign, target.id):
+        return (
+            f"You cannot take {target.label} while it still has attached contents.",
+            f"take target has child entities: {target.id}",
+        )
+    if _entity_has_inventory_source_state(target):
+        return (
+            f"You cannot take {target.label} while it is acting as a search source.",
+            f"take target is inventory source: {target.id}",
+        )
+    return None
 
 
 def _entity_has_child_entities(campaign: Campaign, entity_id: str) -> bool:
@@ -1605,6 +1652,14 @@ def _entity_has_child_entities(campaign: Campaign, entity_id: str) -> bool:
         entity.loc.type == "entity" and entity.loc.id == entity_id
         for entity in campaign.entities.values()
     )
+
+
+def _entity_has_inventory_source_state(target: Entity) -> bool:
+    granted_item_id = target.state.get("inventory_item_id")
+    if not isinstance(granted_item_id, str) or not granted_item_id.strip():
+        return False
+    granted_quantity = target.state.get("inventory_quantity", 1)
+    return isinstance(granted_quantity, int) and granted_quantity > 0
 
 
 def _is_entity_reachable(

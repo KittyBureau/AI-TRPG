@@ -380,7 +380,7 @@ def test_scene_action_detach_rejects_entity_without_detach_verb() -> None:
     assert campaign.items == {}
 
 
-def test_scene_action_take_and_drop_updates_location() -> None:
+def test_scene_action_take_legacy_portable_entity_creates_actor_stack() -> None:
     campaign = _base_campaign()
     torch_stack = create_runtime_item_stack(
         definition_id="torch",
@@ -401,7 +401,7 @@ def test_scene_action_take_and_drop_updates_location() -> None:
         state={},
         props={"mass": 1},
     )
-    take = ToolCall(
+    call = ToolCall(
         id="call_take",
         tool="scene_action",
         args={
@@ -411,8 +411,309 @@ def test_scene_action_take_and_drop_updates_location() -> None:
             "params": {},
         },
     )
-    drop = ToolCall(
-        id="call_drop",
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is True
+    assert result["patches"]["entity_patches"] == []
+    assert result["patches"]["new_entities"] == []
+    assert result["patches"]["removed_entities"] == [
+        {
+            "id": "apple_01",
+            "kind": "item",
+            "label": "Apple",
+            "tags": ["food"],
+            "loc": {"type": "area", "id": "area_001"},
+            "verbs": ["inspect", "take"],
+            "state": {},
+            "props": {"mass": 1},
+        }
+    ]
+    assert "apple_01" not in campaign.entities
+    assert campaign.actors["pc_001"].inventory == {"apple_01": 1, "torch": 1}
+    assert len(campaign.items) == 2
+    apple_stack = next(
+        stack for stack in campaign.items.values() if stack.definition_id == "apple_01"
+    )
+    assert apple_stack.quantity == 1
+    assert apple_stack.parent_type == "actor"
+    assert apple_stack.parent_id == "pc_001"
+    assert apple_stack.label == "Apple"
+    assert apple_stack.tags == ["food"]
+    assert apple_stack.state == {}
+    assert apple_stack.props == {"mass": 1}
+    assert apple_stack.stackable is False
+    assert apple_stack.is_container is False
+
+
+def test_scene_action_take_legacy_portable_entity_respects_carry_limit() -> None:
+    campaign = _base_campaign()
+    campaign.actors["pc_001"].meta["carry_mass_limit"] = 1
+    campaign.entities["anvil_01"] = Entity(
+        id="anvil_01",
+        kind="item",
+        label="Anvil",
+        tags=["metal"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "take"],
+        state={},
+        props={"mass": 2},
+    )
+    call = ToolCall(
+        id="call_take_limit",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "take",
+            "target_id": "anvil_01",
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is False
+    assert result["error"]["code"] == "carry_limit"
+    assert "anvil_01" in campaign.entities
+    assert campaign.entities["anvil_01"].loc.type == "area"
+    assert campaign.items == {}
+    assert campaign.actors["pc_001"].inventory == {}
+
+
+def test_scene_action_take_rejects_container_entity_conversion() -> None:
+    campaign = _base_campaign()
+    campaign.entities["crate_01"] = Entity(
+        id="crate_01",
+        kind="container",
+        label="Supply Crate",
+        tags=["crate"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "take"],
+        state={},
+        props={"mass": 8},
+    )
+    call = ToolCall(
+        id="call_take_container",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "take",
+            "target_id": "crate_01",
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is False
+    assert result["error"]["code"] == "not_allowed"
+    assert result["error"]["message"] == "take target is container: crate_01"
+    assert "crate_01" in campaign.entities
+    assert campaign.items == {}
+
+
+def test_scene_action_take_rejects_npc_entity_conversion() -> None:
+    campaign = _base_campaign()
+    campaign.entities["npc_01"] = Entity(
+        id="npc_01",
+        kind="npc",
+        label="Wary Guard",
+        tags=["guard"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "take", "talk"],
+        state={},
+        props={"mass": 20},
+    )
+    call = ToolCall(
+        id="call_take_npc",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "take",
+            "target_id": "npc_01",
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is False
+    assert result["error"]["code"] == "not_allowed"
+    assert result["error"]["message"] == "take target is npc: npc_01"
+    assert "npc_01" in campaign.entities
+    assert campaign.items == {}
+
+
+def test_scene_action_take_rejects_entities_with_children_for_conversion() -> None:
+    campaign = _base_campaign()
+    campaign.entities["bag_01"] = Entity(
+        id="bag_01",
+        kind="item",
+        label="Field Bag",
+        tags=["bag"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "take"],
+        state={},
+        props={"mass": 2},
+    )
+    campaign.entities["note_01"] = Entity(
+        id="note_01",
+        kind="item",
+        label="Folded Note",
+        tags=["note"],
+        loc=EntityLocation(type="entity", id="bag_01"),
+        verbs=["inspect", "take"],
+        state={},
+        props={"mass": 1},
+    )
+    call = ToolCall(
+        id="call_take_with_children",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "take",
+            "target_id": "bag_01",
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is False
+    assert result["error"]["code"] == "not_allowed"
+    assert result["error"]["message"] == "take target has child entities: bag_01"
+    assert "bag_01" in campaign.entities
+    assert "note_01" in campaign.entities
+    assert campaign.items == {}
+
+
+def test_scene_action_take_rejects_entity_inventory_sources_for_conversion() -> None:
+    campaign = _base_campaign()
+    campaign.entities["stash_01"] = Entity(
+        id="stash_01",
+        kind="object",
+        label="Loose Floorboard",
+        tags=["stash"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "search", "take"],
+        state={"inventory_item_id": "tower_key", "inventory_quantity": 1},
+        props={"mass": 1},
+    )
+    call = ToolCall(
+        id="call_take_inventory_source",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "take",
+            "target_id": "stash_01",
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is False
+    assert result["error"]["code"] == "not_allowed"
+    assert result["error"]["message"] == "take target is inventory source: stash_01"
+    assert "stash_01" in campaign.entities
+    assert campaign.items == {}
+
+
+def test_scene_action_take_portable_child_entity_creates_actor_stack() -> None:
+    campaign = _base_campaign()
+    campaign.entities["crate_01"] = Entity(
+        id="crate_01",
+        kind="container",
+        label="Supply Crate",
+        tags=["crate"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "open", "search"],
+        state={"opened": True},
+        props={"mass": 8},
+    )
+    campaign.entities["bolt_01"] = Entity(
+        id="bolt_01",
+        kind="item",
+        label="Loose Bolt",
+        tags=["metal"],
+        loc=EntityLocation(type="entity", id="crate_01"),
+        verbs=["inspect", "take"],
+        state={"worn": True},
+        props={"mass": 1},
+    )
+    call = ToolCall(
+        id="call_take_portable_child",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "take",
+            "target_id": "bolt_01",
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is True
+    assert result["patches"]["removed_entities"] == [
+        {
+            "id": "bolt_01",
+            "kind": "item",
+            "label": "Loose Bolt",
+            "tags": ["metal"],
+            "loc": {"type": "entity", "id": "crate_01"},
+            "verbs": ["inspect", "take"],
+            "state": {"worn": True},
+            "props": {"mass": 1},
+        }
+    ]
+    assert "crate_01" in campaign.entities
+    assert "bolt_01" not in campaign.entities
+    assert campaign.actors["pc_001"].inventory == {"bolt_01": 1}
+    bolt_stack = next(
+        stack for stack in campaign.items.values() if stack.definition_id == "bolt_01"
+    )
+    assert bolt_stack.parent_type == "actor"
+    assert bolt_stack.parent_id == "pc_001"
+    assert bolt_stack.state == {"worn": True}
+    assert bolt_stack.stackable is False
+
+
+def test_scene_action_drop_legacy_actor_entity_updates_location() -> None:
+    campaign = _base_campaign()
+    campaign.entities["apple_01"] = Entity(
+        id="apple_01",
+        kind="item",
+        label="Apple",
+        tags=["food"],
+        loc=EntityLocation(type="actor", id="pc_001"),
+        verbs=["inspect", "drop"],
+        state={},
+        props={"mass": 1},
+    )
+    call = ToolCall(
+        id="call_drop_legacy_entity",
         tool="scene_action",
         args={
             "actor_id": "pc_001",
@@ -422,22 +723,15 @@ def test_scene_action_take_and_drop_updates_location() -> None:
         },
     )
 
-    take_actions, take_feedback = execute_tool_calls(campaign, "pc_001", [take])
-    assert take_feedback is None
-    assert len(take_actions) == 1
-    assert take_actions[0].result["ok"] is True
-    assert campaign.actors["pc_001"].inventory == {"torch": 1}
-    assert campaign.entities["apple_01"].loc.type == "actor"
-    assert campaign.entities["apple_01"].loc.id == "pc_001"
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
 
-    drop_actions, drop_feedback = execute_tool_calls(campaign, "pc_001", [drop])
-    assert drop_feedback is None
-    assert len(drop_actions) == 1
-    assert drop_actions[0].result["ok"] is True
-    assert campaign.actors["pc_001"].inventory == {"torch": 1}
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is True
     assert campaign.entities["apple_01"].loc.type == "area"
     assert campaign.entities["apple_01"].loc.id == "area_001"
-    assert campaign.actors["pc_001"].position == "area_001"
+    assert campaign.actors["pc_001"].inventory == {}
 
 
 def test_scene_action_take_visible_area_stack_transfers_parent_to_actor() -> None:
@@ -1123,9 +1417,9 @@ def test_scene_action_exception_rolls_back_entity_changes(
     before = campaign.model_dump(mode="python")
 
     def _boom(*args, **kwargs) -> None:
-        raise RuntimeError("patch failed")
+        raise RuntimeError("grant failed")
 
-    monkeypatch.setattr(tool_executor_module, "_append_entity_patch", _boom)
+    monkeypatch.setattr(tool_executor_module, "grant_item_to_actor", _boom)
     call = ToolCall(
         id="call_take_boom",
         tool="scene_action",
