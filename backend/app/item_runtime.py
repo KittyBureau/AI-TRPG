@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import re
 from typing import Any, Dict, Iterable, Optional, Tuple
@@ -9,6 +10,17 @@ from backend.domain.models import Campaign, RuntimeItemStack
 _SAFE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 _ID_SLUG_PATTERN = re.compile(r"[^A-Za-z0-9_-]+")
 _SUPPORTED_PARENT_TYPES = {"actor", "area", "item"}
+
+
+@dataclass(frozen=True)
+class SelectedStackResolution:
+    requested_item_id: str
+    requested_stack_id: str
+    resolved_item_id: str
+    resolved_stack_id: str
+    status: str
+    reason: str
+    resolved_stack: Optional[RuntimeItemStack] = None
 
 
 def create_runtime_item_stack(
@@ -166,30 +178,113 @@ def resolve_selected_stack(
     selected_stack_id: Optional[str] = None,
     selected_item_id: Optional[str] = None,
 ) -> Optional[RuntimeItemStack]:
+    return resolve_selected_stack_resolution(
+        campaign,
+        actor_id,
+        selected_stack_id=selected_stack_id,
+        selected_item_id=selected_item_id,
+    ).resolved_stack
+
+
+def resolve_selected_stack_resolution(
+    campaign: Campaign,
+    actor_id: str,
+    *,
+    selected_stack_id: Optional[str] = None,
+    selected_item_id: Optional[str] = None,
+) -> SelectedStackResolution:
     normalized_stack_id = _read_string(selected_stack_id)
+    normalized_item_id = _read_string(selected_item_id)
     if normalized_stack_id:
         stack = campaign.items.get(normalized_stack_id)
         if stack is None:
-            return None
+            return SelectedStackResolution(
+                requested_item_id=normalized_item_id,
+                requested_stack_id=normalized_stack_id,
+                resolved_item_id="",
+                resolved_stack_id="",
+                status="none",
+                reason="explicit_stack_missing",
+            )
         try:
             root_type, root_id = resolve_stack_root(campaign, normalized_stack_id)
         except ValueError:
-            return None
+            return SelectedStackResolution(
+                requested_item_id=normalized_item_id,
+                requested_stack_id=normalized_stack_id,
+                resolved_item_id="",
+                resolved_stack_id="",
+                status="none",
+                reason="explicit_stack_invalid",
+            )
         if root_type != "actor" or root_id != actor_id:
-            return None
+            return SelectedStackResolution(
+                requested_item_id=normalized_item_id,
+                requested_stack_id=normalized_stack_id,
+                resolved_item_id="",
+                resolved_stack_id="",
+                status="none",
+                reason="explicit_stack_not_actor_owned",
+            )
         if not isinstance(stack.quantity, int) or stack.quantity <= 0:
-            return None
-        return stack
+            return SelectedStackResolution(
+                requested_item_id=normalized_item_id,
+                requested_stack_id=normalized_stack_id,
+                resolved_item_id="",
+                resolved_stack_id="",
+                status="none",
+                reason="explicit_stack_invalid",
+            )
+        return SelectedStackResolution(
+            requested_item_id=normalized_item_id,
+            requested_stack_id=normalized_stack_id,
+            resolved_item_id=stack.definition_id,
+            resolved_stack_id=stack.stack_id,
+            status="stack_explicit",
+            reason="explicit_stack_valid",
+            resolved_stack=stack,
+        )
 
-    normalized_item_id = _read_string(selected_item_id)
     if not normalized_item_id:
-        return None
+        return SelectedStackResolution(
+            requested_item_id="",
+            requested_stack_id="",
+            resolved_item_id="",
+            resolved_stack_id="",
+            status="none",
+            reason="no_hint",
+        )
     stack_ids = derive_actor_inventory_stack_ids_from_items_only(campaign, actor_id).get(
         normalized_item_id, []
     )
     if not stack_ids:
-        return None
-    return campaign.items.get(stack_ids[0])
+        return SelectedStackResolution(
+            requested_item_id=normalized_item_id,
+            requested_stack_id="",
+            resolved_item_id="",
+            resolved_stack_id="",
+            status="none",
+            reason="item_match_missing",
+        )
+    stack = campaign.items.get(stack_ids[0])
+    if stack is None or not isinstance(stack.quantity, int) or stack.quantity <= 0:
+        return SelectedStackResolution(
+            requested_item_id=normalized_item_id,
+            requested_stack_id="",
+            resolved_item_id="",
+            resolved_stack_id="",
+            status="none",
+            reason="item_match_invalid",
+        )
+    return SelectedStackResolution(
+        requested_item_id=normalized_item_id,
+        requested_stack_id="",
+        resolved_item_id=stack.definition_id,
+        resolved_stack_id=stack.stack_id,
+        status="item_fallback",
+        reason="item_match_found",
+        resolved_stack=stack,
+    )
 
 
 def grant_item_to_actor(
@@ -490,6 +585,7 @@ def _read_string(value: object) -> str:
 
 
 __all__ = [
+    "SelectedStackResolution",
     "create_runtime_item_stack",
     "derive_actor_inventory",
     "derive_actor_inventory_from_items_only",
@@ -500,6 +596,7 @@ __all__ = [
     "get_actor_item_quantity_from_items_only",
     "normalize_campaign_items",
     "resolve_selected_stack",
+    "resolve_selected_stack_resolution",
     "resolve_stack_root",
     "validate_and_sync_campaign_items",
 ]

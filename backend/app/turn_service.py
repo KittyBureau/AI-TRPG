@@ -13,6 +13,7 @@ from backend.app.conflict_detector import detect_conflicts
 from backend.app.debug_resources import build_resources_payload
 from backend.app.item_operations import build_area_root_stack_views
 from backend.app.item_runtime import (
+    SelectedStackResolution,
     create_runtime_item_stack,
     derive_actor_inventory_from_items_only,
     derive_all_actor_inventories_from_items_only,
@@ -20,7 +21,7 @@ from backend.app.item_runtime import (
     derive_all_actor_inventory_stack_ids_from_items_only,
     get_actor_item_quantity_from_items_only,
     normalize_campaign_items,
-    resolve_selected_stack,
+    resolve_selected_stack_resolution,
 )
 from backend.app.scenario_runtime_mapper import build_runtime_bootstrap_from_world
 from backend.app.scene_entities import build_area_local_entity_views
@@ -527,11 +528,16 @@ class TurnService:
             if _mark_ended_if_needed(campaign):
                 self.repo.save_campaign(campaign)
             _assert_turn_writable(campaign, effective_actor_id)
-            selected_item = _resolve_selected_item_context(
+            selected_item_resolution = resolve_selected_stack_resolution(
                 campaign,
                 effective_actor_id,
                 selected_stack_id=selected_stack_id,
                 selected_item_id=selected_item_id,
+            )
+            selected_item = _resolve_selected_item_context(
+                campaign,
+                effective_actor_id,
+                selected_item_resolution=selected_item_resolution,
                 repo_root=self.repo.storage_root.parent,
             )
             turn_prompt = _load_turn_prompt(self.repo)
@@ -1551,16 +1557,10 @@ def _resolve_selected_item_context(
     campaign: Campaign,
     effective_actor_id: str,
     *,
-    selected_stack_id: Optional[str],
-    selected_item_id: Optional[str],
+    selected_item_resolution: SelectedStackResolution,
     repo_root: Path,
 ) -> Optional[Dict[str, object]]:
-    selected_stack = resolve_selected_stack(
-        campaign,
-        effective_actor_id,
-        selected_stack_id=selected_stack_id,
-        selected_item_id=selected_item_id,
-    )
+    selected_stack = selected_item_resolution.resolved_stack
     if selected_stack is None:
         return None
     quantity = get_actor_item_quantity_from_items_only(

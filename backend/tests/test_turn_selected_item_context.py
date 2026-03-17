@@ -403,6 +403,45 @@ def test_chat_turn_still_ignores_invalid_selected_item_even_when_catalog_exists(
     assert "selected_item" not in context
 
 
+def test_chat_turn_does_not_fallback_from_invalid_selected_stack_to_item_hint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _create_multi_stack_campaign(
+        tmp_path, "camp_selected_item_invalid_stack_hint", trace_enabled=True
+    )
+    _write_item_catalog(
+        tmp_path,
+        {
+            "torch": {
+                "name": "torch",
+                "description": "a simple handheld torch for lighting dark areas",
+            }
+        },
+    )
+    client = _client(tmp_path, monkeypatch)
+
+    response = client.post(
+        "/api/v1/chat/turn",
+        json={
+            "campaign_id": "camp_selected_item_invalid_stack_hint",
+            "user_input": "Use the torch.",
+            "execution": {"actor_id": "pc_001"},
+            "context_hints": {
+                "selected_stack_id": "stk_missing_selected_item_001",
+                "selected_item_id": "torch",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "debug" in payload
+    assert "selected_item" not in payload["debug"]
+    context = _extract_prompt_context(_ContextCaptureLLM.last_system_prompt)
+    assert "selected_item" not in context
+
+
 def test_chat_turn_prefers_selected_stack_id_when_both_hints_are_present(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

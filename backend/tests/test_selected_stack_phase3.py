@@ -4,6 +4,7 @@ from backend.app.item_runtime import (
     create_runtime_item_stack,
     derive_actor_inventory_stack_ids_from_items_only,
     resolve_selected_stack,
+    resolve_selected_stack_resolution,
 )
 from backend.domain.models import (
     ActorState,
@@ -139,3 +140,98 @@ def test_resolve_selected_stack_prefers_explicit_stack_id_and_rejects_invalid_st
     assert explicit is not None
     assert explicit.stack_id == stack_ids["torch_b"]
     assert invalid is None
+
+
+def test_resolve_selected_stack_resolution_reports_explicit_stack_success() -> None:
+    campaign, stack_ids = _build_campaign()
+
+    resolution = resolve_selected_stack_resolution(
+        campaign,
+        "pc_001",
+        selected_stack_id=stack_ids["torch_b"],
+        selected_item_id="rope",
+    )
+
+    assert resolution.requested_stack_id == stack_ids["torch_b"]
+    assert resolution.requested_item_id == "rope"
+    assert resolution.resolved_stack_id == stack_ids["torch_b"]
+    assert resolution.resolved_item_id == "torch"
+    assert resolution.status == "stack_explicit"
+    assert resolution.reason == "explicit_stack_valid"
+    assert resolution.resolved_stack is not None
+    assert resolution.resolved_stack.stack_id == stack_ids["torch_b"]
+
+
+def test_resolve_selected_stack_resolution_reports_missing_explicit_stack_without_fallback() -> None:
+    campaign, _ = _build_campaign()
+
+    resolution = resolve_selected_stack_resolution(
+        campaign,
+        "pc_001",
+        selected_stack_id="stk_missing_item_001",
+        selected_item_id="torch",
+    )
+
+    assert resolution.requested_stack_id == "stk_missing_item_001"
+    assert resolution.requested_item_id == "torch"
+    assert resolution.resolved_stack_id == ""
+    assert resolution.resolved_item_id == ""
+    assert resolution.status == "none"
+    assert resolution.reason == "explicit_stack_missing"
+    assert resolution.resolved_stack is None
+
+
+def test_resolve_selected_stack_resolution_reports_not_actor_owned_explicit_stack() -> None:
+    campaign, stack_ids = _build_campaign()
+
+    resolution = resolve_selected_stack_resolution(
+        campaign,
+        "pc_001",
+        selected_stack_id=stack_ids["medkit"],
+        selected_item_id="torch",
+    )
+
+    assert resolution.requested_stack_id == stack_ids["medkit"]
+    assert resolution.requested_item_id == "torch"
+    assert resolution.resolved_stack_id == ""
+    assert resolution.resolved_item_id == ""
+    assert resolution.status == "none"
+    assert resolution.reason == "explicit_stack_not_actor_owned"
+    assert resolution.resolved_stack is None
+
+
+def test_resolve_selected_stack_resolution_reports_item_fallback_success() -> None:
+    campaign, stack_ids = _build_campaign()
+
+    resolution = resolve_selected_stack_resolution(
+        campaign,
+        "pc_001",
+        selected_item_id="torch",
+    )
+
+    assert resolution.requested_stack_id == ""
+    assert resolution.requested_item_id == "torch"
+    assert resolution.resolved_stack_id == stack_ids["torch_a"]
+    assert resolution.resolved_item_id == "torch"
+    assert resolution.status == "item_fallback"
+    assert resolution.reason == "item_match_found"
+    assert resolution.resolved_stack is not None
+    assert resolution.resolved_stack.stack_id == stack_ids["torch_a"]
+
+
+def test_resolve_selected_stack_resolution_reports_missing_item_fallback() -> None:
+    campaign, _ = _build_campaign()
+
+    resolution = resolve_selected_stack_resolution(
+        campaign,
+        "pc_001",
+        selected_item_id="lockpick",
+    )
+
+    assert resolution.requested_stack_id == ""
+    assert resolution.requested_item_id == "lockpick"
+    assert resolution.resolved_stack_id == ""
+    assert resolution.resolved_item_id == ""
+    assert resolution.status == "none"
+    assert resolution.reason == "item_match_missing"
+    assert resolution.resolved_stack is None
