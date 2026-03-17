@@ -77,6 +77,31 @@ class _TakeAppleLLM:
         }
 
 
+class _DropHeldAppleLLM:
+    def generate(
+        self,
+        system_prompt: str,
+        user_input: str,
+        debug_append: Any,
+    ) -> Dict[str, Any]:
+        return {
+            "assistant_text": "",
+            "dialog_type": "scene_description",
+            "tool_calls": [
+                {
+                    "id": "call_scene_drop",
+                    "tool": "scene_action",
+                    "args": {
+                        "actor_id": "pc_001",
+                        "action": "drop",
+                        "target_id": "apple_01",
+                        "params": {},
+                    },
+                }
+            ],
+        }
+
+
 def _seed_campaign(tmp_path: Path, campaign_id: str) -> None:
     repo = FileRepo(tmp_path / "storage")
     campaign = Campaign(
@@ -169,7 +194,7 @@ def test_map_view_returns_only_current_area_entities_from_campaign_authority(
     assert all(entity["id"] != "coin_01" for entity in entities)
 
 
-def test_map_view_does_not_surface_area_item_stacks(
+def test_map_view_surfaces_area_item_stacks_as_projected_entities(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -195,8 +220,15 @@ def test_map_view_does_not_surface_area_item_stacks(
     )
     assert response.status_code == 200
     entities = response.json()["entities_in_area"]
-    assert [entity["id"] for entity in entities] == ["apple_01", "crate_01"]
-    assert all(entity["id"] != "field_ration" for entity in entities)
+    assert [entity["id"] for entity in entities[:2]] == ["apple_01", "crate_01"]
+    projected = next(entity for entity in entities if entity["id"] == ration_stack.stack_id)
+    assert projected["kind"] == "item"
+    assert projected["label"] == "Field Ration"
+    assert projected["tags"] == []
+    assert projected["state"] == {
+        "quantity": 1,
+        "item_id": "field_ration",
+    }
 
 
 def test_map_view_reflects_entity_state_changes_from_scene_action_turn(
@@ -256,3 +288,58 @@ def test_map_view_reflects_entity_location_changes_from_scene_action_turn(
     assert [entity["id"] for entity in map_response.json()["entities_in_area"]] == [
         "crate_01"
     ]
+
+
+def test_map_view_surfaces_stack_projection_after_legacy_entity_drop_turn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    campaign_id = "camp_map_scene_drop_projection"
+    _seed_campaign(tmp_path, campaign_id)
+    repo = FileRepo(tmp_path / "storage")
+    campaign = repo.get_campaign(campaign_id)
+    campaign.entities["apple_01"].loc = EntityLocation(type="actor", id="pc_001")
+    campaign.entities["apple_01"].verbs = ["inspect", "drop"]
+    repo.save_campaign(campaign)
+    client = _client(tmp_path, monkeypatch, _DropHeldAppleLLM)
+
+    turn_response = client.post(
+        "/api/v1/chat/turn",
+        json={
+            "campaign_id": campaign_id,
+            "user_input": "[UI_FLOW_STEP] drop apple",
+            "execution": {"actor_id": "pc_001"},
+        },
+    )
+    assert turn_response.status_code == 200
+    assert turn_response.json()["applied_actions"][0]["tool"] == "scene_action"
+
+    updated = repo.get_campaign(campaign_id)
+    assert "apple_01" not in updated.entities
+    dropped_stack = next(
+        stack for stack in updated.items.values() if stack.definition_id == "apple_01"
+    )
+    assert dropped_stack.parent_type == "area"
+    assert dropped_stack.parent_id == "area_001"
+
+    map_response = client.get(
+        "/api/v1/map/view",
+        params={"campaign_id": campaign_id, "actor_id": "pc_001"},
+    )
+    assert map_response.status_code == 200
+    entities_by_id = {
+        entity["id"]: entity for entity in map_response.json()["entities_in_area"]
+    }
+    assert "apple_01" not in entities_by_id
+    assert dropped_stack.stack_id in entities_by_id
+    assert entities_by_id[dropped_stack.stack_id] == {
+        "id": dropped_stack.stack_id,
+        "kind": "item",
+        "label": "Apple",
+        "tags": ["loot"],
+        "verbs": ["inspect", "take"],
+        "state": {
+            "quantity": 1,
+            "item_id": "apple_01",
+        },
+    }

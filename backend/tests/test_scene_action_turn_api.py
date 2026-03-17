@@ -119,6 +119,31 @@ class _TakeEntityLLM:
         }
 
 
+class _DropEntityLLM:
+    def generate(
+        self,
+        system_prompt: str,
+        user_input: str,
+        debug_append: Any,
+    ) -> Dict[str, Any]:
+        return {
+            "assistant_text": "",
+            "dialog_type": "scene_description",
+            "tool_calls": [
+                {
+                    "id": "call_scene_drop_entity",
+                    "tool": "scene_action",
+                    "args": {
+                        "actor_id": "pc_001",
+                        "action": "drop",
+                        "target_id": "apple_01",
+                        "params": {},
+                    },
+                }
+            ],
+        }
+
+
 class _UseSelectedStackLLM:
     def generate(
         self,
@@ -371,6 +396,65 @@ def test_chat_turn_scene_action_can_take_legacy_entity_targets_and_persist_items
     assert apple_stack.parent_type == "actor"
     assert apple_stack.parent_id == "pc_001"
     assert updated.actors["pc_001"].inventory == {"apple_01": 1}
+
+
+def test_chat_turn_scene_action_can_drop_legacy_entity_targets_and_persist_items(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    campaign_id = "camp_scene_turn_entity_drop"
+    _create_campaign(tmp_path, campaign_id)
+    repo = FileRepo(tmp_path / "storage")
+    campaign = repo.get_campaign(campaign_id)
+    campaign.entities["apple_01"] = Entity(
+        id="apple_01",
+        kind="item",
+        label="Apple",
+        tags=["food"],
+        loc=EntityLocation(type="actor", id="pc_001"),
+        verbs=["inspect", "drop"],
+        state={},
+        props={"mass": 1},
+    )
+    repo.save_campaign(campaign)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(turn_service_module, "LLMClient", _DropEntityLLM)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/v1/chat/turn",
+        json={
+            "campaign_id": campaign_id,
+            "user_input": "[UI_FLOW_STEP] scene action entity drop",
+            "execution": {"actor_id": "pc_001"},
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["applied_actions"][0]["tool"] == "scene_action"
+    assert payload["applied_actions"][0]["result"]["ok"] is True
+    assert payload["applied_actions"][0]["result"]["patches"]["removed_entities"] == [
+        {
+            "id": "apple_01",
+            "kind": "item",
+            "label": "Apple",
+            "tags": ["food"],
+            "loc": {"type": "actor", "id": "pc_001"},
+            "verbs": ["inspect", "drop"],
+            "state": {},
+            "props": {"mass": 1},
+        }
+    ]
+    assert payload["state_summary"]["active_actor_inventory"] == {}
+
+    updated = repo.get_campaign(campaign_id)
+    assert "apple_01" not in updated.entities
+    apple_stack = next(
+        stack for stack in updated.items.values() if stack.definition_id == "apple_01"
+    )
+    assert apple_stack.parent_type == "area"
+    assert apple_stack.parent_id == "area_001"
+    assert updated.actors["pc_001"].inventory == {}
 
 
 def test_chat_turn_scene_action_use_defaults_to_selected_stack_id(

@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from backend.app.scene_entities import build_area_local_entity_views
+from backend.app.scene_entities import build_area_map_entity_views
 from backend.infra.file_repo import FileRepo
 
 router = APIRouter(prefix="/map", tags=["map"])
@@ -83,7 +83,7 @@ def view_map(
     )
     entities_in_area = [
         SceneEntityView(**entity_payload)
-        for entity_payload in build_area_local_entity_views(campaign, area_id)
+        for entity_payload in build_area_map_entity_views(campaign, area_id)
     ]
 
     return MapViewResponse(

@@ -20,6 +20,7 @@ from backend.app.item_operations import (
     is_stack_locked,
     is_stack_open,
     is_stack_visible_to_actor,
+    move_stack_quantity,
     resolve_usable_stack,
     search_area_item_sources,
     search_stack_container_contents,
@@ -1236,11 +1237,13 @@ def _apply_scene_action(
                             error_message=f"target not in actor inventory: {target_stack.stack_id}",
                         ),
                     )
-                transfer_stack_parent(
+                move_stack_quantity(
                     campaign,
                     stack_id=target_stack.stack_id,
                     parent_type="area",
                     parent_id=current_area_id,
+                    quantity=None,
+                    allow_merge=False,
                 )
                 return _scene_action_applied(
                     call,
@@ -1277,10 +1280,43 @@ def _apply_scene_action(
                         error_message=f"target not in actor inventory: {target.id}",
                     ),
                 )
-            before = _entity_to_dict(target)
-            target.loc = EntityLocation(type="area", id=current_area_id)
-            target.verbs = _verbs_for_ground(target.verbs, target.kind)
-            _append_entity_patch(entity_patches, target, before)
+            drop_block = _drop_entity_conversion_block(campaign, target)
+            if drop_block is not None:
+                narrative, error_message = drop_block
+                return _scene_action_applied(
+                    call,
+                    timestamp,
+                    _scene_action_result(
+                        ok=False,
+                        narrative=narrative,
+                        error_code="not_allowed",
+                        error_message=error_message,
+                    ),
+                )
+            removed_entities.append(_entity_to_dict(target))
+            dropped_stack = grant_item_to_actor(
+                campaign,
+                actor_id=actor_id,
+                definition_id=target.id,
+                quantity=1,
+                label=target.label,
+                tags=list(target.tags),
+                verbs=_verbs_for_ground(target.verbs, target.kind),
+                state=dict(target.state),
+                props=dict(target.props),
+                stackable=False,
+                is_container=False,
+                stack_id_salt=f"drop:{target.id}:{actor_id}",
+            )
+            del campaign.entities[target.id]
+            move_stack_quantity(
+                campaign,
+                stack_id=dropped_stack.stack_id,
+                parent_type="area",
+                parent_id=current_area_id,
+                quantity=None,
+                allow_merge=False,
+            )
             return _scene_action_applied(
                 call,
                 timestamp,
@@ -1643,6 +1679,37 @@ def _take_entity_conversion_block(
         return (
             f"You cannot take {target.label} while it is acting as a search source.",
             f"take target is inventory source: {target.id}",
+        )
+    return None
+
+
+def _drop_entity_conversion_block(
+    campaign: Campaign, target: Entity
+) -> Optional[Tuple[str, str]]:
+    if target.kind == "npc":
+        return (
+            f"You cannot drop {target.label}.",
+            f"drop target is npc: {target.id}",
+        )
+    if target.kind == "container":
+        return (
+            f"You cannot drop {target.label} while it is acting as a container.",
+            f"drop target is container: {target.id}",
+        )
+    if target.kind not in {"item", "object"}:
+        return (
+            f"You cannot drop {target.label}.",
+            f"drop target has unsupported kind: {target.id}",
+        )
+    if _entity_has_child_entities(campaign, target.id):
+        return (
+            f"You cannot drop {target.label} while it still has attached contents.",
+            f"drop target has child entities: {target.id}",
+        )
+    if _entity_has_inventory_source_state(target):
+        return (
+            f"You cannot drop {target.label} while it is acting as a search source.",
+            f"drop target is inventory source: {target.id}",
         )
     return None
 
