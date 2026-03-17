@@ -205,6 +205,179 @@ def test_scene_action_detach_respects_carry_limit() -> None:
     assert result["ok"] is False
     assert result["error"]["code"] == "carry_limit"
     assert campaign.entities["door_01"].loc.type == "area"
+    assert campaign.items == {}
+
+
+def test_scene_action_detach_creates_actor_stack_and_removes_entity() -> None:
+    campaign = _base_campaign()
+    campaign.entities["door_01"] = Entity(
+        id="door_01",
+        kind="object",
+        label="Detached Door",
+        tags=["door", "metal"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "detach"],
+        state={"locked": False},
+        props={"mass": 5},
+    )
+    call = ToolCall(
+        id="call_detach_success",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "detach",
+            "target_id": "door_01",
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is True
+    assert result["patches"]["entity_patches"] == []
+    assert result["patches"]["new_entities"] == []
+    assert result["patches"]["removed_entities"] == [
+        {
+            "id": "door_01",
+            "kind": "object",
+            "label": "Detached Door",
+            "tags": ["door", "metal"],
+            "loc": {"type": "area", "id": "area_001"},
+            "verbs": ["inspect", "detach"],
+            "state": {"locked": False},
+            "props": {"mass": 5},
+        }
+    ]
+    assert "door_01" not in campaign.entities
+    assert campaign.actors["pc_001"].inventory == {"door_01": 1}
+    assert sorted(campaign.items.keys())
+    only_stack = next(iter(campaign.items.values()))
+    assert only_stack.definition_id == "door_01"
+    assert only_stack.quantity == 1
+    assert only_stack.parent_type == "actor"
+    assert only_stack.parent_id == "pc_001"
+    assert only_stack.label == "Detached Door"
+    assert only_stack.tags == ["door", "metal"]
+    assert only_stack.state == {"locked": False, "detached": True}
+    assert only_stack.props == {"mass": 5}
+    assert only_stack.stackable is False
+    assert only_stack.is_container is False
+
+
+def test_scene_action_detach_rejects_container_entities() -> None:
+    campaign = _base_campaign()
+    campaign.entities["crate_01"] = Entity(
+        id="crate_01",
+        kind="container",
+        label="Supply Crate",
+        tags=["crate"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "detach"],
+        state={},
+        props={"mass": 8},
+    )
+    call = ToolCall(
+        id="call_detach_container",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "detach",
+            "target_id": "crate_01",
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is False
+    assert result["error"]["code"] == "not_allowed"
+    assert campaign.entities["crate_01"].kind == "container"
+    assert campaign.items == {}
+
+
+def test_scene_action_detach_rejects_entities_with_children() -> None:
+    campaign = _base_campaign()
+    campaign.entities["door_01"] = Entity(
+        id="door_01",
+        kind="object",
+        label="Wall Panel",
+        tags=["panel"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "detach"],
+        state={},
+        props={"mass": 4},
+    )
+    campaign.entities["bolt_01"] = Entity(
+        id="bolt_01",
+        kind="item",
+        label="Hidden Bolt",
+        tags=["metal"],
+        loc=EntityLocation(type="entity", id="door_01"),
+        verbs=["inspect", "take"],
+        state={},
+        props={"mass": 1},
+    )
+    call = ToolCall(
+        id="call_detach_children",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "detach",
+            "target_id": "door_01",
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is False
+    assert result["error"]["code"] == "not_allowed"
+    assert "door_01" in campaign.entities
+    assert "bolt_01" in campaign.entities
+    assert campaign.items == {}
+
+
+def test_scene_action_detach_rejects_entity_without_detach_verb() -> None:
+    campaign = _base_campaign()
+    campaign.entities["door_01"] = Entity(
+        id="door_01",
+        kind="object",
+        label="Rusty Door",
+        tags=["door"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "open"],
+        state={"locked": False},
+        props={"mass": 20},
+    )
+    call = ToolCall(
+        id="call_detach_not_allowed",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "detach",
+            "target_id": "door_01",
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is False
+    assert result["error"]["code"] == "not_allowed"
+    assert "door_01" in campaign.entities
+    assert campaign.items == {}
 
 
 def test_scene_action_take_and_drop_updates_location() -> None:

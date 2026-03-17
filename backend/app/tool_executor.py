@@ -1284,6 +1284,28 @@ def _apply_scene_action(
         if normalized_action == "detach":
             if target is None:
                 return None
+            if target.kind == "container":
+                return _scene_action_applied(
+                    call,
+                    timestamp,
+                    _scene_action_result(
+                        ok=False,
+                        narrative=f"You cannot detach {target.label} while it is acting as a container.",
+                        error_code="not_allowed",
+                        error_message=f"detach target is container: {target.id}",
+                    ),
+                )
+            if _entity_has_child_entities(campaign, target.id):
+                return _scene_action_applied(
+                    call,
+                    timestamp,
+                    _scene_action_result(
+                        ok=False,
+                        narrative=f"You cannot detach {target.label} while it still has attached contents.",
+                        error_code="not_allowed",
+                        error_message=f"detach target has child entities: {target.id}",
+                    ),
+                )
             if _exceeds_carry_limit(campaign, actor_id, target):
                 return _scene_action_applied(
                     call,
@@ -1295,12 +1317,22 @@ def _apply_scene_action(
                         error_message=f"carry limit exceeded by target: {target.id}",
                     ),
                 )
-            before = _entity_to_dict(target)
-            target.kind = "item"
-            target.state["detached"] = True
-            target.loc = EntityLocation(type="actor", id=actor_id)
-            target.verbs = _verbs_for_inventory(target.verbs)
-            _append_entity_patch(entity_patches, target, before)
+            removed_entities.append(_entity_to_dict(target))
+            grant_item_to_actor(
+                campaign,
+                actor_id=actor_id,
+                definition_id=_detached_entity_definition_id(target),
+                quantity=1,
+                label=target.label,
+                tags=target.tags,
+                verbs=_verbs_for_detached_stack(target.verbs),
+                state=_detached_entity_state(target),
+                props=target.props,
+                stackable=False,
+                is_container=False,
+                stack_id_salt=f"detach:{target.id}:{actor_id}",
+            )
+            del campaign.entities[target.id]
             return _scene_action_applied(
                 call,
                 timestamp,
@@ -1540,6 +1572,12 @@ def _verbs_for_ground(raw_verbs: object, kind: str) -> List[str]:
     return verbs
 
 
+def _verbs_for_detached_stack(raw_verbs: object) -> List[str]:
+    return [
+        verb for verb in _normalized_verbs(raw_verbs) if verb not in {"take", "drop", "detach"}
+    ]
+
+
 def _is_scene_action_allowed(action: str, target: Entity) -> bool:
     allowed_verbs = set(_normalized_verbs(target.verbs))
     blocked_verbs = set(_normalized_verbs(target.state.get("blocked_verbs")))
@@ -1550,6 +1588,23 @@ def _is_scene_action_allowed(action: str, target: Entity) -> bool:
     if action == "talk":
         return target.kind == "npc" or "talk" in allowed_verbs
     return action in allowed_verbs
+
+
+def _detached_entity_definition_id(target: Entity) -> str:
+    return target.id
+
+
+def _detached_entity_state(target: Entity) -> Dict[str, Any]:
+    state = dict(target.state)
+    state["detached"] = True
+    return state
+
+
+def _entity_has_child_entities(campaign: Campaign, entity_id: str) -> bool:
+    return any(
+        entity.loc.type == "entity" and entity.loc.id == entity_id
+        for entity in campaign.entities.values()
+    )
 
 
 def _is_entity_reachable(

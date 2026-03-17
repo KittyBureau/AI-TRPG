@@ -119,6 +119,31 @@ class _UseSelectedStackLLM:
         }
 
 
+class _DetachLLM:
+    def generate(
+        self,
+        system_prompt: str,
+        user_input: str,
+        debug_append: Any,
+    ) -> Dict[str, Any]:
+        return {
+            "assistant_text": "",
+            "dialog_type": "scene_description",
+            "tool_calls": [
+                {
+                    "id": "call_scene_detach",
+                    "tool": "scene_action",
+                    "args": {
+                        "actor_id": "pc_001",
+                        "action": "detach",
+                        "target_id": "door_01",
+                        "params": {},
+                    },
+                }
+            ],
+        }
+
+
 def _create_campaign(tmp_path: Path, campaign_id: str) -> None:
     repo = FileRepo(tmp_path / "storage")
     campaign = Campaign(
@@ -319,6 +344,64 @@ def test_chat_turn_scene_action_use_defaults_to_selected_stack_id(
     assert updated.entities["shrine_01"].state["used"] is True
     assert key_stack.stack_id not in updated.items
     assert updated.actors["pc_001"].inventory == {}
+
+
+def test_chat_turn_scene_action_detach_creates_item_stack_and_removes_entity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    campaign_id = "camp_scene_turn_detach"
+    _create_campaign(tmp_path, campaign_id)
+    repo = FileRepo(tmp_path / "storage")
+    campaign = repo.get_campaign(campaign_id)
+    campaign.entities["door_01"] = Entity(
+        id="door_01",
+        kind="object",
+        label="Detached Door",
+        tags=["door", "metal"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "detach"],
+        state={"locked": False},
+        props={"mass": 5},
+    )
+    repo.save_campaign(campaign)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(turn_service_module, "LLMClient", _DetachLLM)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/v1/chat/turn",
+        json={
+            "campaign_id": campaign_id,
+            "user_input": "[UI_FLOW_STEP] scene action detach",
+            "execution": {"actor_id": "pc_001"},
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["applied_actions"][0]["tool"] == "scene_action"
+    assert payload["applied_actions"][0]["result"]["ok"] is True
+    assert payload["applied_actions"][0]["result"]["patches"]["removed_entities"] == [
+        {
+            "id": "door_01",
+            "kind": "object",
+            "label": "Detached Door",
+            "tags": ["door", "metal"],
+            "loc": {"type": "area", "id": "area_001"},
+            "verbs": ["inspect", "detach"],
+            "state": {"locked": False},
+            "props": {"mass": 5},
+        }
+    ]
+    assert payload["state_summary"]["active_actor_inventory"] == {"door_01": 1}
+
+    updated = repo.get_campaign(campaign_id)
+    assert "door_01" not in updated.entities
+    only_stack = next(stack for stack in updated.items.values() if stack.definition_id == "door_01")
+    assert only_stack.parent_type == "actor"
+    assert only_stack.parent_id == "pc_001"
+    assert only_stack.stackable is False
+    assert updated.actors["pc_001"].inventory == {"door_01": 1}
 
 
 def test_chat_turn_without_tools_does_not_change_actor_position(
