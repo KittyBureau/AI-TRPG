@@ -237,12 +237,14 @@ def _assert_state_summary_contract(summary: Dict[str, Any]) -> None:
         "character_states",
         "inventories",
         "inventory_stack_ids",
+        "inventory_stacks",
         "objective",
         "active_area_id",
         "active_area_name",
         "active_area_description",
         "active_actor_inventory",
         "active_actor_inventory_stack_ids",
+        "active_actor_inventory_stacks",
     ):
         assert key in summary
 
@@ -338,6 +340,28 @@ def test_chat_turn_tool_response_contract_keeps_applied_actions_and_tool_feedbac
     assert payload["state_summary"]["active_actor_inventory_stack_ids"] == {
         "torch": payload["state_summary"]["inventory_stack_ids"]["pc_001"]["torch"]
     }
+    assert payload["state_summary"]["inventory_stacks"] == {
+        "pc_001": [
+            {
+                "stack_id": payload["state_summary"]["inventory_stack_ids"]["pc_001"]["torch"][0],
+                "item_id": "torch",
+                "quantity": 1,
+                "owner_actor_id": "pc_001",
+                "location": {"type": "actor", "id": "pc_001"},
+                "label": "torch",
+            }
+        ]
+    }
+    assert payload["state_summary"]["active_actor_inventory_stacks"] == [
+        {
+            "stack_id": payload["state_summary"]["inventory_stack_ids"]["pc_001"]["torch"][0],
+            "item_id": "torch",
+            "quantity": 1,
+            "owner_actor_id": "pc_001",
+            "location": {"type": "actor", "id": "pc_001"},
+            "label": "torch",
+        }
+    ]
     assert payload["state_summary"]["inventories"] == {"pc_001": {"torch": 1}}
     assert len(payload["state_summary"]["inventory_stack_ids"]["pc_001"]["torch"]) == 1
     assert payload["narrative_text"] == "The action was performed."

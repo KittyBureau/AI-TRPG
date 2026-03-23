@@ -68,6 +68,28 @@ test("refreshCampaign syncs party and active actor from backend authority", asyn
           rope: ["stk_rope_0002"],
         },
       },
+      inventory_stacks: {
+        pc_001: [
+          {
+            stack_id: "stk_torch_0001",
+            item_id: "torch",
+            quantity: 1,
+            owner_actor_id: "pc_001",
+            location: { type: "actor", id: "pc_001" },
+            label: "torch",
+          },
+        ],
+        pc_002: [
+          {
+            stack_id: "stk_rope_0002",
+            item_id: "rope",
+            quantity: 2,
+            owner_actor_id: "pc_002",
+            location: { type: "actor", id: "pc_002" },
+            label: "rope",
+          },
+        ],
+      },
       map: {
         areas: {
           area_001: {
@@ -117,9 +139,35 @@ test("refreshCampaign syncs party and active actor from backend authority", asyn
     pc_001: { torch: 1 },
     pc_002: { rope: 2 },
   });
+  assert.deepEqual(store.getState().inventoryStacksByActor, {
+    pc_001: [
+      {
+        stack_id: "stk_torch_0001",
+        item_id: "torch",
+        quantity: 1,
+        owner_actor_id: "pc_001",
+        location: { type: "actor", id: "pc_001" },
+        label: "torch",
+      },
+    ],
+    pc_002: [
+      {
+        stack_id: "stk_rope_0002",
+        item_id: "rope",
+        quantity: 2,
+        owner_actor_id: "pc_002",
+        location: { type: "actor", id: "pc_002" },
+        label: "rope",
+      },
+    ],
+  });
   assert.deepEqual(store.getState().inventoryStackIdsByActor, {
     pc_001: { torch: ["stk_torch_0001"] },
     pc_002: { rope: ["stk_rope_0002"] },
+  });
+  assert.deepEqual(store.getState().inventoryAuthoritySourceByActor, {
+    pc_001: "stack",
+    pc_002: "stack",
   });
   assert.deepEqual(store.getState().campaign.map, {
     areas: {
@@ -401,6 +449,69 @@ test("recordTurnResult stores applied_actions and effective actor for panels", a
   assert.equal(state.debug.responseText, "{\"ok\":true}");
 });
 
+test("refreshCampaign derives aggregated inventory from inventory_stacks authority even when compatibility inventory differs", async () => {
+  const store = await loadStoreModule();
+  global.fetch = async (url) => {
+    assert.match(String(url), /\/api\/v1\/campaign\/get\?/);
+    return jsonResponse({
+      campaign_id: "camp_001",
+      selected: {
+        party_character_ids: ["pc_001"],
+        active_actor_id: "pc_001",
+      },
+      actors: {
+        pc_001: {
+          position: "area_001",
+          hp: 10,
+          character_state: "alive",
+          inventory: { torch: 99 },
+        },
+      },
+      inventory_stack_ids: {
+        pc_001: {
+          torch: ["stk_torch_0001"],
+        },
+      },
+      inventory_stacks: {
+        pc_001: [
+          {
+            stack_id: "stk_torch_0001",
+            item_id: "torch",
+            quantity: 1,
+            owner_actor_id: "pc_001",
+            location: { type: "actor", id: "pc_001" },
+            label: "torch",
+          },
+        ],
+      },
+      status: {
+        ended: false,
+        reason: null,
+        ended_at: null,
+        milestone: {
+          current: "intro",
+          last_advanced_turn: 0,
+          turn_trigger_interval: 6,
+          pressure: 0,
+          pressure_threshold: 2,
+          summary: "",
+        },
+      },
+    });
+  };
+
+  const result = await store.refreshCampaign("camp_001", "http://127.0.0.1:8000");
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(store.getState().inventoryByActor, {
+    pc_001: { torch: 1 },
+  });
+  assert.deepEqual(store.getState().inventoryStackIdsByActor, {
+    pc_001: { torch: ["stk_torch_0001"] },
+  });
+  assert.equal(store.getState().inventoryAuthoritySourceByActor.pc_001, "stack");
+});
+
 test("selected item state stays isolated by actor and follows active actor switching", async () => {
   const store = await loadStoreModule();
   let refreshCalls = 0;
@@ -453,10 +564,9 @@ test("selected item state stays isolated by actor and follows active actor switc
     pc_001: "stk_torch_0001",
     pc_002: "stk_potion_0001",
   });
-  assert.deepEqual(store.getState().selectedItemIdByActor, {
-    pc_001: "torch",
-    pc_002: "potion",
-  });
+  assert.equal("selectedItemIdByActor" in store.getState(), false);
+  assert.equal(store.getSelectedItemIdForActor("pc_001"), "torch");
+  assert.equal(store.getSelectedItemIdForActor("pc_002"), "potion");
 
   const switchToSecond = await store.selectActiveActor(
     "pc_002",
@@ -466,7 +576,7 @@ test("selected item state stays isolated by actor and follows active actor switc
   assert.equal(switchToSecond.ok, true);
   assert.equal(store.getState().campaign.active_actor_id, "pc_002");
   assert.equal(
-    store.getState().selectedItemIdByActor[store.getState().campaign.active_actor_id],
+    store.getSelectedItemIdForActor(store.getState().campaign.active_actor_id),
     "potion"
   );
 
@@ -478,7 +588,7 @@ test("selected item state stays isolated by actor and follows active actor switc
   assert.equal(switchBack.ok, true);
   assert.equal(store.getState().campaign.active_actor_id, "pc_001");
   assert.equal(
-    store.getState().selectedItemIdByActor[store.getState().campaign.active_actor_id],
+    store.getSelectedItemIdForActor(store.getState().campaign.active_actor_id),
     "torch"
   );
 });
@@ -546,7 +656,7 @@ test("refreshCampaign seeds inventoryByActor from campaign/get actor inventory a
     pc_001: { rope: 1 },
   });
   assert.equal(store.getState().selectedStackIdByActor.pc_001, null);
-  assert.equal(store.getState().selectedItemIdByActor.pc_001, null);
+  assert.equal(store.getSelectedItemIdForActor("pc_001"), null);
 });
 
 test("recordTurnResult clears selected item when inventory snapshot removes it", async () => {
@@ -571,7 +681,7 @@ test("recordTurnResult clears selected item when inventory snapshot removes it",
   });
   assert.equal(store.setSelectedItemForActor("pc_001", "torch"), true);
   assert.equal(store.getState().selectedStackIdByActor.pc_001, "stk_torch_0001");
-  assert.equal(store.getState().selectedItemIdByActor.pc_001, "torch");
+  assert.equal(store.getSelectedItemIdForActor("pc_001"), "torch");
 
   store.recordTurnResult({
     effective_actor_id: "pc_001",
@@ -592,7 +702,7 @@ test("recordTurnResult clears selected item when inventory snapshot removes it",
     pc_001: { rope: 1 },
   });
   assert.equal(store.getState().selectedStackIdByActor.pc_001, null);
-  assert.equal(store.getState().selectedItemIdByActor.pc_001, null);
+  assert.equal(store.getSelectedItemIdForActor("pc_001"), null);
 });
 
 test("recordTurnResult clears selected item when inventory becomes empty", async () => {
@@ -633,7 +743,7 @@ test("recordTurnResult clears selected item when inventory becomes empty", async
     pc_001: {},
   });
   assert.equal(store.getState().selectedStackIdByActor.pc_001, null);
-  assert.equal(store.getState().selectedItemIdByActor.pc_001, null);
+  assert.equal(store.getSelectedItemIdForActor("pc_001"), null);
 });
 
 test("recordTurnResult clears selected item when the selected stack disappears but the item id remains", async () => {
@@ -657,7 +767,7 @@ test("recordTurnResult clears selected item when the selected stack disappears b
   });
   assert.equal(store.setSelectedItemForActor("pc_001", "torch"), true);
   assert.equal(store.getState().selectedStackIdByActor.pc_001, "stk_torch_old");
-  assert.equal(store.getState().selectedItemIdByActor.pc_001, "torch");
+  assert.equal(store.getSelectedItemIdForActor("pc_001"), "torch");
 
   store.recordTurnResult({
     effective_actor_id: "pc_001",
@@ -675,7 +785,205 @@ test("recordTurnResult clears selected item when the selected stack disappears b
   });
 
   assert.equal(store.getState().selectedStackIdByActor.pc_001, null);
-  assert.equal(store.getState().selectedItemIdByActor.pc_001, null);
+  assert.equal(store.getSelectedItemIdForActor("pc_001"), null);
+});
+
+test("recordTurnResult uses compatibility fallback explicitly when stack authority payload is missing", async () => {
+  const store = await loadStoreModule();
+  store.setCampaignOptions([{ id: "camp_001", active_actor_id: "pc_001" }]);
+  store.setCampaignId("camp_001");
+
+  store.recordTurnResult({
+    effective_actor_id: "pc_001",
+    state_summary: {
+      active_actor_id: "pc_001",
+      inventories: {
+        pc_001: { torch: 2 },
+      },
+      inventory_stack_ids: {
+        pc_001: {
+          torch: ["stk_torch_old", "stk_torch_other"],
+        },
+      },
+    },
+  });
+
+  assert.equal(store.getState().inventoryAuthoritySourceByActor.pc_001, "compatibility");
+  assert.deepEqual(store.getState().inventoryByActor, {
+    pc_001: { torch: 2 },
+  });
+  assert.deepEqual(store.getState().inventoryStacksByActor.pc_001, [
+    {
+      stack_id: "stk_torch_old",
+      item_id: "torch",
+      quantity: 1,
+      owner_actor_id: "pc_001",
+      location: { type: "actor", id: "pc_001" },
+      label: "",
+    },
+    {
+      stack_id: "stk_torch_other",
+      item_id: "torch",
+      quantity: 1,
+      owner_actor_id: "pc_001",
+      location: { type: "actor", id: "pc_001" },
+      label: "",
+    },
+  ]);
+});
+
+test("setSelectedStackForActor is the primary selection authority and mirrors item_id for compatibility", async () => {
+  const store = await loadStoreModule();
+  store.setCampaignOptions([{ id: "camp_001", active_actor_id: "pc_001" }]);
+  store.setCampaignId("camp_001");
+
+  store.recordTurnResult({
+    effective_actor_id: "pc_001",
+    state_summary: {
+      active_actor_id: "pc_001",
+      inventory_stacks: {
+        pc_001: [
+          {
+            stack_id: "stk_torch_0001",
+            item_id: "torch",
+            quantity: 1,
+            owner_actor_id: "pc_001",
+            location: { type: "actor", id: "pc_001" },
+            label: "torch",
+          },
+          {
+            stack_id: "stk_rope_0001",
+            item_id: "rope",
+            quantity: 1,
+            owner_actor_id: "pc_001",
+            location: { type: "actor", id: "pc_001" },
+            label: "rope",
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(store.setSelectedStackForActor("pc_001", "stk_torch_0001"), true);
+  assert.equal(store.getState().selectedStackIdByActor.pc_001, "stk_torch_0001");
+  assert.equal(store.getSelectedItemIdForActor("pc_001"), "torch");
+  assert.deepEqual(store.getState().selectionAuditByActor.pc_001, {
+    mode: "stack_primary",
+    actor_id: "pc_001",
+    selected_stack_id: "stk_torch_0001",
+    selected_item_id: "torch",
+  });
+});
+
+test("setSelectedItemForActor uses an explicit item adapter path to resolve a deterministic stack", async () => {
+  const store = await loadStoreModule();
+  store.setCampaignOptions([{ id: "camp_001", active_actor_id: "pc_001" }]);
+  store.setCampaignId("camp_001");
+
+  store.recordTurnResult({
+    effective_actor_id: "pc_001",
+    state_summary: {
+      active_actor_id: "pc_001",
+      inventory_stacks: {
+        pc_001: [
+          {
+            stack_id: "stk_torch_a",
+            item_id: "torch",
+            quantity: 1,
+            owner_actor_id: "pc_001",
+            location: { type: "actor", id: "pc_001" },
+            label: "torch",
+          },
+          {
+            stack_id: "stk_torch_b",
+            item_id: "torch",
+            quantity: 1,
+            owner_actor_id: "pc_001",
+            location: { type: "actor", id: "pc_001" },
+            label: "torch",
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(store.setSelectedItemForActor("pc_001", "torch"), true);
+  assert.equal(store.getState().selectedStackIdByActor.pc_001, "stk_torch_a");
+  assert.equal(store.getSelectedItemIdForActor("pc_001"), "torch");
+  assert.deepEqual(store.getState().selectionAuditByActor.pc_001, {
+    mode: "item_adapter",
+    actor_id: "pc_001",
+    selected_stack_id: "stk_torch_a",
+    selected_item_id: "torch",
+    requested_item_id: "torch",
+    reason: "deterministic_first_stack",
+    candidate_stack_ids: ["stk_torch_a", "stk_torch_b"],
+  });
+});
+
+test("buildTurnContextHintsForActor submits selected_stack_id by default", async () => {
+  const store = await loadStoreModule();
+  store.setCampaignOptions([{ id: "camp_001", active_actor_id: "pc_001" }]);
+  store.setCampaignId("camp_001");
+
+  store.recordTurnResult({
+    effective_actor_id: "pc_001",
+    state_summary: {
+      active_actor_id: "pc_001",
+      inventory_stacks: {
+        pc_001: [
+          {
+            stack_id: "stk_torch_0001",
+            item_id: "torch",
+            quantity: 1,
+            owner_actor_id: "pc_001",
+            location: { type: "actor", id: "pc_001" },
+            label: "torch",
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(store.setSelectedItemForActor("pc_001", "torch"), true);
+  assert.deepEqual(store.buildTurnContextHintsForActor("pc_001"), {
+    selected_stack_id: "stk_torch_0001",
+  });
+  assert.deepEqual(store.getState().submitSelectionAuditByActor.pc_001, {
+    mode: "stack_primary",
+    actor_id: "pc_001",
+    selected_stack_id: "stk_torch_0001",
+    selected_item_id: "torch",
+  });
+});
+
+test("buildTurnContextHintsForActor uses selected_item_id only for explicit fallback selection", async () => {
+  const store = await loadStoreModule();
+  store.getState().inventoryByActor = {
+    pc_001: { torch: 1 },
+  };
+  store.getState().inventoryStacksByActor = {};
+
+  assert.equal(store.setSelectedItemForActor("pc_001", "torch"), true);
+  assert.equal(store.getState().selectedStackIdByActor.pc_001, null);
+  assert.equal(store.getSelectedItemIdForActor("pc_001"), "torch");
+  assert.deepEqual(store.getState().selectionAuditByActor.pc_001, {
+    mode: "item_fallback",
+    actor_id: "pc_001",
+    selected_item_id: "torch",
+    requested_item_id: "torch",
+    reason: "stack_unresolved",
+  });
+  assert.deepEqual(store.buildTurnContextHintsForActor("pc_001"), {
+    selected_item_id: "torch",
+  });
+  assert.deepEqual(store.getState().submitSelectionAuditByActor.pc_001, {
+    mode: "item_fallback",
+    actor_id: "pc_001",
+    selected_item_id: "torch",
+    requested_item_id: "torch",
+    reason: "stack_unresolved",
+  });
 });
 
 test("checkBackendReady stores not-ready reason and prompt message", async () => {

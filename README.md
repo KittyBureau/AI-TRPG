@@ -32,3 +32,4 @@ uvicorn backend.api.main:app --reload
 - Primary workflow: local VSCode + Codex with the full repository as source of truth.
 - ChatGPT web project context uses a lightweight Google Drive reference-doc package refreshed via `scripts/sync_chatgpt_docs.ps1`.
 - That package is intentionally small and stage-oriented; detailed implementation lookup should still happen from the local repo, usually through Codex.
+- Current item-system/runtime truth is stack-first: portable item authority is `campaign.items`, frontend inventory authority derives from stack payloads, and `selected_stack_id` is the normal selection/submit path.

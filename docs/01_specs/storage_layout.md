@@ -272,7 +272,7 @@ Frontend campaign refresh note:
 - `GET /api/v1/campaign/get` is the authoritative Play refresh snapshot.
 - It mirrors `selected`, `actors`, `map.areas`, and `status` from persisted campaign state.
 - `actors[*]` includes read-only runtime snapshot fields used by Play refresh, including `position`, `hp`, `character_state`, and `inventory`.
-- `actors[*].inventory` in that payload is derived from `campaign.items`; `campaign/get` also exposes `inventory_stack_ids` as a stack-aware companion map.
+- `actors[*].inventory` in that payload is derived from `campaign.items`; `campaign/get.inventory_stacks` is the primary stack-first inventory contract and `inventory_stack_ids` is a companion compatibility map.
 - Play uses that shared-store snapshot for current actor/map situation; `/api/v1/map/view` remains optional inspection data, not the primary Play source of truth.
 
 ## Character access boundary (current)
@@ -474,6 +474,19 @@ Each line is a JSON object:
       },
       "pc_002": {}
     },
+    "inventory_stacks": {
+      "pc_001": [
+        {
+          "stack_id": "stk_torch_example",
+          "item_id": "torch",
+          "quantity": 1,
+          "owner_actor_id": "pc_001",
+          "location": { "type": "actor", "id": "pc_001" },
+          "label": "torch"
+        }
+      ],
+      "pc_002": []
+    },
     "objective": "Explore the nearby areas and recover one useful item.",
     "active_area_id": "area_002",
     "active_area_name": "Side Room",
@@ -483,7 +496,17 @@ Each line is a JSON object:
     },
     "active_actor_inventory_stack_ids": {
       "torch": ["stk_torch_example"]
-    }
+    },
+    "active_actor_inventory_stacks": [
+      {
+        "stack_id": "stk_torch_example",
+        "item_id": "torch",
+        "quantity": 1,
+        "owner_actor_id": "pc_001",
+        "location": { "type": "actor", "id": "pc_001" },
+        "label": "torch"
+      }
+    ]
   }
 }
 ```
@@ -514,4 +537,4 @@ tool feedback may include reason `repeat_illegal_request`.
 | applied_actions | array | Applied tool results. |
 | tool_feedback | object | Failed tool calls with reasons; may be `null` when no failures occurred. |
 | conflict_report | object | Conflict info when retries occur; may be `null` on normal turns. |
-| state_summary | object | Stable v1 summary contract: `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, `inventories`, `inventory_stack_ids`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, `active_actor_inventory`, `active_actor_inventory_stack_ids`. |
+| state_summary | object | Stable v1 summary contract: `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, derived compatibility `inventories` / `inventory_stack_ids`, primary `inventory_stacks`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, compatibility `active_actor_inventory` / `active_actor_inventory_stack_ids`, and primary `active_actor_inventory_stacks`. |

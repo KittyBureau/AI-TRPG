@@ -1,6 +1,9 @@
 import { chatTurn } from "../api/api.js";
 import { getPartyActorIds, resolveActingActorId } from "../utils/acting_actor.js";
-import { buildInventoryItemViews } from "../utils/inventory_items.js";
+import {
+  buildInventoryItemViews,
+  buildInventoryItemViewsFromStacks,
+} from "../utils/inventory_items.js";
 
 function buildMovePrompt(actorId, toAreaId) {
   return `[UI_FLOW_STEP]
@@ -62,15 +65,83 @@ function hasOwn(object, key) {
   return Object.prototype.hasOwnProperty.call(object, key);
 }
 
-function getActorInventoryView(state, actorId) {
+function deriveSelectedItemIdFromState(state, actorId) {
+  if (!actorId) {
+    return null;
+  }
+  const selectedStackId =
+    state?.selectedStackIdByActor && typeof state.selectedStackIdByActor === "object"
+      ? state.selectedStackIdByActor[actorId]
+      : null;
+  const actorStacks =
+    state?.inventoryStacksByActor && typeof state.inventoryStacksByActor === "object"
+      ? state.inventoryStacksByActor[actorId]
+      : null;
+  if (Array.isArray(actorStacks) && typeof selectedStackId === "string" && selectedStackId.trim()) {
+    const selectedStack = actorStacks.find(
+      (stack) =>
+        stack &&
+        typeof stack.stack_id === "string" &&
+        stack.stack_id.trim() === selectedStackId.trim()
+    );
+    if (selectedStack && typeof selectedStack.item_id === "string" && selectedStack.item_id.trim()) {
+      return selectedStack.item_id.trim();
+    }
+  }
+  const selectionAudit =
+    state?.selectionAuditByActor && typeof state.selectionAuditByActor === "object"
+      ? state.selectionAuditByActor[actorId]
+      : null;
+  if (selectionAudit && typeof selectionAudit === "object" && !Array.isArray(selectionAudit)) {
+    if (
+      typeof selectionAudit.requested_item_id === "string" &&
+      selectionAudit.requested_item_id.trim()
+    ) {
+      return selectionAudit.requested_item_id.trim();
+    }
+    if (
+      typeof selectionAudit.selected_item_id === "string" &&
+      selectionAudit.selected_item_id.trim()
+    ) {
+      return selectionAudit.selected_item_id.trim();
+    }
+  }
+  return null;
+}
+
+function getActorInventoryView(state, actorId, store = null) {
   const inventoryByActor =
     state?.inventoryByActor && typeof state.inventoryByActor === "object"
       ? state.inventoryByActor
       : {};
-  if (!actorId || !hasOwn(inventoryByActor, actorId)) {
+  const inventoryStacksByActor =
+    state?.inventoryStacksByActor && typeof state.inventoryStacksByActor === "object"
+      ? state.inventoryStacksByActor
+      : {};
+  if (!actorId || (!hasOwn(inventoryByActor, actorId) && !hasOwn(inventoryStacksByActor, actorId))) {
     return {
       known: false,
       items: [],
+    };
+  }
+  const selectedStackId =
+    state?.selectedStackIdByActor && typeof state.selectedStackIdByActor === "object"
+      ? state.selectedStackIdByActor[actorId]
+      : null;
+  const actorStacks = Array.isArray(inventoryStacksByActor[actorId]) ? inventoryStacksByActor[actorId] : null;
+  const selectedItemId =
+    store && typeof store.getSelectedItemIdForActor === "function"
+      ? store.getSelectedItemIdForActor(actorId) || ""
+      : deriveSelectedItemIdFromState(state, actorId) || "";
+  const selectionAudit = getActorSelectionAudit(state, actorId);
+  if (Array.isArray(actorStacks)) {
+    return {
+      known: true,
+      items: buildInventoryItemViewsFromStacks(actorStacks, {
+        selectedStackId,
+        selectedItemId: selectedItemId || null,
+        selectionAudit,
+      }),
     };
   }
   const inventory =
@@ -79,13 +150,74 @@ function getActorInventoryView(state, actorId) {
       : {};
   return {
     known: true,
-    items: buildInventoryItemViews(
-      inventory,
-      state?.selectedItemIdByActor && typeof state.selectedItemIdByActor === "object"
-        ? state.selectedItemIdByActor[actorId]
-        : null
-    ),
+    items: buildInventoryItemViews(inventory, selectedItemId || null),
   };
+}
+
+function getActorSelectionAudit(state, actorId) {
+  if (!actorId || !state?.selectionAuditByActor || typeof state.selectionAuditByActor !== "object") {
+    return null;
+  }
+  const audit = state.selectionAuditByActor[actorId];
+  return audit && typeof audit === "object" && !Array.isArray(audit) ? audit : null;
+}
+
+function formatSelectionSummary(selectedItemView, selectedItemId, selectedStackId, selectionAudit) {
+  if (selectedItemView) {
+    const mode =
+      selectionAudit && typeof selectionAudit.mode === "string" && selectionAudit.mode.trim()
+        ? selectionAudit.mode.trim()
+        : "stack_primary";
+    const selectedStackLabel =
+      selectedItemView.selected_stack_id || selectedStackId || selectedItemView.primary_stack_id || "none";
+    const stackScope =
+      typeof selectedItemView.stack_count === "number" && selectedItemView.stack_count > 1
+        ? `, ${selectedItemView.stack_count} stacks`
+        : "";
+    return `Selected item: ${selectedItemView.name} (${selectedItemView.item_id}) via ${selectedStackLabel}${stackScope} [${mode}]`;
+  }
+  if (selectedItemId) {
+    const mode =
+      selectionAudit && typeof selectionAudit.mode === "string" && selectionAudit.mode.trim()
+        ? selectionAudit.mode.trim()
+        : "item_fallback";
+    return `Selected item: ${selectedItemId} [${mode}]`;
+  }
+  return "Selected item: none";
+}
+
+function formatSelectionNote(selectionAudit) {
+  if (selectionAudit?.mode === "item_fallback") {
+    return "Selection fallback active: the next turn request will use selected_item_id until a stack can be resolved.";
+  }
+  if (
+    Array.isArray(selectionAudit?.candidate_stack_ids) &&
+    selectionAudit.candidate_stack_ids.length > 1
+  ) {
+    return `Selection uses selected_stack_id. Multiple stacks are present; the current adapter path picked ${selectionAudit.selected_stack_id}.`;
+  }
+  return "Selection is stored per actor and sent as selected_stack_id by default. selected_item_id is fallback-only.";
+}
+
+export function buildTurnPayload(state, actorId, userInput, store) {
+  const payload = {
+    campaign_id: state.campaignId,
+    user_input: userInput,
+    execution: { actor_id: actorId },
+  };
+  const contextHints =
+    store && typeof store.buildTurnContextHintsForActor === "function"
+      ? store.buildTurnContextHintsForActor(actorId)
+      : null;
+  if (contextHints && typeof contextHints === "object" && !Array.isArray(contextHints)) {
+    const hintEntries = Object.entries(contextHints).filter(
+      ([, value]) => typeof value === "string" && value.trim()
+    );
+    if (hintEntries.length > 0) {
+      payload.context_hints = Object.fromEntries(hintEntries.map(([key, value]) => [key, value.trim()]));
+    }
+  }
+  return payload;
 }
 
 export function initPanel(store) {
@@ -137,31 +269,7 @@ export function initPanel(store) {
       store.setStatusMessage("Turn input is required.");
       return;
     }
-    const payload = {
-      campaign_id: state.campaignId,
-      user_input: userInput,
-      execution: { actor_id: actorId },
-    };
-    const selectedStackId =
-      state.selectedStackIdByActor && typeof state.selectedStackIdByActor === "object"
-        ? state.selectedStackIdByActor[actorId]
-        : null;
-    const selectedItemId =
-      state.selectedItemIdByActor && typeof state.selectedItemIdByActor === "object"
-        ? state.selectedItemIdByActor[actorId]
-        : null;
-    if (
-      (typeof selectedStackId === "string" && selectedStackId.trim()) ||
-      (typeof selectedItemId === "string" && selectedItemId.trim())
-    ) {
-      payload.context_hints = {};
-      if (typeof selectedStackId === "string" && selectedStackId.trim()) {
-        payload.context_hints.selected_stack_id = selectedStackId.trim();
-      }
-      if (typeof selectedItemId === "string" && selectedItemId.trim()) {
-        payload.context_hints.selected_item_id = selectedItemId.trim();
-      }
-    }
+    const payload = buildTurnPayload(state, actorId, userInput, store);
     const result = await chatTurn(state.baseUrl, payload);
     if (!result.ok || !result.data) {
       store.setStatusMessage(`Turn failed: ${parseApiError(result)}`);
@@ -231,11 +339,16 @@ export function initPanel(store) {
     const party = getPartyActorIds(state);
     const actingActorId = resolveActingActorId(state);
     const canAct = Boolean(actingActorId);
-    const inventoryView = getActorInventoryView(state, actingActorId);
-    const selectedItemId =
-      actingActorId && state.selectedItemIdByActor
-        ? state.selectedItemIdByActor[actingActorId] || null
+    const inventoryView = getActorInventoryView(state, actingActorId, store);
+    const selectedStackId =
+      actingActorId && state.selectedStackIdByActor
+        ? state.selectedStackIdByActor[actingActorId] || null
         : null;
+    const selectedItemId =
+      actingActorId && typeof store.getSelectedItemIdForActor === "function"
+        ? store.getSelectedItemIdForActor(actingActorId)
+        : deriveSelectedItemIdFromState(state, actingActorId);
+    const selectionAudit = getActorSelectionAudit(state, actingActorId);
     const selectedItemView =
       inventoryView.known && Array.isArray(inventoryView.items)
         ? inventoryView.items.find((item) => item.is_selected) || null
@@ -296,15 +409,17 @@ export function initPanel(store) {
 
     const selectionRow = document.createElement("div");
     selectionRow.className = "note";
-    selectionRow.textContent = selectedItemView
-      ? `Selected item: ${selectedItemView.name} (${selectedItemView.item_id})`
-      : `Selected item: ${selectedItemId || "none"}`;
+    selectionRow.textContent = formatSelectionSummary(
+      selectedItemView,
+      selectedItemId,
+      selectedStackId,
+      selectionAudit
+    );
     mount.appendChild(selectionRow);
 
     const inventoryNote = document.createElement("div");
     inventoryNote.className = "note";
-    inventoryNote.textContent =
-      "Selection is stored per actor in the frontend and sent as an optional selected-item hint on turn requests.";
+    inventoryNote.textContent = formatSelectionNote(selectionAudit);
     mount.appendChild(inventoryNote);
 
     if (!canAct) {
@@ -365,11 +480,29 @@ export function initPanel(store) {
 
         const itemMeta = document.createElement("div");
         itemMeta.className = "inventory-item-meta";
-        itemMeta.textContent = `item_id: ${item.item_id}`;
+        const itemMetaParts = [`item_id: ${item.item_id}`];
+        if (typeof item.stack_count === "number" && item.stack_count > 0) {
+          itemMetaParts.push(`stacks: ${item.stack_count}`);
+        }
+        if (item.is_selected && item.selected_stack_id) {
+          itemMetaParts.push(`selected_stack_id: ${item.selected_stack_id}`);
+        } else if (item.primary_stack_id) {
+          itemMetaParts.push(`primary_stack_id: ${item.primary_stack_id}`);
+        }
+        if (item.selection_reason) {
+          itemMetaParts.push(`selection_rule: ${item.selection_reason}`);
+        }
+        itemMeta.textContent = itemMetaParts.join(" | ");
 
         itemButton.appendChild(itemHeader);
         itemButton.appendChild(itemDescription);
         itemButton.appendChild(itemMeta);
+        if (Array.isArray(item.stack_ids) && item.stack_ids.length > 1) {
+          const itemStacks = document.createElement("div");
+          itemStacks.className = "inventory-item-meta";
+          itemStacks.textContent = `stack_ids: ${item.stack_ids.join(", ")}`;
+          itemButton.appendChild(itemStacks);
+        }
         inventoryList.appendChild(itemButton);
       }
       mount.appendChild(inventoryList);

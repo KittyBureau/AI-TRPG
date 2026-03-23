@@ -14,6 +14,8 @@ from backend.app.debug_resources import build_resources_payload
 from backend.app.item_operations import build_area_root_stack_views
 from backend.app.item_runtime import (
     SelectedStackResolution,
+    build_actor_inventory_stack_views_from_items_only,
+    build_all_actor_inventory_stack_views_from_items_only,
     create_runtime_item_stack,
     derive_actor_inventory_from_items_only,
     derive_all_actor_inventories_from_items_only,
@@ -710,6 +712,9 @@ class TurnService:
                 entry.state_summary.inventory_stack_ids = _all_actor_inventory_stack_ids(
                     campaign
                 )
+                entry.state_summary.inventory_stacks = _all_actor_inventory_stacks(
+                    campaign
+                )
                 entry.state_summary.objective = campaign.goal.text.strip()
                 (
                     entry.state_summary.active_area_id,
@@ -721,6 +726,9 @@ class TurnService:
                 )
                 entry.state_summary.active_actor_inventory_stack_ids = (
                     _active_actor_inventory_stack_ids(campaign, effective_actor_id)
+                )
+                entry.state_summary.active_actor_inventory_stacks = (
+                    _active_actor_inventory_stacks(campaign, effective_actor_id)
                 )
                 self.repo.append_turn_log(campaign_id, entry)
                 return _build_success_response(
@@ -971,6 +979,8 @@ def _state_summary_dict(
     active_area_id, active_area_name, active_area_description = _active_area_context(
         campaign, resolved_actor_id
     )
+    inventory_stacks = _all_actor_inventory_stacks(campaign)
+    active_actor_inventory_stacks = _active_actor_inventory_stacks(campaign, resolved_actor_id)
     return {
         "positions": positions,
         "positions_parent": positions_parent,
@@ -979,6 +989,10 @@ def _state_summary_dict(
         "character_states": character_states,
         "inventories": _all_actor_inventories(campaign),
         "inventory_stack_ids": _all_actor_inventory_stack_ids(campaign),
+        "inventory_stacks": {
+            actor_id: [stack_view.model_dump() for stack_view in stack_views]
+            for actor_id, stack_views in inventory_stacks.items()
+        },
         "objective": campaign.goal.text.strip(),
         "active_area_id": active_area_id,
         "active_area_name": active_area_name,
@@ -987,6 +1001,9 @@ def _state_summary_dict(
         "active_actor_inventory_stack_ids": _active_actor_inventory_stack_ids(
             campaign, resolved_actor_id
         ),
+        "active_actor_inventory_stacks": [
+            stack_view.model_dump() for stack_view in active_actor_inventory_stacks
+        ],
     }
 
 
@@ -1545,6 +1562,7 @@ def _build_failure_response(
     state_summary.character_states = character_states
     state_summary.inventories = _all_actor_inventories(campaign)
     state_summary.inventory_stack_ids = _all_actor_inventory_stack_ids(campaign)
+    state_summary.inventory_stacks = _all_actor_inventory_stacks(campaign)
     state_summary.objective = campaign.goal.text.strip()
     (
         state_summary.active_area_id,
@@ -1555,6 +1573,9 @@ def _build_failure_response(
         campaign, effective_actor_id
     )
     state_summary.active_actor_inventory_stack_ids = _active_actor_inventory_stack_ids(
+        campaign, effective_actor_id
+    )
+    state_summary.active_actor_inventory_stacks = _active_actor_inventory_stacks(
         campaign, effective_actor_id
     )
     response = {
@@ -1635,6 +1656,14 @@ def _all_actor_inventories(campaign: Campaign) -> Dict[str, Dict[str, int]]:
 
 def _all_actor_inventory_stack_ids(campaign: Campaign) -> Dict[str, Dict[str, List[str]]]:
     return derive_all_actor_inventory_stack_ids_from_items_only(campaign)
+
+
+def _active_actor_inventory_stacks(campaign: Campaign, actor_id: str):
+    return build_actor_inventory_stack_views_from_items_only(campaign, actor_id)
+
+
+def _all_actor_inventory_stacks(campaign: Campaign):
+    return build_all_actor_inventory_stack_views_from_items_only(campaign)
 
 
 def _assert_turn_writable(campaign: Campaign, active_actor_id: str) -> None:

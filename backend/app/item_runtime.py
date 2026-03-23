@@ -5,7 +5,7 @@ import hashlib
 import re
 from typing import Any, Dict, Iterable, Optional, Tuple
 
-from backend.domain.models import Campaign, RuntimeItemStack
+from backend.domain.models import Campaign, InventoryStackView, RuntimeItemStack
 
 _SAFE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 _ID_SLUG_PATTERN = re.compile(r"[^A-Za-z0-9_-]+")
@@ -156,6 +156,36 @@ def derive_all_actor_inventory_stack_ids_from_items_only(
             campaign, actor_id
         )
     return stack_ids_by_actor
+
+
+def build_actor_inventory_stack_views_from_items_only(
+    campaign: Campaign,
+    actor_id: str,
+) -> list[InventoryStackView]:
+    views: list[InventoryStackView] = []
+    for stack in _list_actor_owned_stacks_from_items(campaign, actor_id):
+        views.append(
+            InventoryStackView(
+                stack_id=stack.stack_id,
+                item_id=stack.definition_id,
+                quantity=stack.quantity,
+                owner_actor_id=actor_id,
+                location=stack.location,
+                label=stack.label,
+            )
+        )
+    return views
+
+
+def build_all_actor_inventory_stack_views_from_items_only(
+    campaign: Campaign,
+) -> Dict[str, list[InventoryStackView]]:
+    views_by_actor: Dict[str, list[InventoryStackView]] = {}
+    for actor_id in sorted(campaign.actors.keys()):
+        views_by_actor[actor_id] = build_actor_inventory_stack_views_from_items_only(
+            campaign, actor_id
+        )
+    return views_by_actor
 
 
 def get_actor_item_quantity_from_items_only(
@@ -592,6 +622,8 @@ __all__ = [
     "derive_all_actor_inventories_from_items_only",
     "derive_actor_inventory_stack_ids_from_items_only",
     "derive_all_actor_inventory_stack_ids_from_items_only",
+    "build_actor_inventory_stack_views_from_items_only",
+    "build_all_actor_inventory_stack_views_from_items_only",
     "grant_item_to_actor",
     "get_actor_item_quantity_from_items_only",
     "normalize_campaign_items",

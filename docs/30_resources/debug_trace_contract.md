@@ -39,18 +39,22 @@ For `POST /api/v1/chat/turn`, when trace is enabled:
 
 All categories are arrays (possibly empty).
 
-## Additive Selected Item Debug
+## Additive Selection Debug
 
 When trace is enabled and `POST /api/v1/chat/turn` receives a valid
-`context_hints.selected_item_id`, runtime may also emit:
+selection hint, runtime may also emit:
 
-- `debug.selected_item.id`
-- `debug.selected_item.has_metadata`
+- `debug.selected_item`
+- `debug.selected_item_resolution`
 
 Rules:
 
 - the field is additive and does not replace `debug.resources`
-- the field is omitted when no valid selected item is available
+- `context_hints.selected_stack_id` is the primary request hint
+- `context_hints.selected_item_id` is fallback-only compatibility
+- `debug.selected_item` remains a small compatibility block
+- `debug.selected_item_resolution` is the primary trace/debug explanation surface for requested vs resolved stack/item ids plus status/reason
+- the fields are omitted when no valid selected item is available
 - the field is omitted together with the rest of `debug` when trace is off
 - `has_metadata=true` means the injected turn-context `selected_item`
   included at least one metadata field (`name` or `description`)

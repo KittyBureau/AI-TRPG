@@ -22,6 +22,8 @@ Current runtime policy:
 - `campaign.json.actors[actor_id].inventory` is a derived compatibility view only.
 - inventory read paths should derive from `campaign.json.items`, not from stored actor inventory maps.
 - inventory-only campaign payloads are no longer supported for item initialization.
+- frontend inventory authority derives from stack payloads (`inventory_stacks`), with aggregated inventory retained only as a derived display/debug view.
+- frontend selection authority is `selectedStackId`; `selected_item_id` is fallback-only compatibility.
 
 ### Legacy mirrors
 

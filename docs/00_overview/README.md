@@ -51,6 +51,7 @@
 ## Playable Planning
 
 - `docs/90_playable/PLAYABLE_V1_TODO.md` - Playable v1 development mainline TODO.
+- `docs/90_playable/ITEM_REFACTOR_CLOSURE_TODO.md` - Final closure status for the completed stack-first item refactor line.
 
 ## Compatibility Paths (Temporary)
 

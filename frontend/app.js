@@ -218,6 +218,14 @@ function renderActiveActorStateFromSummary(summary) {
     return;
   }
   const actorId = summary.active_actor_id || "";
+  const actorInventoryStacks =
+    Array.isArray(summary.active_actor_inventory_stacks)
+      ? summary.active_actor_inventory_stacks
+      : summary.inventory_stacks &&
+          typeof summary.inventory_stacks === "object" &&
+          Array.isArray(summary.inventory_stacks[actorId])
+        ? summary.inventory_stacks[actorId]
+        : [];
   const payload = {
     active_actor_id: actorId,
     position: summary.positions ? summary.positions[actorId] : undefined,
@@ -228,6 +236,7 @@ function renderActiveActorStateFromSummary(summary) {
       ? summary.character_states[actorId]
       : undefined,
     inventory: summary.active_actor_inventory || {},
+    inventory_stacks: actorInventoryStacks,
     objective: summary.objective || undefined,
   };
   state.latestTurnStateSummary = summary;
@@ -253,6 +262,14 @@ function renderGameplaySnapshot(turnData) {
     summary.active_actor_inventory && typeof summary.active_actor_inventory === "object"
       ? summary.active_actor_inventory
       : {};
+  const inventoryStacks =
+    Array.isArray(summary.active_actor_inventory_stacks)
+      ? summary.active_actor_inventory_stacks
+      : summary.inventory_stacks &&
+          typeof summary.inventory_stacks === "object" &&
+          Array.isArray(summary.inventory_stacks[actorId])
+        ? summary.inventory_stacks[actorId]
+        : [];
   setPreValue(elements.flowCurrentActor, formatField(actorId || ""));
   setPreValue(
     elements.flowCurrentPosition,
@@ -264,7 +281,13 @@ function renderGameplaySnapshot(turnData) {
     elements.flowAreaDescription,
     formatField(summary.active_area_description || "")
   );
-  setPreValue(elements.flowInventory, formatField(inventory));
+  setPreValue(
+    elements.flowInventory,
+    formatField({
+      inventory,
+      inventory_stacks: inventoryStacks,
+    })
+  );
 }
 
 function loadHistory() {

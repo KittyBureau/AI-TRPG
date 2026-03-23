@@ -94,7 +94,8 @@ Legacy compatibility fields are still emitted:
 
 Selected-item observability is also implemented as an additive, trace-gated field:
 
-- `debug.selected_item = { id, has_metadata }`
+- `debug.selected_item` as a small compatibility block
+- `debug.selected_item_resolution` as the primary selection-resolution trace block
 - omitted when there is no valid selected item
 - omitted together with top-level `debug` when trace is off
 

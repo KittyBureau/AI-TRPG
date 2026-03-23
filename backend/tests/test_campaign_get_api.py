@@ -116,6 +116,19 @@ def test_campaign_get_returns_selected_party_and_active_actor(
         "pc_001": {"torch": [torch_stack_id]},
         "pc_002": {},
     }
+    assert body["inventory_stacks"] == {
+        "pc_001": [
+            {
+                "stack_id": torch_stack_id,
+                "item_id": "torch",
+                "quantity": 1,
+                "owner_actor_id": "pc_001",
+                "location": {"type": "actor", "id": "pc_001"},
+                "label": "torch",
+            }
+        ],
+        "pc_002": [],
+    }
     assert body["map"] == {
         "areas": {
             "area_001": {
@@ -156,3 +169,79 @@ def test_campaign_get_returns_404_for_missing_campaign(
 
     response = client.get("/api/v1/campaign/get", params={"campaign_id": "camp_missing"})
     assert response.status_code == 404
+
+
+def test_campaign_get_inventory_stacks_are_deterministic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    repo = FileRepo(tmp_path / "storage")
+    torch_stack = create_runtime_item_stack(
+        definition_id="torch",
+        quantity=1,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="torch",
+        stack_id_salt="test_campaign_get_api:deterministic:torch",
+    )
+    rope_stack = create_runtime_item_stack(
+        definition_id="rope",
+        quantity=2,
+        parent_type="actor",
+        parent_id="pc_001",
+        label="rope",
+        stack_id_salt="test_campaign_get_api:deterministic:rope",
+    )
+    campaign = Campaign(
+        id="camp_inventory_stacks_deterministic",
+        selected=Selected(
+            world_id="world_001",
+            map_id="map_001",
+            party_character_ids=["pc_002", "pc_001"],
+            active_actor_id="pc_001",
+        ),
+        settings_snapshot=SettingsSnapshot(),
+        goal=Goal(text="Goal", status="active"),
+        milestone=Milestone(current="intro", last_advanced_turn=0),
+        actors={
+            "pc_002": ActorState(
+                position="area_002",
+                hp=10,
+                character_state="alive",
+                inventory={},
+                meta={},
+            ),
+            "pc_001": ActorState(
+                position="area_001",
+                hp=10,
+                character_state="alive",
+                inventory={},
+                meta={},
+            ),
+        },
+        items={
+            rope_stack.stack_id: rope_stack,
+            torch_stack.stack_id: torch_stack,
+        },
+        map={
+            "areas": {
+                "area_001": MapArea(
+                    id="area_001",
+                    name="Camp",
+                    description="Initial camp",
+                    reachable_area_ids=[],
+                )
+            }
+        },
+    )
+    repo.create_campaign(campaign)
+
+    response = client.get(
+        "/api/v1/campaign/get", params={"campaign_id": "camp_inventory_stacks_deterministic"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert list(body["inventory_stacks"].keys()) == ["pc_001", "pc_002"]
+    assert [item["stack_id"] for item in body["inventory_stacks"]["pc_001"]] == sorted(
+        [rope_stack.stack_id, torch_stack.stack_id]
+    )

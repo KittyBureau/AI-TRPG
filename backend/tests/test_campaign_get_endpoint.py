@@ -118,6 +118,17 @@ def test_campaign_get_reflects_party_load_and_select_actor(
     assert body["actors"]["ch_smoke_001"]["inventory"] == {}
     assert body["inventory_stack_ids"]["pc_001"] == {"torch": [torch_stack_id]}
     assert body["inventory_stack_ids"]["ch_smoke_001"] == {}
+    assert body["inventory_stacks"]["pc_001"] == [
+        {
+            "stack_id": torch_stack_id,
+            "item_id": "torch",
+            "quantity": 1,
+            "owner_actor_id": "pc_001",
+            "location": {"type": "actor", "id": "pc_001"},
+            "label": "torch",
+        }
+    ]
+    assert body["inventory_stacks"]["ch_smoke_001"] == []
     assert body["map"]["areas"]["area_001"]["name"] == "Camp"
 
 

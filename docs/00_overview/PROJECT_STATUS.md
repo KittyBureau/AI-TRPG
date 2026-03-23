@@ -4,7 +4,7 @@
 
 - Playable v1 baseline closed on 2026-03-10.
 - Closed baseline coverage: world generation, explicit world-aware campaign creation, repeatable play loop, read-only World Preview, authoritative Map Panel, backend narrative fallback for successful tool-only turns, and stable Character Library typing during Play-page rerenders.
-- Item System Refactor was closed on 2026-03-17: portable item authority is stack-based through `campaign.items`, `/map/view` projects area-root ground-item stacks, and selected-item prompt/runtime/debug behavior is aligned on the same internal stack resolution model.
+- Item System Refactor closure completed on 2026-03-23: portable item authority is stack-based through `campaign.items`, frontend inventory/selection/submit flow is stack-first, `/api/v1/campaign/get` and turn `state_summary` expose `inventory_stacks`, and remaining compatibility seams are explicit derived/fallback-only behavior.
 - Remaining tracked follow-up items are post-baseline polish only: null-position actor closure and current-turn result visibility cleanup.
 - Current baseline is suitable as the next-stage starting point without reopening the closed playable loop.
 - Additional fixed regression baseline: `test_watchtower_world` was verified end-to-end on 2026-03-11 and now serves as the source example for Scenario Template 0 extraction.
@@ -66,6 +66,8 @@ Runtime system:
 - validated `map_generate` with rollback on invalid graphs
 - portable item authority through `campaign.items`
 - `actors[*].inventory` as a derived compatibility inventory view
+- frontend inventory authority derived from `inventory_stacks`
+- `selected_stack_id` as the normal selection / submit path
 - stack-authoritative `take` / `drop` / `detach` / item-side `use`
 - scene interaction MVP through `scene_action`
 
@@ -91,7 +93,7 @@ Runtime system:
 - successful tool-only turns keep readable `narrative_text` via backend fallback
 - Character Library typing remains stable during normal rerender/refresh paths
 - move / inventory / scene action flow
-- prompt/runtime/debug selected-item compatibility aligned on stack-backed selection resolution
+- backend, frontend store, selection/submit, and UI/debug aligned on stack-backed selection resolution
 - runtime unlock flow via status + explicit CLI
 - frontend recovery from not-ready backend
 - debug panel request/response inspection

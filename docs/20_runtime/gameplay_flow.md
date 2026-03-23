@@ -305,7 +305,7 @@ Each step calls `/api/v1/chat/turn` sequentially with:
   "user_input": "actor action input",
   "execution": { "actor_id": "pc_001" },
   "context_hints": {
-    "selected_item_id": "torch"
+    "selected_stack_id": "stk_torch_0001"
   }
 }
 ```
@@ -315,16 +315,17 @@ Notes:
 - `party/load` only auto-sets active actor when current active is empty.
 - To force a switch, use `Party Panel -> Set Active` (calls `/api/v1/campaign/select_actor`).
 - Turn response `effective_actor_id` is the source of truth for execution identity.
-- `context_hints.selected_item_id` is optional and sent only when the Play UI has a selected item for the acting actor.
-- Backend validates the selected item against the effective actor inventory; invalid or stale item ids are ignored without failing the turn.
-- When metadata is available, turn context enriches `selected_item` with `name` and `description`; otherwise it falls back to Phase B shape `{id, quantity}`.
-- When trace is enabled and selected item validation succeeds, the turn response may include `debug.selected_item = { id, has_metadata }`.
+- `context_hints.selected_stack_id` is the normal Play UI selection hint for the acting actor.
+- `context_hints.selected_item_id` remains fallback-only and is emitted only when a stack cannot be resolved explicitly.
+- Backend validates the selection against actor-owned stacks; invalid or stale stack/item hints are ignored without failing the turn.
+- When metadata is available, turn context enriches `selected_item` with `name` and `description`; `selected_item_resolution` remains the primary trace/debug explanation surface.
+- When trace is enabled and selection validation succeeds, the turn response may include `debug.selected_item` plus `debug.selected_item_resolution`.
 
 Current prompt context source chain:
 
 - authoritative campaign/runtime state loaded for the turn
 - effective actor resolution inside `TurnService.submit_turn()`
-- validated `selected_item` resolution when a request hint is present
+- validated selected-stack resolution when a request hint is present
 - actor payload assembly and scene payload assembly in `turn_service.py`
 - final rendered system prompt from `_build_system_prompt()`
 
@@ -360,6 +361,7 @@ Optional:
 - blank `spawn_position` uses backend default behavior.
 - move input is minimal (`to_area_id` required); no `move_options` coupling in this version.
 - inventory remains displayed from turn/state-summary data; current map situation on Play is derived from the authoritative campaign snapshot refreshed into shared store.
+- Play inventory display may remain visually aggregated, but it is derived from stack-authoritative store state.
 - retries for tool steps are controlled by `Tool Retry Attempts` (1..5).
 
 ## What to inspect after running
@@ -377,7 +379,8 @@ Optional:
   - `tool_feedback` may be `null` when no failed calls occurred
   - `conflict_report` may be `null` when no conflict retry exhaustion occurred
   - `debug` must be absent, not `null`, when trace is disabled
-  - `debug.selected_item` is optional and only appears for a valid selected item when trace is enabled
+  - `debug.selected_item` is optional compatibility debug
+  - `debug.selected_item_resolution` is the primary selection-resolution trace block when trace is enabled
 - optional files:
   - `storage/campaigns/<campaign_id>/campaign.json`
   - `storage/campaigns/<campaign_id>/turn_log.jsonl`

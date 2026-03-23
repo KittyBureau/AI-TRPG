@@ -138,6 +138,15 @@ class RuntimeItemStack(BaseModel):
         return RuntimeItemLocation(type=self.parent_type, id=self.parent_id)
 
 
+class InventoryStackView(BaseModel):
+    stack_id: str
+    item_id: str
+    quantity: int
+    owner_actor_id: str
+    location: RuntimeItemLocation
+    label: str = ""
+
+
 class ActorState(BaseModel):
     position: Optional[str] = None
     hp: int = 10
@@ -227,14 +236,18 @@ class StateSummary(BaseModel):
     positions_child: Dict[str, Optional[str]] = Field(default_factory=dict)
     hp: Dict[str, int] = Field(default_factory=dict)
     character_states: Dict[str, str] = Field(default_factory=dict)
+    # Derived compatibility snapshots; inventory_stacks is the primary contract.
     inventories: Dict[str, Dict[str, int]] = Field(default_factory=dict)
     inventory_stack_ids: Dict[str, Dict[str, List[str]]] = Field(default_factory=dict)
+    inventory_stacks: Dict[str, List[InventoryStackView]] = Field(default_factory=dict)
     objective: str = ""
     active_area_id: Optional[str] = None
     active_area_name: str = ""
     active_area_description: str = ""
+    # Active-actor compatibility snapshots retained for stable consumers.
     active_actor_inventory: Dict[str, int] = Field(default_factory=dict)
     active_actor_inventory_stack_ids: Dict[str, List[str]] = Field(default_factory=dict)
+    active_actor_inventory_stacks: List[InventoryStackView] = Field(default_factory=list)
 
 
 class TurnLogEntry(BaseModel):

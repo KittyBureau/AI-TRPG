@@ -9,11 +9,12 @@ from pydantic import BaseModel, Field, ValidationError
 
 from backend.app.debug_resources import build_template_usage_debug
 from backend.app.item_runtime import (
+    build_all_actor_inventory_stack_views_from_items_only,
     derive_actor_inventory_from_items_only,
     derive_all_actor_inventory_stack_ids_from_items_only,
 )
 from backend.app.turn_service import TurnService
-from backend.domain.models import Campaign
+from backend.domain.models import Campaign, InventoryStackView
 from backend.infra.file_repo import FileRepo
 
 router = APIRouter(prefix="/campaign", tags=["campaign"])
@@ -96,6 +97,7 @@ class CampaignActorResponse(BaseModel):
     position: Optional[str] = None
     hp: int
     character_state: str
+    # Derived compatibility snapshot; stack views remain the primary inventory contract.
     inventory: dict[str, int] = Field(default_factory=dict)
 
 
@@ -117,7 +119,9 @@ class CampaignGetResponse(BaseModel):
     actors: dict[str, CampaignActorResponse] = Field(default_factory=dict)
     map: CampaignMapResponse = Field(default_factory=CampaignMapResponse)
     status: CampaignStatusSnapshotResponse
+    # Derived compatibility mapping retained for stable callers.
     inventory_stack_ids: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
+    inventory_stacks: dict[str, list[InventoryStackView]] = Field(default_factory=dict)
 
 
 def _load_campaign_for_get(repo: FileRepo, campaign_id: str) -> Campaign:
@@ -247,6 +251,7 @@ def get_campaign(campaign_id: str) -> CampaignGetResponse:
         ),
         status=_build_campaign_status_snapshot(campaign),
         inventory_stack_ids=derive_all_actor_inventory_stack_ids_from_items_only(campaign),
+        inventory_stacks=build_all_actor_inventory_stack_views_from_items_only(campaign),
     )
 
 

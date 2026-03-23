@@ -1,15 +1,19 @@
 # Item System v2 Spec
 
-Status: design freeze for the item-system refactor track.
+Status: implemented closure reference for the item-system refactor track.
 
-Date: 2026-03-13.
+Original design-freeze date: 2026-03-13.
+Closure landing date: 2026-03-23.
 
 Scope of this document:
 
 - This is a repository-grounded design spec only.
-- It does not change current runtime behavior by itself.
-- Current code remains authoritative until implementation lands.
-- This spec defines the target authority model and the phased migration path.
+- Current code remains authoritative.
+- The stack-first closure has landed: `campaign.items` is portable-item authority, frontend inventory authority is stack-first, `selected_stack_id` is the normal submit path, and UI/debug now reflect stack resolution directly.
+- Remaining compatibility is explicit and secondary only:
+  - aggregate inventory outputs are derived compatibility snapshots
+  - `selected_item_id` remains fallback-only compatibility for callers that cannot yet resolve a stack
+- Historical audit/migration sections below are retained as the implementation record for how the cutover was designed and closed.
 
 ## 1. Current-System Audit
 

@@ -70,10 +70,13 @@ const state = {
   roundState: "idle",
   roundNumber: 0,
   stateSummary: null,
+  inventoryStacksByActor: {},
   inventoryByActor: {},
   inventoryStackIdsByActor: {},
+  inventoryAuthoritySourceByActor: {},
   selectedStackIdByActor: {},
-  selectedItemIdByActor: {},
+  selectionAuditByActor: {},
+  submitSelectionAuditByActor: {},
   turnHistory: [],
   debug: {
     requestText: "",
@@ -153,6 +156,61 @@ function normalizeInventory(rawInventory) {
   return normalized;
 }
 
+function normalizeInventoryStackView(rawStack, fallbackActorId = "") {
+  if (!rawStack || typeof rawStack !== "object" || Array.isArray(rawStack)) {
+    return null;
+  }
+  const stackId = normalizeStackId(rawStack.stack_id);
+  const itemId = normalizeItemId(rawStack.item_id);
+  const quantity = Number(rawStack.quantity);
+  const ownerActorId =
+    normalizeActorId(rawStack.owner_actor_id) || normalizeActorId(fallbackActorId);
+  const location =
+    rawStack.location && typeof rawStack.location === "object" && !Array.isArray(rawStack.location)
+      ? rawStack.location
+      : null;
+  const locationType =
+    typeof location?.type === "string" && location.type.trim() ? location.type.trim() : "actor";
+  const locationId =
+    normalizeStringId(location?.id) || ownerActorId || normalizeStringId(rawStack.parent_id);
+  const label = typeof rawStack.label === "string" ? rawStack.label.trim() : "";
+  if (!stackId || !itemId || !Number.isInteger(quantity) || quantity <= 0 || !ownerActorId) {
+    return null;
+  }
+  if (!locationId) {
+    return null;
+  }
+  return {
+    stack_id: stackId,
+    item_id: itemId,
+    quantity,
+    owner_actor_id: ownerActorId,
+    location: {
+      type: locationType,
+      id: locationId,
+    },
+    label,
+  };
+}
+
+function normalizeInventoryStacks(rawInventoryStacks, fallbackActorId = "") {
+  if (!Array.isArray(rawInventoryStacks)) {
+    return [];
+  }
+  const normalized = [];
+  const seen = new Set();
+  for (const rawStack of rawInventoryStacks) {
+    const stack = normalizeInventoryStackView(rawStack, fallbackActorId);
+    if (!stack || seen.has(stack.stack_id)) {
+      continue;
+    }
+    normalized.push(stack);
+    seen.add(stack.stack_id);
+  }
+  normalized.sort((left, right) => left.stack_id.localeCompare(right.stack_id));
+  return normalized;
+}
+
 function normalizeInventoriesByActor(rawInventories) {
   const normalized = {};
   if (!rawInventories || typeof rawInventories !== "object" || Array.isArray(rawInventories)) {
@@ -164,6 +222,25 @@ function normalizeInventoriesByActor(rawInventories) {
       continue;
     }
     normalized[actorId] = normalizeInventory(rawInventory);
+  }
+  return normalized;
+}
+
+function normalizeInventoryStacksByActor(rawInventoryStacksByActor) {
+  const normalized = {};
+  if (
+    !rawInventoryStacksByActor ||
+    typeof rawInventoryStacksByActor !== "object" ||
+    Array.isArray(rawInventoryStacksByActor)
+  ) {
+    return normalized;
+  }
+  for (const [rawActorId, rawInventoryStacks] of Object.entries(rawInventoryStacksByActor)) {
+    const actorId = normalizeActorId(rawActorId);
+    if (!actorId) {
+      continue;
+    }
+    normalized[actorId] = normalizeInventoryStacks(rawInventoryStacks, actorId);
   }
   return normalized;
 }
@@ -219,140 +296,450 @@ function normalizeInventoryStackIdsByActor(rawInventoryStackIdsByActor) {
   return normalized;
 }
 
-function getKnownInventoryStackIds(actorId) {
-  if (!hasOwn(state.inventoryStackIdsByActor, actorId)) {
-    return null;
+function deriveInventoryByActorFromStacks(stacksByActor) {
+  const normalizedStacksByActor =
+    stacksByActor && typeof stacksByActor === "object" && !Array.isArray(stacksByActor)
+      ? stacksByActor
+      : {};
+  const inventoryByActor = {};
+  for (const [rawActorId, rawStacks] of Object.entries(normalizedStacksByActor)) {
+    const actorId = normalizeActorId(rawActorId);
+    if (!actorId) {
+      continue;
+    }
+    const inventory = {};
+    const stacks = Array.isArray(rawStacks) ? rawStacks : [];
+    for (const stack of stacks) {
+      const itemId = normalizeItemId(stack?.item_id);
+      const quantity = Number(stack?.quantity);
+      if (!itemId || !Number.isInteger(quantity) || quantity <= 0) {
+        continue;
+      }
+      inventory[itemId] = (inventory[itemId] || 0) + quantity;
+    }
+    inventoryByActor[actorId] = inventory;
   }
-  const inventoryStackIds = state.inventoryStackIdsByActor[actorId];
-  if (!inventoryStackIds || typeof inventoryStackIds !== "object" || Array.isArray(inventoryStackIds)) {
-    return {};
-  }
-  return inventoryStackIds;
+  return inventoryByActor;
 }
 
-function resolvePreferredStackIdForItem(actorId, itemId) {
-  const inventoryStackIds = getKnownInventoryStackIds(actorId);
-  if (!inventoryStackIds || !Array.isArray(inventoryStackIds[itemId])) {
-    return "";
+function deriveInventoryStackIdsByActorFromStacks(stacksByActor) {
+  const normalizedStacksByActor =
+    stacksByActor && typeof stacksByActor === "object" && !Array.isArray(stacksByActor)
+      ? stacksByActor
+      : {};
+  const stackIdsByActor = {};
+  for (const [rawActorId, rawStacks] of Object.entries(normalizedStacksByActor)) {
+    const actorId = normalizeActorId(rawActorId);
+    if (!actorId) {
+      continue;
+    }
+    const inventoryStackIds = {};
+    const stacks = Array.isArray(rawStacks) ? rawStacks : [];
+    for (const stack of stacks) {
+      const itemId = normalizeItemId(stack?.item_id);
+      const stackId = normalizeStackId(stack?.stack_id);
+      if (!itemId || !stackId) {
+        continue;
+      }
+      if (!Array.isArray(inventoryStackIds[itemId])) {
+        inventoryStackIds[itemId] = [];
+      }
+      inventoryStackIds[itemId].push(stackId);
+    }
+    for (const stackIds of Object.values(inventoryStackIds)) {
+      stackIds.sort((left, right) => left.localeCompare(right));
+    }
+    stackIdsByActor[actorId] = inventoryStackIds;
   }
-  return normalizeStackId(inventoryStackIds[itemId][0]);
+  return stackIdsByActor;
+}
+
+function buildCompatibilityStackId(actorId, itemId) {
+  const actorSlug = normalizeActorId(actorId).replace(/[^A-Za-z0-9_-]+/g, "_");
+  const itemSlug = normalizeItemId(itemId).replace(/[^A-Za-z0-9_-]+/g, "_");
+  return normalizeStackId(`compat_${actorSlug || "actor"}_${itemSlug || "item"}`);
+}
+
+function buildFallbackInventoryStacksForActor(actorId, rawInventory, rawInventoryStackIds) {
+  const inventory = normalizeInventory(rawInventory);
+  const inventoryStackIds = normalizeInventoryStackIds(rawInventoryStackIds);
+  const itemIds = [...new Set([...Object.keys(inventory), ...Object.keys(inventoryStackIds)])].sort();
+  const stacks = [];
+  for (const itemId of itemIds) {
+    const stackIds = Array.isArray(inventoryStackIds[itemId]) ? inventoryStackIds[itemId] : [];
+    const totalQuantity = Number.isInteger(inventory[itemId]) && inventory[itemId] > 0 ? inventory[itemId] : 0;
+    if (stackIds.length > 0) {
+      const normalizedTotal = Math.max(totalQuantity, stackIds.length);
+      const extraForFirst = normalizedTotal - stackIds.length;
+      stackIds.forEach((stackId, index) => {
+        stacks.push({
+          stack_id: stackId,
+          item_id: itemId,
+          quantity: 1 + (index === 0 ? extraForFirst : 0),
+          owner_actor_id: actorId,
+          location: {
+            type: "actor",
+            id: actorId,
+          },
+          label: "",
+        });
+      });
+      continue;
+    }
+    if (totalQuantity <= 0) {
+      continue;
+    }
+    stacks.push({
+      stack_id: buildCompatibilityStackId(actorId, itemId),
+      item_id: itemId,
+      quantity: totalQuantity,
+      owner_actor_id: actorId,
+      location: {
+        type: "actor",
+        id: actorId,
+      },
+      label: "",
+    });
+  }
+  stacks.sort((left, right) => left.stack_id.localeCompare(right.stack_id));
+  return stacks;
+}
+
+function buildFallbackInventoryStacksByActor(
+  rawInventories,
+  rawInventoryStackIdsByActor = null,
+  actorIds = []
+) {
+  const inventoriesByActor = normalizeInventoriesByActor(rawInventories);
+  const inventoryStackIdsByActor = normalizeInventoryStackIdsByActor(rawInventoryStackIdsByActor);
+  const normalizedActorIds = [
+    ...new Set(
+      [
+        ...actorIds.map(normalizeActorId),
+        ...Object.keys(inventoriesByActor),
+        ...Object.keys(inventoryStackIdsByActor),
+      ].filter(Boolean)
+    ),
+  ].sort();
+  const stacksByActor = {};
+  for (const actorId of normalizedActorIds) {
+    stacksByActor[actorId] = buildFallbackInventoryStacksForActor(
+      actorId,
+      inventoriesByActor[actorId],
+      inventoryStackIdsByActor[actorId]
+    );
+  }
+  return stacksByActor;
+}
+
+function getActorInventoryStacks(actorId) {
+  if (!hasOwn(state.inventoryStacksByActor, actorId)) {
+    return null;
+  }
+  const actorStacks = state.inventoryStacksByActor[actorId];
+  return Array.isArray(actorStacks) ? actorStacks : [];
+}
+
+function findInventoryStack(actorId, stackId) {
+  const normalizedActorId = normalizeActorId(actorId);
+  const normalizedStackId = normalizeStackId(stackId);
+  if (!normalizedActorId || !normalizedStackId) {
+    return null;
+  }
+  const actorStacks = getActorInventoryStacks(normalizedActorId);
+  if (!actorStacks) {
+    return null;
+  }
+  for (const stack of actorStacks) {
+    if (normalizeStackId(stack?.stack_id) === normalizedStackId) {
+      return stack;
+    }
+  }
+  return null;
+}
+
+function resolveStackCandidatesForItem(actorId, itemId) {
+  const normalizedActorId = normalizeActorId(actorId);
+  const normalizedItemId = normalizeItemId(itemId);
+  if (!normalizedActorId || !normalizedItemId) {
+    return [];
+  }
+  const actorStacks = getActorInventoryStacks(normalizedActorId);
+  if (!actorStacks) {
+    return [];
+  }
+  return actorStacks
+    .filter((stack) => normalizeItemId(stack?.item_id) === normalizedItemId)
+    .map((stack) => normalizeStackId(stack?.stack_id))
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right));
 }
 
 function resolveSelectedItemIdFromStack(actorId, stackId) {
-  const normalizedStackId = normalizeStackId(stackId);
-  if (!normalizedStackId) {
+  return normalizeItemId(findInventoryStack(actorId, stackId)?.item_id);
+}
+
+function resolveSelectedItemIdFromAudit(actorId, rawAudit = null) {
+  const normalizedActorId = normalizeActorId(actorId);
+  if (!normalizedActorId) {
     return "";
   }
-  const inventoryStackIds = getKnownInventoryStackIds(actorId);
-  if (!inventoryStackIds) {
+  const audit = normalizeSelectionAudit(
+    rawAudit ?? state.selectionAuditByActor[normalizedActorId],
+    normalizedActorId
+  );
+  if (!audit) {
     return "";
   }
-  for (const [itemId, stackIds] of Object.entries(inventoryStackIds)) {
-    if (!Array.isArray(stackIds)) {
-      continue;
-    }
-    if (stackIds.some((candidate) => normalizeStackId(candidate) === normalizedStackId)) {
-      return itemId;
-    }
-  }
-  return "";
+  return normalizeItemId(audit.requested_item_id || audit.selected_item_id);
 }
 
-function reconcileSelectedItemsWithInventory() {
-  let changed = false;
-  const nextItemSelections = {
-    ...state.selectedItemIdByActor,
+export function getSelectedItemIdForActor(actorId) {
+  const normalizedActorId = normalizeActorId(actorId);
+  if (!normalizedActorId) {
+    return null;
+  }
+  const selectedItemId = resolveSelectedItemIdFromStack(
+    normalizedActorId,
+    state.selectedStackIdByActor[normalizedActorId]
+  );
+  if (selectedItemId) {
+    return selectedItemId;
+  }
+  const fallbackItemId = resolveSelectedItemIdFromAudit(normalizedActorId);
+  return fallbackItemId || null;
+}
+
+function normalizeSelectionAudit(rawAudit, fallbackActorId = "") {
+  if (!rawAudit || typeof rawAudit !== "object" || Array.isArray(rawAudit)) {
+    return null;
+  }
+  const mode =
+    typeof rawAudit.mode === "string" && rawAudit.mode.trim() ? rawAudit.mode.trim() : "";
+  const actorId =
+    normalizeActorId(rawAudit.actor_id) || normalizeActorId(fallbackActorId);
+  if (!mode || !actorId) {
+    return null;
+  }
+  const audit = {
+    mode,
+    actor_id: actorId,
   };
-  const nextStackSelections = {
-    ...state.selectedStackIdByActor,
-  };
-  const actorIds = new Set([
-    ...Object.keys(nextItemSelections),
-    ...Object.keys(nextStackSelections),
-  ]);
-  for (const rawActorId of actorIds) {
-    const actorId = normalizeActorId(rawActorId);
-    if (!actorId) {
-      delete nextItemSelections[rawActorId];
-      delete nextStackSelections[rawActorId];
-      changed = true;
-      continue;
-    }
-    const inventory =
-      hasOwn(state.inventoryByActor, actorId) &&
-      state.inventoryByActor[actorId] &&
-      typeof state.inventoryByActor[actorId] === "object"
-        ? state.inventoryByActor[actorId]
-        : {};
-    const hasKnownStackIds = getKnownInventoryStackIds(actorId) !== null;
-    let itemId = normalizeItemId(nextItemSelections[actorId]);
-    let stackId = normalizeStackId(nextStackSelections[actorId]);
-
-    if (stackId) {
-      const resolvedItemId = resolveSelectedItemIdFromStack(actorId, stackId);
-      if (resolvedItemId) {
-        itemId = resolvedItemId;
-      } else if (hasKnownStackIds) {
-        itemId = "";
-        stackId = "";
-      }
-    }
-
-    if (!stackId && itemId && hasKnownStackIds) {
-      stackId = resolvePreferredStackIdForItem(actorId, itemId);
-    }
-
-    if (itemId && hasOwn(state.inventoryByActor, actorId) && !hasOwn(inventory, itemId)) {
-      itemId = "";
-      stackId = "";
-    }
-
-    const nextItemId = itemId || null;
-    const nextStackId = stackId || null;
-    if ((nextItemSelections[actorId] || null) !== nextItemId) {
-      nextItemSelections[actorId] = nextItemId;
-      changed = true;
-    }
-    if ((nextStackSelections[actorId] || null) !== nextStackId) {
-      nextStackSelections[actorId] = nextStackId;
-      changed = true;
-    }
+  const selectedStackId = normalizeStackId(rawAudit.selected_stack_id);
+  const selectedItemId = normalizeItemId(rawAudit.selected_item_id);
+  const requestedItemId = normalizeItemId(rawAudit.requested_item_id);
+  const reason =
+    typeof rawAudit.reason === "string" && rawAudit.reason.trim() ? rawAudit.reason.trim() : "";
+  const candidateStackIds = Array.isArray(rawAudit.candidate_stack_ids)
+    ? [...new Set(rawAudit.candidate_stack_ids.map(normalizeStackId).filter(Boolean))]
+    : [];
+  if (selectedStackId) {
+    audit.selected_stack_id = selectedStackId;
   }
-  if (changed) {
-    state.selectedItemIdByActor = nextItemSelections;
-    state.selectedStackIdByActor = nextStackSelections;
+  if (selectedItemId) {
+    audit.selected_item_id = selectedItemId;
   }
-  return changed;
+  if (requestedItemId) {
+    audit.requested_item_id = requestedItemId;
+  }
+  if (reason) {
+    audit.reason = reason;
+  }
+  if (candidateStackIds.length > 0) {
+    audit.candidate_stack_ids = candidateStackIds;
+  }
+  return audit;
 }
 
-function replaceInventoryByActor(rawInventories, rawInventoryStackIdsByActor = null) {
-  state.inventoryByActor = normalizeInventoriesByActor(rawInventories);
-  state.inventoryStackIdsByActor = normalizeInventoryStackIdsByActor(rawInventoryStackIdsByActor);
-  reconcileSelectedItemsWithInventory();
-}
-
-function patchInventoryForActor(actorId, rawInventory, rawInventoryStackIds = null) {
+function setSelectionAuditForActor(actorId, audit) {
   const normalizedActorId = normalizeActorId(actorId);
   if (!normalizedActorId) {
     return;
   }
-  state.inventoryByActor = {
-    ...state.inventoryByActor,
-    [normalizedActorId]: normalizeInventory(rawInventory),
+  state.selectionAuditByActor = {
+    ...state.selectionAuditByActor,
+    [normalizedActorId]: normalizeSelectionAudit(audit, normalizedActorId),
   };
-  if (rawInventoryStackIds !== null && rawInventoryStackIds !== undefined) {
-    state.inventoryStackIdsByActor = {
-      ...state.inventoryStackIdsByActor,
-      [normalizedActorId]: normalizeInventoryStackIds(rawInventoryStackIds),
-    };
-  } else {
-    const nextInventoryStackIdsByActor = {
-      ...state.inventoryStackIdsByActor,
-    };
-    delete nextInventoryStackIdsByActor[normalizedActorId];
-    state.inventoryStackIdsByActor = nextInventoryStackIdsByActor;
+}
+
+function setSubmitSelectionAuditForActor(actorId, audit) {
+  const normalizedActorId = normalizeActorId(actorId);
+  if (!normalizedActorId) {
+    return;
   }
+  state.submitSelectionAuditByActor = {
+    ...state.submitSelectionAuditByActor,
+    [normalizedActorId]: normalizeSelectionAudit(audit, normalizedActorId),
+  };
+}
+
+function logSelectionAudit(audit) {
+  if (!audit || typeof console !== "object" || console === null) {
+    return;
+  }
+  const actorId = normalizeActorId(audit.actor_id) || "unknown_actor";
+  if (audit.mode === "item_adapter" && typeof console.info === "function") {
+    console.info(
+      `[selection:item_adapter] actor=${actorId} item=${audit.requested_item_id || audit.selected_item_id || "unknown_item"} stack=${audit.selected_stack_id || "none"}`
+    );
+    return;
+  }
+  if (audit.mode === "item_fallback" && typeof console.warn === "function") {
+    console.warn(
+      `[selection:item_fallback] actor=${actorId} item=${audit.selected_item_id || audit.requested_item_id || "unknown_item"} reason=${audit.reason || "stack_unresolved"}`
+    );
+  }
+}
+
+function applySelectionForActor(actorId, stackId, audit = null) {
+  const normalizedActorId = normalizeActorId(actorId);
+  if (!normalizedActorId) {
+    return;
+  }
+  state.selectedStackIdByActor = {
+    ...state.selectedStackIdByActor,
+    [normalizedActorId]: normalizeStackId(stackId) || null,
+  };
+  setSelectionAuditForActor(normalizedActorId, audit);
+}
+
+function reconcileSelectedItemsWithInventory() {
+  let changed = false;
+  const nextStackSelections = {
+    ...state.selectedStackIdByActor,
+  };
+  const nextSelectionAudit = {
+    ...state.selectionAuditByActor,
+  };
+  const actorIds = new Set([
+    ...Object.keys(nextStackSelections),
+    ...Object.keys(nextSelectionAudit),
+  ]);
+  for (const rawActorId of actorIds) {
+    const actorId = normalizeActorId(rawActorId);
+    if (!actorId) {
+      delete nextStackSelections[rawActorId];
+      delete nextSelectionAudit[rawActorId];
+      changed = true;
+      continue;
+    }
+    const hasKnownStacks = hasOwn(state.inventoryStacksByActor, actorId);
+    const currentAudit = normalizeSelectionAudit(nextSelectionAudit[actorId], actorId);
+    const currentStack = findInventoryStack(actorId, nextStackSelections[actorId]);
+    let nextItemId = null;
+    let nextStackId = null;
+    let nextAudit = null;
+
+    if (currentStack) {
+      nextStackId = normalizeStackId(currentStack.stack_id) || null;
+      nextItemId = normalizeItemId(currentStack.item_id) || null;
+      nextAudit =
+        currentAudit && currentAudit.mode !== "item_fallback"
+          ? {
+              ...currentAudit,
+              actor_id: actorId,
+              selected_stack_id: nextStackId,
+              selected_item_id: nextItemId,
+            }
+          : {
+              mode: "stack_primary",
+              actor_id: actorId,
+              selected_stack_id: nextStackId,
+              selected_item_id: nextItemId,
+              reason: "reconciled_from_stack",
+            };
+    } else if (
+      currentAudit &&
+      currentAudit.mode === "item_fallback" &&
+      !hasKnownStacks &&
+      resolveSelectedItemIdFromAudit(actorId, currentAudit)
+    ) {
+      nextItemId = resolveSelectedItemIdFromAudit(actorId, currentAudit) || null;
+      nextAudit = {
+        ...currentAudit,
+        actor_id: actorId,
+        selected_item_id: nextItemId,
+      };
+    }
+
+    if ((nextStackSelections[actorId] || null) !== nextStackId) {
+      nextStackSelections[actorId] = nextStackId;
+      changed = true;
+    }
+    const normalizedCurrentAudit = normalizeSelectionAudit(nextSelectionAudit[actorId], actorId);
+    const normalizedNextAudit = normalizeSelectionAudit(nextAudit, actorId);
+    if (JSON.stringify(normalizedCurrentAudit) !== JSON.stringify(normalizedNextAudit)) {
+      nextSelectionAudit[actorId] = normalizedNextAudit;
+      changed = true;
+    }
+  }
+  if (changed) {
+    state.selectedStackIdByActor = nextStackSelections;
+    state.selectionAuditByActor = nextSelectionAudit;
+  }
+  return changed;
+}
+
+function applyDerivedInventoryViews(stacksByActor, authoritySourceByActor = null) {
+  state.inventoryStacksByActor = normalizeInventoryStacksByActor(stacksByActor);
+  state.inventoryByActor = deriveInventoryByActorFromStacks(state.inventoryStacksByActor);
+  state.inventoryStackIdsByActor = deriveInventoryStackIdsByActorFromStacks(state.inventoryStacksByActor);
+  state.inventoryAuthoritySourceByActor =
+    authoritySourceByActor && typeof authoritySourceByActor === "object" && !Array.isArray(authoritySourceByActor)
+      ? { ...authoritySourceByActor }
+      : {};
+}
+
+function replaceInventoryByStacks(rawInventoryStacksByActor, authoritySourceByActor = null) {
+  applyDerivedInventoryViews(rawInventoryStacksByActor, authoritySourceByActor);
   reconcileSelectedItemsWithInventory();
+}
+
+function replaceInventoryByCompatibilityFallback(
+  rawInventories,
+  rawInventoryStackIdsByActor = null,
+  actorIds = []
+) {
+  const stacksByActor = buildFallbackInventoryStacksByActor(
+    rawInventories,
+    rawInventoryStackIdsByActor,
+    actorIds
+  );
+  const authoritySourceByActor = Object.fromEntries(
+    Object.keys(stacksByActor).map((actorId) => [actorId, "compatibility"])
+  );
+  replaceInventoryByStacks(stacksByActor, authoritySourceByActor);
+}
+
+function patchInventoryStacksForActor(actorId, rawInventoryStacks, source = "stack") {
+  const normalizedActorId = normalizeActorId(actorId);
+  if (!normalizedActorId) {
+    return;
+  }
+  const normalizedStacks = normalizeInventoryStacks(rawInventoryStacks, normalizedActorId);
+  applyDerivedInventoryViews(
+    {
+      ...state.inventoryStacksByActor,
+      [normalizedActorId]: normalizedStacks,
+    },
+    {
+      ...state.inventoryAuthoritySourceByActor,
+      [normalizedActorId]: source,
+    }
+  );
+  reconcileSelectedItemsWithInventory();
+}
+
+function patchInventoryForActorCompatibilityFallback(actorId, rawInventory, rawInventoryStackIds = null) {
+  const normalizedActorId = normalizeActorId(actorId);
+  if (!normalizedActorId) {
+    return;
+  }
+  patchInventoryStacksForActor(
+    normalizedActorId,
+    buildFallbackInventoryStacksForActor(normalizedActorId, rawInventory, rawInventoryStackIds),
+    "compatibility"
+  );
 }
 
 function applyPartyActorsToState(actorIds) {
@@ -450,6 +837,54 @@ export function setPartyActors(actorIds) {
   emit();
 }
 
+export function setSelectedStackForActor(actorId, stackId, options = {}) {
+  const normalizedActorId = normalizeActorId(actorId);
+  if (!normalizedActorId) {
+    return false;
+  }
+  const normalizedStackId = normalizeStackId(stackId);
+  if (!normalizedStackId) {
+    applySelectionForActor(normalizedActorId, null, null);
+    emit();
+    return true;
+  }
+  const selectedStack = findInventoryStack(normalizedActorId, normalizedStackId);
+  if (!selectedStack) {
+    return false;
+  }
+  const currentStackId = normalizeStackId(state.selectedStackIdByActor[normalizedActorId]);
+  const toggleOff = currentStackId === normalizedStackId;
+  const nextAudit = toggleOff
+    ? null
+    : {
+        mode:
+          typeof options.mode === "string" && options.mode.trim()
+            ? options.mode.trim()
+            : "stack_primary",
+        actor_id: normalizedActorId,
+        selected_stack_id: normalizedStackId,
+        selected_item_id: normalizeItemId(selectedStack.item_id),
+        requested_item_id: normalizeItemId(options.requestedItemId),
+        reason:
+          typeof options.reason === "string" && options.reason.trim()
+            ? options.reason.trim()
+            : "",
+        candidate_stack_ids: Array.isArray(options.candidateStackIds)
+          ? options.candidateStackIds
+          : [],
+      };
+  applySelectionForActor(
+    normalizedActorId,
+    toggleOff ? null : normalizedStackId,
+    nextAudit
+  );
+  if (!toggleOff) {
+    logSelectionAudit(nextAudit);
+  }
+  emit();
+  return true;
+}
+
 export function setSelectedItemForActor(actorId, itemId) {
   const normalizedActorId = normalizeActorId(actorId);
   if (!normalizedActorId) {
@@ -457,37 +892,83 @@ export function setSelectedItemForActor(actorId, itemId) {
   }
   const normalizedItemId = normalizeItemId(itemId);
   if (!normalizedItemId) {
-    state.selectedStackIdByActor = {
-      ...state.selectedStackIdByActor,
-      [normalizedActorId]: null,
-    };
-    state.selectedItemIdByActor = {
-      ...state.selectedItemIdByActor,
-      [normalizedActorId]: null,
-    };
+    applySelectionForActor(normalizedActorId, null, null);
     emit();
     return true;
   }
-  const inventory = state.inventoryByActor[normalizedActorId];
-  if (!inventory || !hasOwn(inventory, normalizedItemId)) {
-    return false;
+  const candidateStackIds = resolveStackCandidatesForItem(normalizedActorId, normalizedItemId);
+  if (candidateStackIds.length > 0) {
+    return setSelectedStackForActor(normalizedActorId, candidateStackIds[0], {
+      mode: "item_adapter",
+      requestedItemId: normalizedItemId,
+      candidateStackIds,
+      reason: candidateStackIds.length > 1 ? "deterministic_first_stack" : "single_stack_match",
+    });
   }
-  const nextStackId = resolvePreferredStackIdForItem(normalizedActorId, normalizedItemId);
-  const currentStackId = normalizeStackId(state.selectedStackIdByActor[normalizedActorId]);
-  const currentItemId = normalizeItemId(state.selectedItemIdByActor[normalizedActorId]);
-  const toggleOff = nextStackId
-    ? currentStackId === nextStackId
-    : currentItemId === normalizedItemId;
-  state.selectedStackIdByActor = {
-    ...state.selectedStackIdByActor,
-    [normalizedActorId]: toggleOff ? null : nextStackId || null,
-  };
-  state.selectedItemIdByActor = {
-    ...state.selectedItemIdByActor,
-    [normalizedActorId]: toggleOff ? null : normalizedItemId,
-  };
-  emit();
-  return true;
+  const hasKnownStacks = hasOwn(state.inventoryStacksByActor, normalizedActorId);
+  const inventory = state.inventoryByActor[normalizedActorId];
+  if (!hasKnownStacks && inventory && hasOwn(inventory, normalizedItemId)) {
+    const nextAudit = {
+      mode: "item_fallback",
+      actor_id: normalizedActorId,
+      selected_item_id: normalizedItemId,
+      requested_item_id: normalizedItemId,
+      reason: "stack_unresolved",
+    };
+    applySelectionForActor(normalizedActorId, null, nextAudit);
+    logSelectionAudit(nextAudit);
+    emit();
+    return true;
+  }
+  return false;
+}
+
+export function buildTurnContextHintsForActor(actorId) {
+  const normalizedActorId = normalizeActorId(actorId);
+  if (!normalizedActorId) {
+    return null;
+  }
+  const selectedStack = findInventoryStack(
+    normalizedActorId,
+    state.selectedStackIdByActor[normalizedActorId]
+  );
+  if (selectedStack) {
+    const audit = {
+      mode: "stack_primary",
+      actor_id: normalizedActorId,
+      selected_stack_id: normalizeStackId(selectedStack.stack_id),
+      selected_item_id: normalizeItemId(selectedStack.item_id),
+    };
+    setSubmitSelectionAuditForActor(normalizedActorId, audit);
+    return {
+      selected_stack_id: audit.selected_stack_id,
+    };
+  }
+  const currentAudit = normalizeSelectionAudit(
+    state.selectionAuditByActor[normalizedActorId],
+    normalizedActorId
+  );
+  const selectedItemId = resolveSelectedItemIdFromAudit(normalizedActorId, currentAudit);
+  if (currentAudit?.mode === "item_fallback" && selectedItemId) {
+    const audit = {
+      mode: "item_fallback",
+      actor_id: normalizedActorId,
+      selected_item_id: selectedItemId,
+      requested_item_id: currentAudit.requested_item_id || selectedItemId,
+      reason: currentAudit.reason || "stack_unresolved",
+    };
+    setSubmitSelectionAuditForActor(normalizedActorId, audit);
+    logSelectionAudit(audit);
+    return {
+      selected_item_id: selectedItemId,
+    };
+  }
+  setSubmitSelectionAuditForActor(normalizedActorId, {
+    mode: "none",
+    actor_id: normalizedActorId,
+    reason: "no_selection",
+  });
+  return null;
 }
 
 export function setCharacterCreateForm(nextForm) {
@@ -709,6 +1190,17 @@ function normalizeCampaignGetPayload(payload) {
     return null;
   }
   const actors = normalizeCampaignActors(payload.actors);
+  const inventoryStacksByActor = normalizeInventoryStacksByActor(payload.inventory_stacks);
+  const hasInventoryStacksField =
+    hasOwn(payload, "inventory_stacks") &&
+    payload.inventory_stacks &&
+    typeof payload.inventory_stacks === "object" &&
+    !Array.isArray(payload.inventory_stacks);
+  const hasInventoryStackIdsField =
+    hasOwn(payload, "inventory_stack_ids") &&
+    payload.inventory_stack_ids &&
+    typeof payload.inventory_stack_ids === "object" &&
+    !Array.isArray(payload.inventory_stack_ids);
   const inventoriesByActor = normalizeCampaignInventories(payload.actors);
   const inventoryStackIdsByActor = normalizeInventoryStackIdsByActor(payload.inventory_stack_ids);
   const map = normalizeCampaignMap(payload.map);
@@ -737,6 +1229,9 @@ function normalizeCampaignGetPayload(payload) {
       ),
     ],
     actors,
+    inventoryStacksByActor,
+    hasInventoryStacksField,
+    hasInventoryStackIdsField,
     inventoriesByActor,
     inventoryStackIdsByActor,
     map,
@@ -1317,10 +1812,21 @@ export async function refreshCampaign(
   state.campaign.status = normalizedPayload.statusSnapshot;
   state.campaign.actors = normalizedPayload.actors;
   state.campaign.map = normalizedPayload.map;
-  if (normalizedPayload.inventoriesByActor) {
-    replaceInventoryByActor(
+  if (normalizedPayload.hasInventoryStacksField) {
+    replaceInventoryByStacks(
+      normalizedPayload.inventoryStacksByActor,
+      Object.fromEntries(
+        Object.keys(normalizedPayload.inventoryStacksByActor).map((actorId) => [actorId, "stack"])
+      )
+    );
+  } else if (
+    normalizedPayload.inventoriesByActor ||
+    normalizedPayload.hasInventoryStackIdsField
+  ) {
+    replaceInventoryByCompatibilityFallback(
       normalizedPayload.inventoriesByActor,
-      normalizedPayload.inventoryStackIdsByActor
+      normalizedPayload.inventoryStackIdsByActor,
+      Object.keys(normalizedPayload.actors)
     );
   } else {
     reconcileSelectedItemsWithInventory();
@@ -1378,13 +1884,37 @@ export function recordTurnResult(responseData, rawText = "") {
     typeof payload?.effective_actor_id === "string" ? payload.effective_actor_id.trim() : "";
   if (payload?.state_summary && typeof payload.state_summary === "object") {
     state.stateSummary = payload.state_summary;
-    if (payload.state_summary.inventories && typeof payload.state_summary.inventories === "object") {
-      replaceInventoryByActor(
+    if (
+      hasOwn(payload.state_summary, "inventory_stacks") &&
+      payload.state_summary.inventory_stacks &&
+      typeof payload.state_summary.inventory_stacks === "object" &&
+      !Array.isArray(payload.state_summary.inventory_stacks)
+    ) {
+      replaceInventoryByStacks(
+        payload.state_summary.inventory_stacks,
+        Object.fromEntries(
+          Object.keys(normalizeInventoryStacksByActor(payload.state_summary.inventory_stacks)).map(
+            (actorId) => [actorId, "stack"]
+          )
+        )
+      );
+    } else if (
+      effectiveActorId &&
+      hasOwn(payload.state_summary, "active_actor_inventory_stacks") &&
+      Array.isArray(payload.state_summary.active_actor_inventory_stacks)
+    ) {
+      patchInventoryStacksForActor(
+        effectiveActorId,
+        payload.state_summary.active_actor_inventory_stacks,
+        "stack"
+      );
+    } else if (payload.state_summary.inventories && typeof payload.state_summary.inventories === "object") {
+      replaceInventoryByCompatibilityFallback(
         payload.state_summary.inventories,
         payload.state_summary.inventory_stack_ids
       );
     } else if (effectiveActorId && payload.state_summary.active_actor_inventory) {
-      patchInventoryForActor(
+      patchInventoryForActorCompatibilityFallback(
         effectiveActorId,
         payload.state_summary.active_actor_inventory,
         payload.state_summary.active_actor_inventory_stack_ids

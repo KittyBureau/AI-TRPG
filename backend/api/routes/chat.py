@@ -24,6 +24,7 @@ class TurnExecutionContext(BaseModel):
 
 class TurnContextHints(BaseModel):
     selected_stack_id: Optional[str] = None
+    # Fallback-only compatibility hint for older callers that cannot yet resolve a stack.
     selected_item_id: Optional[str] = None
 
 

@@ -79,6 +79,7 @@ Checks:
 - created campaign persisted under `storage/campaigns/<id>/campaign.json`
 - `selected.party_character_ids` and `selected.active_actor_id` remain consistent
 - `GET /campaign/get` returns `actors` keyed by actor id with runtime snapshot fields needed by Play refresh, including read-only `inventory`
+- `GET /campaign/get` returns `inventory_stacks` keyed by actor id as the primary stack-first inventory contract
 - `GET /campaign/get` returns `map.areas` keyed by area id with `reachable_area_ids`
 - `GET /campaign/get` returns `status.ended` plus `status.milestone.current` from the same authoritative campaign snapshot used by `/campaign/status`
 - missing `campaign_id` returns `404` with explicit not-found detail
@@ -91,8 +92,9 @@ Endpoint: `POST /api/v1/chat/turn`
 
 Optional request hint:
 
-- `context_hints.selected_item_id`
-- when present, backend validates it against `actors[effective_actor_id].inventory`
+- `context_hints.selected_stack_id`
+- `context_hints.selected_item_id` as fallback-only compatibility
+- when present, backend validates it against actor-owned stacks derived from `campaign.items`
 - valid hint injects `selected_item` into turn context
 - `selected_item` always includes `id` and `quantity`
 - `selected_item` may also include `name` and `description` when item metadata is available
@@ -114,10 +116,9 @@ Stable response semantics:
 
 - top-level `debug` is omitted when trace is off
 - top-level `debug` is present only when trace is on
-- when trace is on and selected item validation succeeds, `debug.selected_item`
-  may be present with minimal observability fields:
-  - `id`
-  - `has_metadata`
+- when trace is on and selection validation succeeds:
+  - `debug.selected_item` may be present as a minimal compatibility block
+  - `debug.selected_item_resolution` should expose requested/resolved stack/item ids plus status/reason
 - `tool_feedback` may be `null` when there are no failed calls
 - `conflict_report` may be `null` when no retry-exhausted conflict occurred
 - `tool_calls` and `applied_actions` are always arrays
@@ -125,10 +126,12 @@ Stable response semantics:
   - `active_actor_id`
   - `positions`, `positions_parent`, `positions_child`
   - `hp`, `character_states`
-  - `inventories`
+  - `inventories`, `inventory_stack_ids` as derived compatibility snapshots
+  - `inventory_stacks` as the primary stack-first inventory contract
   - `objective`
   - `active_area_id`, `active_area_name`, `active_area_description`
-  - `active_actor_inventory`
+  - `active_actor_inventory`, `active_actor_inventory_stack_ids` as compatibility snapshots
+  - `active_actor_inventory_stacks`
 
 Actor context priority:
 
