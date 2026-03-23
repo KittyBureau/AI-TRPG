@@ -1,0 +1,307 @@
+{
+  "id": "camp_item_stack_fixture",
+  "selected": {
+    "world_id": "world_003",
+    "map_id": "map_001",
+    "party_character_ids": [
+      "ch_e3cd4e96"
+    ],
+    "active_actor_id": "ch_e3cd4e96"
+  },
+  "settings_snapshot": {
+    "context": {
+      "full_context_enabled": true,
+      "compress_enabled": false
+    },
+    "rules": {
+      "hp_zero_ends_game": true
+    },
+    "rollback": {
+      "max_checkpoints": 0
+    },
+    "dialog": {
+      "auto_type_enabled": true,
+      "strict_semantic_guard": false,
+      "conflict_text_checks_enabled": false,
+      "turn_profile_trace_enabled": false
+    },
+    "characters": {
+      "fact_generation": {
+        "draft_mode": "deterministic"
+      }
+    }
+  },
+  "settings_revision": 0,
+  "allowlist": [
+    "move",
+    "hp_delta",
+    "inventory_add",
+    "map_generate",
+    "move_options",
+    "world_generate",
+    "actor_spawn",
+    "scene_action"
+  ],
+  "map": {
+    "areas": {
+      "area_start": {
+        "id": "area_start",
+        "name": "area_start",
+        "description": "Start area for stack-first item validation.",
+        "parent_area_id": null,
+        "reachable_area_ids": [
+          "area_clue",
+          "area_transit_branch_01"
+        ]
+      },
+      "area_clue": {
+        "id": "area_clue",
+        "name": "area_clue",
+        "description": "Nearby side area for simple movement checks.",
+        "parent_area_id": null,
+        "reachable_area_ids": [
+          "area_start",
+          "area_transit_pre_gate_01"
+        ]
+      },
+      "area_transit_pre_gate_01": {
+        "id": "area_transit_pre_gate_01",
+        "name": "area_transit_pre_gate_01",
+        "description": "Transit corridor toward the remote fixture stack.",
+        "parent_area_id": null,
+        "reachable_area_ids": [
+          "area_clue",
+          "area_gate"
+        ]
+      },
+      "area_gate": {
+        "id": "area_gate",
+        "name": "area_gate",
+        "description": "Remote area holding the optional negative-path stack.",
+        "parent_area_id": null,
+        "reachable_area_ids": [
+          "area_target",
+          "area_transit_pre_gate_01"
+        ]
+      },
+      "area_target": {
+        "id": "area_target",
+        "name": "area_target",
+        "description": "Unused tail area kept from the structural base.",
+        "parent_area_id": null,
+        "reachable_area_ids": [
+          "area_gate"
+        ]
+      },
+      "area_transit_branch_01": {
+        "id": "area_transit_branch_01",
+        "name": "area_transit_branch_01",
+        "description": "Optional branch with no item-specific behavior.",
+        "parent_area_id": null,
+        "reachable_area_ids": [
+          "area_start"
+        ]
+      }
+    },
+    "connections": [
+      {
+        "from_area_id": "area_clue",
+        "to_area_id": "area_start"
+      },
+      {
+        "from_area_id": "area_clue",
+        "to_area_id": "area_transit_pre_gate_01"
+      },
+      {
+        "from_area_id": "area_gate",
+        "to_area_id": "area_target"
+      },
+      {
+        "from_area_id": "area_gate",
+        "to_area_id": "area_transit_pre_gate_01"
+      },
+      {
+        "from_area_id": "area_start",
+        "to_area_id": "area_clue"
+      },
+      {
+        "from_area_id": "area_start",
+        "to_area_id": "area_transit_branch_01"
+      },
+      {
+        "from_area_id": "area_target",
+        "to_area_id": "area_gate"
+      },
+      {
+        "from_area_id": "area_transit_branch_01",
+        "to_area_id": "area_start"
+      },
+      {
+        "from_area_id": "area_transit_pre_gate_01",
+        "to_area_id": "area_clue"
+      },
+      {
+        "from_area_id": "area_transit_pre_gate_01",
+        "to_area_id": "area_gate"
+      }
+    ]
+  },
+  "state": {
+    "positions": {},
+    "positions_parent": {},
+    "positions_child": {}
+  },
+  "actors": {
+    "ch_e3cd4e96": {
+      "position": "area_start",
+      "hp": 10,
+      "character_state": "alive",
+      "inventory": {},
+      "meta": {
+        "profile": {
+          "name": "Ace",
+          "summary": "Mystery",
+          "tags": [
+            "Silent"
+          ],
+          "meta": {},
+          "id": "ch_e3cd4e96"
+        },
+        "character_id": "ch_e3cd4e96"
+      }
+    }
+  },
+  "items": {
+    "stk_fixture_tonic_actor": {
+      "stack_id": "stk_fixture_tonic_actor",
+      "definition_id": "healing_tonic",
+      "quantity": 2,
+      "parent_type": "actor",
+      "parent_id": "ch_e3cd4e96",
+      "metadata": {},
+      "label": "Fixture Healing Tonic",
+      "description": "Actor-held consumable stack for use/consume validation.",
+      "tags": [
+        "fixture",
+        "consumable"
+      ],
+      "verbs": [
+        "inspect",
+        "use",
+        "drop"
+      ],
+      "state": {
+        "consume_on_use": true
+      },
+      "props": {},
+      "stackable": true,
+      "is_container": false,
+      "location": {
+        "type": "actor",
+        "id": "ch_e3cd4e96"
+      }
+    },
+    "stk_fixture_ration_actor": {
+      "stack_id": "stk_fixture_ration_actor",
+      "definition_id": "field_ration",
+      "quantity": 1,
+      "parent_type": "actor",
+      "parent_id": "ch_e3cd4e96",
+      "metadata": {},
+      "label": "Fixture Field Ration",
+      "description": "Actor-held non-consumable transfer stack for drop validation.",
+      "tags": [
+        "fixture",
+        "transfer"
+      ],
+      "verbs": [
+        "inspect",
+        "drop"
+      ],
+      "state": {},
+      "props": {
+        "mass": 1
+      },
+      "stackable": true,
+      "is_container": false,
+      "location": {
+        "type": "actor",
+        "id": "ch_e3cd4e96"
+      }
+    },
+    "stk_fixture_torch_ground_start": {
+      "stack_id": "stk_fixture_torch_ground_start",
+      "definition_id": "torch",
+      "quantity": 1,
+      "parent_type": "area",
+      "parent_id": "area_start",
+      "metadata": {},
+      "label": "Fixture Ground Torch",
+      "description": "Ground stack in the active actor area for take validation.",
+      "tags": [
+        "fixture",
+        "ground"
+      ],
+      "verbs": [
+        "inspect",
+        "take"
+      ],
+      "state": {},
+      "props": {},
+      "stackable": true,
+      "is_container": false,
+      "location": {
+        "type": "area",
+        "id": "area_start"
+      }
+    },
+    "stk_fixture_rope_remote": {
+      "stack_id": "stk_fixture_rope_remote",
+      "definition_id": "rope",
+      "quantity": 1,
+      "parent_type": "area",
+      "parent_id": "area_gate",
+      "metadata": {},
+      "label": "Fixture Remote Rope",
+      "description": "Remote stack reserved for negative-path or movement checks.",
+      "tags": [
+        "fixture",
+        "remote"
+      ],
+      "verbs": [
+        "inspect",
+        "take"
+      ],
+      "state": {},
+      "props": {},
+      "stackable": true,
+      "is_container": false,
+      "location": {
+        "type": "area",
+        "id": "area_gate"
+      }
+    }
+  },
+  "entities": {},
+  "positions": {},
+  "hp": {},
+  "character_states": {},
+  "goal": {
+    "text": "Validate stack-first take, drop, use, and persistence behavior.",
+    "status": "active"
+  },
+  "milestone": {
+    "current": "stack_item_validation",
+    "last_advanced_turn": 0,
+    "turn_trigger_interval": 6,
+    "pressure": 0,
+    "pressure_threshold": 2,
+    "summary": ""
+  },
+  "lifecycle": {
+    "ended": false,
+    "reason": null,
+    "ended_at": null
+  },
+  "created_at": "2026-03-23T00:00:00+00:00"
+}

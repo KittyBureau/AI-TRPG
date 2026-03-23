@@ -15,7 +15,19 @@ Scope of this document:
   - `selected_item_id` remains fallback-only compatibility for callers that cannot yet resolve a stack
 - Historical audit/migration sections below are retained as the implementation record for how the cutover was designed and closed.
 
-## 1. Current-System Audit
+Current-status reading rule:
+
+- any section below that describes item-first authority, missing `campaign.items`, or item-id-only selection should be read as historical pre-closure context unless the section explicitly says otherwise
+- for current runtime/storage/frontend truth, use:
+  - `docs/20_runtime/storage_authority.md`
+  - `docs/01_specs/storage_layout.md`
+  - `docs/_index/AI_INDEX.md`
+  - `docs/90_playable/ITEM_REFACTOR_CLOSURE_TODO.md`
+
+## 1. Historical Pre-Closure Audit (Superseded Context)
+
+This section records the item-authority split that existed before the stack-first closure landed.
+It is useful as migration history, but it is not current runtime truth.
 
 ### 1.1 Current runtime storage split
 
