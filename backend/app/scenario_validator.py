@@ -39,7 +39,7 @@ def _validate_required_roles(scenario: MaterializedScenario) -> None:
         "hint_source_id": roles.hint_source_id,
         "clue_area_id": roles.clue_area_id,
         "clue_source_id": roles.clue_source_id,
-        "granted_item_id": roles.granted_item_id,
+        "revealed_item_id": roles.revealed_item_id,
         "gate_area_id": roles.gate_area_id,
         "gate_entity_id": roles.gate_entity_id,
         "required_item_id": roles.required_item_id,
@@ -84,7 +84,7 @@ def _validate_entities_and_items(scenario: MaterializedScenario) -> None:
     hint_source = scenario.entities.get(roles.hint_source_id)
     clue_source = scenario.entities.get(roles.clue_source_id)
     gate_entity = scenario.entities.get(roles.gate_entity_id)
-    required_item = scenario.items.get(roles.required_item_id)
+    required_role_item = scenario.items.get(roles.required_item_id)
 
     if hint_source is None or hint_source.kind != "hint_source":
         raise ValueError("hint source entity is missing or invalid")
@@ -92,7 +92,7 @@ def _validate_entities_and_items(scenario: MaterializedScenario) -> None:
         raise ValueError("clue source entity is missing or invalid")
     if gate_entity is None or gate_entity.kind != "gate":
         raise ValueError("gate entity is missing or invalid")
-    if required_item is None or required_item.kind != "required_item":
+    if required_role_item is None or required_role_item.kind != "required_item":
         raise ValueError("required item role is missing or invalid")
 
     if hint_source.area_id != roles.start_area_id:
@@ -102,13 +102,11 @@ def _validate_entities_and_items(scenario: MaterializedScenario) -> None:
     if gate_entity.area_id != roles.gate_area_id:
         raise ValueError("gate entity is not located in the gate area")
 
-    if clue_source.grants_item_id != roles.granted_item_id:
-        raise ValueError("clue source does not grant the required key item role")
-    if gate_entity.requires_item_id != roles.required_item_id:
-        raise ValueError("gate entity does not require the expected key item role")
-    if required_item.granted_by_entity_id != roles.clue_source_id:
-        raise ValueError("required item is not granted by the clue source")
-    if required_item.required_by_gate_entity_id != roles.gate_entity_id:
+    if clue_source.reveals_item_id != roles.revealed_item_id:
+        raise ValueError("clue source does not reveal the expected item role")
+    if required_role_item.revealed_by_entity_id != roles.clue_source_id:
+        raise ValueError("required item is not revealed by the clue source")
+    if required_role_item.required_by_gate_entity_id != roles.gate_entity_id:
         raise ValueError("required item is not tied to the gate entity")
 
 
@@ -123,10 +121,14 @@ def _validate_goal_and_gate_rules(scenario: MaterializedScenario) -> None:
         raise ValueError("gate rule origin does not match the gate area role")
     if scenario.gate_rule.to_area_id != roles.target_area_id:
         raise ValueError("gate rule destination does not match the target area role")
-    if scenario.gate_rule.required_item_id != roles.required_item_id:
-        raise ValueError("gate rule required item does not match the required item role")
     if scenario.gate_rule.gate_entity_id != roles.gate_entity_id:
         raise ValueError("gate rule gate entity does not match the gate entity role")
+
+    gate_required_item = scenario.items.get(scenario.gate_rule.required_item_id)
+    if gate_required_item is None or gate_required_item.kind != "required_item":
+        raise ValueError("gate rule required item is missing or invalid")
+    if gate_required_item.required_by_gate_entity_id != scenario.gate_rule.gate_entity_id:
+        raise ValueError("gate rule required item is not tied to the gate rule gate entity")
 
 
 def _validate_progression(scenario: MaterializedScenario) -> None:

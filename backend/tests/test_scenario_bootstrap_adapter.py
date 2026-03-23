@@ -85,8 +85,8 @@ def test_bootstrap_fragment_preserves_required_runtime_near_semantics(
     assert bootstrap_fragment.start_area_id == "area_start"
     assert bootstrap_fragment.clue_area_id == "area_clue"
     assert bootstrap_fragment.searchable_clue_source.area_id == "area_clue"
-    assert bootstrap_fragment.key_item_grant.item_id == "required_item_001"
-    assert bootstrap_fragment.key_item_grant.source_interactable_id == "clue_source_001"
+    assert bootstrap_fragment.revealed_item.item_id == "required_item_001"
+    assert bootstrap_fragment.revealed_item.source_interactable_id == "clue_source_001"
     assert bootstrap_fragment.gate.from_area_id == "area_gate"
     assert bootstrap_fragment.gate.to_area_id == "area_target"
     assert bootstrap_fragment.gate.required_item_id == "required_item_001"
@@ -94,14 +94,17 @@ def test_bootstrap_fragment_preserves_required_runtime_near_semantics(
     assert bootstrap_fragment.completion.target_area_id == "area_target"
 
 
-def test_hint_searchable_source_and_key_item_grant_remain_distinct_roles(
+def test_hint_searchable_source_and_revealed_item_remain_distinct_roles(
     bootstrap_fragment,
 ) -> None:
     assert bootstrap_fragment.hint_source.interactable_id == "hint_source_001"
     assert bootstrap_fragment.searchable_clue_source.interactable_id == "clue_source_001"
-    assert bootstrap_fragment.key_item_grant.item_id == "required_item_001"
+    assert bootstrap_fragment.revealed_item.item_id == "required_item_001"
     assert bootstrap_fragment.hint_source.interactable_id != bootstrap_fragment.searchable_clue_source.interactable_id
-    assert bootstrap_fragment.searchable_clue_source.interactable_id == bootstrap_fragment.key_item_grant.source_interactable_id
+    assert (
+        bootstrap_fragment.searchable_clue_source.interactable_id
+        == bootstrap_fragment.revealed_item.source_interactable_id
+    )
 
 
 def test_extra_areas_remain_neutral_transit_areas_only(
@@ -187,11 +190,11 @@ def test_fixture_chain_regression_payloads_are_deterministic(
         "gate_001",
         "hint_source_001",
     ]
-    assert _dump(bootstrap_fragment)["key_item_grant"] == {
+    assert _dump(bootstrap_fragment)["revealed_item"] == {
         "item_id": "required_item_001",
         "source_interactable_id": "clue_source_001",
         "source_area_id": "area_clue",
-        "grant_interaction": "search",
+        "reveal_interaction": "search",
     }
 
 
@@ -211,12 +214,12 @@ def test_bootstrap_fragment_matches_watchtower_baseline_semantics() -> None:
     clue_entities = [
         entity
         for entity in preset.entities.values()
-        if "search" in entity.verbs and entity.state.get("inventory_item_id")
+        if "search" in entity.verbs and entity.state.get("search_loot_definition_id")
     ]
     gate_entities = [
         entity
         for entity in preset.entities.values()
-        if isinstance(entity.state.get("required_item_id"), str)
+        if "gate" in entity.tags and entity.state.get("locked") is True
     ]
 
     assert preset.start_area_id
@@ -226,7 +229,7 @@ def test_bootstrap_fragment_matches_watchtower_baseline_semantics() -> None:
     assert fragment.start_area_id
     assert fragment.hint_source.interactable_id
     assert fragment.searchable_clue_source.interactable_id
-    assert fragment.key_item_grant.item_id == fragment.gate.required_item_id
+    assert fragment.revealed_item.item_id == fragment.gate.required_item_id
     assert fragment.completion.type == "enter_area"
     assert fragment.completion.target_area_id == fragment.target_area_id
 
@@ -246,4 +249,8 @@ def test_bootstrap_fragment_matches_watchtower_baseline_semantics() -> None:
     assert _is_reachable(preset_areas, preset.start_area_id, clue_entities[0].loc.id)
     assert _is_reachable(fragment_areas, fragment.start_area_id, fragment.clue_area_id)
     assert fragment.gate.from_area_id != fragment.target_area_id
-    assert gate_entities[0].state["required_item_id"] == clue_entities[0].state["inventory_item_id"]
+    assert clue_entities[0].kind == "container"
+    assert clue_entities[0].state["search_loot_definition_id"] == "tower_key"
+    assert isinstance(fragment.revealed_item.item_id, str) and fragment.revealed_item.item_id
+    assert "inventory_item_id" not in clue_entities[0].state
+    assert "required_item_id" not in gate_entities[0].state

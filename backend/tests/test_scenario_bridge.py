@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+import backend.app.scenario_bridge as scenario_bridge_module
 from backend.app.scenario_bridge import build_scenario_runtime_bridge
 from backend.app.scenario_builder import build_materialized_scenario
 from backend.app.scenario_templates import normalize_scenario_params
@@ -44,8 +45,8 @@ def test_bridge_preserves_required_runtime_facing_semantics() -> None:
 
     assert bridge.start_area_id == "area_start"
     assert bridge.clue_area_id == "area_clue"
-    assert bridge.key_item.item_id == "required_item_001"
-    assert bridge.key_item.source_interactable_id == "clue_source_001"
+    assert bridge.revealed_item.item_id == "required_item_001"
+    assert bridge.revealed_item.source_interactable_id == "clue_source_001"
     assert bridge.gate.from_area_id == "area_gate"
     assert bridge.gate.to_area_id == "area_target"
     assert bridge.gate.required_item_id == "required_item_001"
@@ -60,6 +61,8 @@ def test_hint_source_and_searchable_clue_source_remain_distinct_in_bridge_output
 
     assert bridge.interactables["hint_source_001"].kind == "hint_source"
     assert bridge.interactables["clue_source_001"].kind == "searchable_clue_source"
+    assert bridge.interactables["clue_source_001"].reveals_item_id == bridge.revealed_item.item_id
+    assert "required_item_id" not in bridge.interactables["gate_001"].model_dump()
     assert bridge.interactables["hint_source_001"].id != bridge.interactables["clue_source_001"].id
 
 
@@ -106,6 +109,27 @@ def test_bridge_rejects_deliberately_broken_materialized_scenario() -> None:
 
     with pytest.raises(ValueError, match="clue source"):
         build_scenario_runtime_bridge(broken)
+
+
+def test_bridge_gate_required_item_is_sourced_from_gate_rule() -> None:
+    scenario = build_materialized_scenario(normalize_scenario_params({}))
+    broken = scenario.model_copy(
+        update={
+            "gate_rule": scenario.gate_rule.model_copy(
+                update={"required_item_id": "required_item_gate_rule_override"}
+            )
+        }
+    )
+
+    original_validator = scenario_bridge_module.validate_materialized_scenario
+    scenario_bridge_module.validate_materialized_scenario = lambda _: None
+    try:
+        bridge = build_scenario_runtime_bridge(broken)
+    finally:
+        scenario_bridge_module.validate_materialized_scenario = original_validator
+
+    assert broken.roles.required_item_id == "required_item_001"
+    assert bridge.gate.required_item_id == "required_item_gate_rule_override"
 
 
 def test_bridge_output_has_no_runtime_wiring_or_side_effect_fields() -> None:

@@ -24,6 +24,8 @@ Current runtime policy:
 - inventory-only campaign payloads are no longer supported for item initialization.
 - frontend inventory authority derives from stack payloads (`inventory_stacks`), with aggregated inventory retained only as a derived display/debug view.
 - frontend selection authority is `selectedStackId`; `selected_item_id` is fallback-only compatibility.
+- mainline portable-item acquisition is `search -> reveal -> take`; `search` alone does not grant actor possession.
+- `inventory_add` remains a bounded legacy-only contract for source-entity-backed inventory gain.
 
 ### Legacy mirrors
 
@@ -54,6 +56,7 @@ For items, there is no old-save migration path:
 ## Related Specs and Code
 
 - Spec: `docs/01_specs/storage_layout.md`
+- Guide: `docs/20_runtime/item_runtime_model.md`
 - Spec: `docs/01_specs/state_machine.md`
 - Code: `backend/infra/file_repo.py`
 - Code: `backend/domain/character_access.py`

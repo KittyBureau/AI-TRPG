@@ -1,6 +1,6 @@
 # Test Watchtower World Manual Test
 
-Last updated: 2026-03-11
+Last updated: 2026-03-23
 
 This guide verifies the fixed smoke-test world `test_watchtower_world` through the existing Play flow.
 Use it as the reusable watchtower regression scenario for smoke retests.
@@ -13,7 +13,7 @@ It is also the source behavior reference for `key_gate_scenario` Scenario Templa
 - single active actor spawn at the configured start area
 - area movement and area context
 - one NPC hint source
-- one key-item acquisition
+- one key-item reveal plus stack-native take
 - inventory visibility during play
 - one simple item gate
 - objective completion by entering the target area
@@ -90,11 +90,23 @@ Expected:
 Expected:
 
 - latest turn applies `scene_action`
-- response/narrative says the search finds `tower_key`
-- `Actor Control` inventory shows `tower_key x1`
-- repeating the same clue interaction does not increase the count beyond `x1`
+- response/narrative says the search finds `Tower Key`
+- current area content now exposes a takeable key item in `old_hut`
+- `Actor Control` inventory still does not show `tower_key`
+- repeating the same clue interaction does not create another key stack
 
-### 7. Approach the watchtower
+### 7. Take the key
+
+- In `Actor Control`, send a turn such as `Take the tower key.`
+
+Expected:
+
+- latest turn applies `scene_action`
+- response/narrative confirms the key was taken
+- `Actor Control` inventory now shows `tower_key x1`
+- the key no longer appears as an area item in `old_hut`
+
+### 8. Approach the watchtower
 
 - Move from `old_hut` to `village_square`
 - Move to `forest_path`
@@ -105,7 +117,7 @@ Expected:
 - `Map Panel` current area becomes `Watchtower Entrance (watchtower_entrance)`
 - reachable areas still show the tower interior route
 
-### 8. Enter the watchtower
+### 9. Enter the watchtower
 
 - With `tower_key` already in inventory, move to `watchtower_inside`
 
@@ -115,7 +127,7 @@ Expected:
 - current area becomes `Watchtower Interior (watchtower_inside)`
 - latest turn shows a successful `move`
 
-### 9. Verify objective completion
+### 10. Verify objective completion
 
 - Refresh the campaign if needed.
 - Check `Campaign Panel` and the latest turn result/debug output.
@@ -129,10 +141,11 @@ Expected:
 ## Verified Regression Outcome
 
 - Manual verification on 2026-03-11 passed for the full fixed watchtower loop.
-- Reuse this scenario when checking inventory authority, one-time clue grants, locked-area gating, and goal completion regressions.
+- Reuse this scenario when checking item reveal, stack-native take, locked-area gating, and goal completion regressions.
 
 ## Failure Cues
 
 - If entering `watchtower_inside` fails before the key is found, that is expected gate behavior.
-- If the key is narrated as found but inventory does not show `tower_key`, treat it as a failure.
+- If searching the floorboard grants the key directly into inventory, treat it as a failure.
+- If searching the floorboard reveals the key but taking it does not move ownership into inventory, treat it as a failure.
 - If the final move succeeds but campaign status does not end with `goal_achieved`, treat it as a failure.

@@ -77,7 +77,10 @@ def _make_campaign(campaign_id: str = "camp_inventory") -> Campaign:
     )
 
 
-def _add_inventory_source(
+# inventory_add still uses dedicated legacy source entities as authoritative
+# inputs. Keep this helper scoped to inventory_add coverage so it is not
+# mistaken for the mainline stack-first search flow.
+def _add_inventory_add_source_entity(
     campaign: Campaign,
     *,
     source_entity_id: str,
@@ -103,7 +106,9 @@ def _add_inventory_source(
 
 def test_inventory_add_applies_and_updates_actor_inventory() -> None:
     campaign = _make_campaign()
-    _add_inventory_source(campaign, source_entity_id="torch_cache", item_id="torch", quantity=2)
+    _add_inventory_add_source_entity(
+        campaign, source_entity_id="torch_cache", item_id="torch", quantity=2
+    )
     call = ToolCall(
         id="call_inventory_001",
         tool="inventory_add",
@@ -195,7 +200,7 @@ def test_inventory_add_persists_via_turn_service(
     repo = FileRepo(tmp_path / "storage")
     service = TurnService(repo)
     campaign = _make_campaign("camp_inventory_turn")
-    _add_inventory_source(
+    _add_inventory_add_source_entity(
         campaign, source_entity_id="medkit_cache", item_id="medkit", quantity=1
     )
     repo.create_campaign(campaign)

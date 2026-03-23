@@ -6,7 +6,7 @@ from backend.domain.scenario_bootstrap_models import (
     ScenarioBootstrapFragment,
     ScenarioBootstrapGate,
     ScenarioBootstrapHintSource,
-    ScenarioBootstrapKeyItemGrant,
+    ScenarioBootstrapRevealedItem,
     ScenarioBootstrapSearchableClueSource,
 )
 from backend.domain.scenario_bridge_models import ScenarioRuntimeBridge
@@ -17,7 +17,7 @@ def build_scenario_bootstrap_fragment(
 ) -> ScenarioBootstrapFragment:
     _validate_bridge_for_bootstrap(bridge)
 
-    clue_source = bridge.interactables[bridge.key_item.source_interactable_id]
+    clue_source = bridge.interactables[bridge.revealed_item.source_interactable_id]
     gate_interactable = bridge.interactables[bridge.gate.interactable_id]
     hint_interactable = _find_hint_source(bridge)
 
@@ -46,9 +46,9 @@ def build_scenario_bootstrap_fragment(
             interactable_id=clue_source.id,
             area_id=clue_source.area_id,
         ),
-        key_item_grant=ScenarioBootstrapKeyItemGrant(
-            item_id=bridge.key_item.item_id,
-            source_interactable_id=bridge.key_item.source_interactable_id,
+        revealed_item=ScenarioBootstrapRevealedItem(
+            item_id=bridge.revealed_item.item_id,
+            source_interactable_id=bridge.revealed_item.source_interactable_id,
             source_area_id=clue_source.area_id,
         ),
         gate=ScenarioBootstrapGate(
@@ -82,8 +82,8 @@ def _validate_bridge_for_bootstrap(bridge: ScenarioRuntimeBridge) -> None:
         raise ValueError("bridge clue area semantics are invalid")
     if bridge.areas[bridge.target_area_id].kind != "target":
         raise ValueError("bridge target area semantics are invalid")
-    if bridge.key_item.source_interactable_id not in bridge.interactables:
-        raise ValueError("bridge key item source interactable is missing")
+    if bridge.revealed_item.source_interactable_id not in bridge.interactables:
+        raise ValueError("bridge revealed item source interactable is missing")
     if bridge.gate.interactable_id not in bridge.interactables:
         raise ValueError("bridge gate interactable is missing")
     if bridge.gate.from_area_id not in bridge.areas or bridge.gate.to_area_id not in bridge.areas:
@@ -93,21 +93,19 @@ def _validate_bridge_for_bootstrap(bridge: ScenarioRuntimeBridge) -> None:
     if bridge.completion.target_area_id != bridge.target_area_id:
         raise ValueError("bridge completion target must match bridge target area")
 
-    clue_source = bridge.interactables[bridge.key_item.source_interactable_id]
+    clue_source = bridge.interactables[bridge.revealed_item.source_interactable_id]
     if clue_source.kind != "searchable_clue_source":
-        raise ValueError("bridge key item source must be a searchable clue source")
+        raise ValueError("bridge revealed item source must be a searchable clue source")
     if clue_source.area_id != bridge.clue_area_id:
         raise ValueError("bridge searchable clue source must live in the clue area")
-    if clue_source.grants_item_id != bridge.key_item.item_id:
-        raise ValueError("bridge searchable clue source must grant the bridge key item")
+    if clue_source.reveals_item_id != bridge.revealed_item.item_id:
+        raise ValueError("bridge searchable clue source must reveal the bridge item")
 
     gate = bridge.interactables[bridge.gate.interactable_id]
     if gate.kind != "gate":
         raise ValueError("bridge gate interactable semantics are invalid")
     if gate.area_id != bridge.gate.from_area_id:
         raise ValueError("bridge gate interactable must live in the gate area")
-    if gate.requires_item_id != bridge.gate.required_item_id:
-        raise ValueError("bridge gate interactable must require the bridge key item")
     if gate.leads_to_area_id != bridge.gate.to_area_id:
         raise ValueError("bridge gate interactable must lead to the gate target area")
 

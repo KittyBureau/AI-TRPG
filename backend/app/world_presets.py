@@ -11,6 +11,7 @@ TEST_WATCHTOWER_START_AREA_ID = "village_gate"
 TEST_WATCHTOWER_TARGET_AREA_ID = "watchtower_inside"
 TEST_WATCHTOWER_GATE_FROM_AREA_ID = "watchtower_entrance"
 TEST_WATCHTOWER_GATE_ITEM_ID = "tower_key"
+TEST_WATCHTOWER_GATE_STACK_ID = "stk_watchtower_tower_key_01"
 # Internal development preset for the scenario-generator v0 runtime path.
 DEV_KEY_GATE_SCENARIO_WORLD_ID = "dev_key_gate_scenario_world"
 
@@ -153,16 +154,19 @@ def build_campaign_world_preset(world_id: str) -> Optional[CampaignWorldPreset]:
             ),
             "old_hut_clue": Entity(
                 id="old_hut_clue",
-                kind="object",
+                kind="container",
                 label="Loose Floorboard",
-                tags=["clue", "search_spot"],
+                tags=["clue", "search_spot", "stash"],
                 loc=EntityLocation(type="area", id="old_hut"),
                 verbs=["inspect", "search"],
                 state={
                     "hint": "Something small was hidden here: the tower key.",
-                    "inventory_item_id": TEST_WATCHTOWER_GATE_ITEM_ID,
-                    "inventory_quantity": 1,
-                    "inventory_granted": False,
+                    "opened": True,
+                    "search_loot_stack_id": TEST_WATCHTOWER_GATE_STACK_ID,
+                    "search_loot_definition_id": TEST_WATCHTOWER_GATE_ITEM_ID,
+                    "search_loot_label": "Tower Key",
+                    "search_loot_tags": ["key"],
+                    "search_loot_stackable": False,
                 },
                 props={},
             ),
@@ -175,7 +179,6 @@ def build_campaign_world_preset(world_id: str) -> Optional[CampaignWorldPreset]:
                 verbs=["inspect", "open"],
                 state={
                     "locked": True,
-                    "required_item_id": TEST_WATCHTOWER_GATE_ITEM_ID,
                 },
                 props={},
             ),

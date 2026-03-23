@@ -11,6 +11,8 @@ from backend.app.world_presets import (
 from backend.domain.world_models import World, WorldGenerator, stable_world_timestamp
 from backend.infra.file_repo import FileRepo
 
+_SCENARIO_KEY_STACK_ID = "stk_clue_source_001_required_item_001"
+
 
 class _ScenarioRuntimeLLM:
     def generate(
@@ -73,6 +75,23 @@ class _ScenarioRuntimeLLM:
                             "actor_id": "pc_001",
                             "action": "search",
                             "target_id": "clue_source_001",
+                            "params": {},
+                        },
+                    }
+                ],
+            }
+        if token == "TAKE_KEY":
+            return {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": "call_take_key",
+                        "tool": "scene_action",
+                        "args": {
+                            "actor_id": "pc_001",
+                            "action": "take",
+                            "target_id": _SCENARIO_KEY_STACK_ID,
                             "params": {},
                         },
                     }
@@ -190,6 +209,11 @@ def test_scenario_metadata_world_bootstraps_playable_campaign(tmp_path: Path) ->
     assert "area_gate" in campaign.map.areas
     assert "area_target" in campaign.map.areas
     assert campaign.goal.text == "Find the required item and enter the target area."
+    assert campaign.entities["clue_source_001"].kind == "container"
+    assert campaign.entities["clue_source_001"].state["search_loot_stack_id"] == _SCENARIO_KEY_STACK_ID
+    assert campaign.entities["clue_source_001"].state["search_loot_definition_id"] == "required_item_001"
+    assert "inventory_item_id" not in campaign.entities["clue_source_001"].state
+    assert campaign.entities["gate_001"].state == {"locked": True}
 
 
 def test_scenario_metadata_world_is_playable_through_real_runtime_path(tmp_path: Path) -> None:
@@ -227,7 +251,29 @@ def test_scenario_metadata_world_is_playable_through_real_runtime_path(tmp_path:
     service.submit_turn(campaign_id, "MOVE_TO_CLUE")
     search = service.submit_turn(campaign_id, "SEARCH_CLUE")
     assert search["applied_actions"][0]["tool"] == "scene_action"
-    assert search["state_summary"]["active_actor_inventory"] == {"required_item_001": 1}
+    assert "required_item_001" in search["narrative_text"]
+    assert search["state_summary"]["active_actor_inventory"] == {}
+    assert search["state_summary"]["active_actor_inventory_stacks"] == []
+
+    campaign = repo.get_campaign(campaign_id)
+    assert campaign.items[_SCENARIO_KEY_STACK_ID].definition_id == "required_item_001"
+    assert campaign.items[_SCENARIO_KEY_STACK_ID].parent_type == "area"
+    assert campaign.items[_SCENARIO_KEY_STACK_ID].parent_id == "area_clue"
+
+    take = service.submit_turn(campaign_id, "TAKE_KEY")
+    assert take["applied_actions"][0]["tool"] == "scene_action"
+    assert take["narrative_text"] == "You take required_item_001."
+    assert take["state_summary"]["active_actor_inventory"] == {"required_item_001": 1}
+    assert take["state_summary"]["active_actor_inventory_stacks"] == [
+        {
+            "stack_id": _SCENARIO_KEY_STACK_ID,
+            "item_id": "required_item_001",
+            "quantity": 1,
+            "owner_actor_id": "pc_001",
+            "location": {"type": "actor", "id": "pc_001"},
+            "label": "required_item_001",
+        }
+    ]
 
     service.submit_turn(campaign_id, "MOVE_TO_GATE")
     entered = service.submit_turn(campaign_id, "ENTER_TARGET")
@@ -235,6 +281,8 @@ def test_scenario_metadata_world_is_playable_through_real_runtime_path(tmp_path:
     assert entered["state_summary"]["active_area_id"] == "area_target"
 
     campaign = repo.get_campaign(campaign_id)
+    assert campaign.items[_SCENARIO_KEY_STACK_ID].parent_type == "actor"
+    assert campaign.items[_SCENARIO_KEY_STACK_ID].parent_id == "pc_001"
     assert campaign.goal.status == "completed"
     assert campaign.lifecycle.ended is True
     assert campaign.lifecycle.reason == "goal_achieved"
@@ -420,6 +468,10 @@ def test_builtin_scenario_preset_bootstraps_playable_campaign(tmp_path: Path) ->
         "area_target",
     ]
     assert campaign.goal.text == "Find the required item and enter the target area."
+    assert campaign.entities["clue_source_001"].kind == "container"
+    assert campaign.entities["clue_source_001"].state["search_loot_stack_id"] == _SCENARIO_KEY_STACK_ID
+    assert "inventory_item_id" not in campaign.entities["clue_source_001"].state
+    assert campaign.entities["gate_001"].state == {"locked": True}
 
 
 def test_builtin_scenario_preset_is_playable_through_real_runtime_path(
@@ -441,7 +493,17 @@ def test_builtin_scenario_preset_is_playable_through_real_runtime_path(
 
     service.submit_turn(campaign_id, "MOVE_TO_CLUE")
     search = service.submit_turn(campaign_id, "SEARCH_CLUE")
-    assert search["state_summary"]["active_actor_inventory"] == {"required_item_001": 1}
+    assert "required_item_001" in search["narrative_text"]
+    assert search["state_summary"]["active_actor_inventory"] == {}
+    assert search["state_summary"]["active_actor_inventory_stacks"] == []
+
+    campaign = repo.get_campaign(campaign_id)
+    assert campaign.items[_SCENARIO_KEY_STACK_ID].parent_type == "area"
+    assert campaign.items[_SCENARIO_KEY_STACK_ID].parent_id == "area_clue"
+
+    take = service.submit_turn(campaign_id, "TAKE_KEY")
+    assert take["narrative_text"] == "You take required_item_001."
+    assert take["state_summary"]["active_actor_inventory"] == {"required_item_001": 1}
 
     service.submit_turn(campaign_id, "MOVE_TO_GATE")
     entered = service.submit_turn(campaign_id, "ENTER_TARGET")
@@ -449,6 +511,8 @@ def test_builtin_scenario_preset_is_playable_through_real_runtime_path(
     assert entered["state_summary"]["active_area_id"] == "area_target"
 
     campaign = repo.get_campaign(campaign_id)
+    assert campaign.items[_SCENARIO_KEY_STACK_ID].parent_type == "actor"
+    assert campaign.items[_SCENARIO_KEY_STACK_ID].parent_id == "pc_001"
     assert campaign.goal.status == "completed"
     assert campaign.lifecycle.ended is True
     assert campaign.lifecycle.reason == "goal_achieved"

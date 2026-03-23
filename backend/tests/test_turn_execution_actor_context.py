@@ -135,6 +135,8 @@ def _create_campaign(tmp_path: Path, campaign_id: str) -> None:
                 meta={},
             ),
         },
+        # These inventory_add source entities intentionally exercise actor-
+        # context handling, not the stack-first search/reveal path.
         entities={
             "compass_cache": Entity(
                 id="compass_cache",

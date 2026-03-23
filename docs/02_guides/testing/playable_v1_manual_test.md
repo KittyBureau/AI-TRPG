@@ -1,6 +1,6 @@
 ﻿# Playable v1 Manual Test
 
-Last updated: 2026-03-10
+Last updated: 2026-03-23
 
 This guide provides repeatable manual verification for Playable v1.
 
@@ -13,7 +13,7 @@ For the fixed static smoke world introduced during early P2 preparation, use
 
 Watchtower regression scenario:
 - use `test_watchtower_world` as the fixed end-to-end smoke baseline
-- confirm guard hint, one-time `tower_key` acquisition, blocked free-form inventory injection, locked door behavior, and `goal_achieved` on entering `watchtower_inside`
+- confirm guard hint, one-time `tower_key` reveal, stack-native take, blocked free-form inventory injection, locked door behavior, and `goal_achieved` on entering `watchtower_inside`
 
 Closure observations for the current baseline:
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Dict, Literal, Tuple
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 ScenarioTemplateId = Literal["key_gate_scenario"]
 ScenarioLayoutType = Literal["linear", "branch"]
@@ -16,7 +16,7 @@ ScenarioStructuralRole = Literal[
     "hint_source",
     "clue_area",
     "clue_source",
-    "granted_item",
+    "revealed_item",
     "gate_area",
     "gate_entity",
     "required_item",
@@ -49,15 +49,24 @@ class ScenarioTemplateDefinition(BaseModel):
 
 
 class ScenarioRoleAssignments(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     start_area_id: str = ""
     hint_source_id: str = ""
     clue_area_id: str = ""
     clue_source_id: str = ""
-    granted_item_id: str = ""
+    revealed_item_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("revealed_item_id", "granted_item_id"),
+    )
     gate_area_id: str = ""
     gate_entity_id: str = ""
     required_item_id: str = ""
     target_area_id: str = ""
+
+    @property
+    def granted_item_id(self) -> str:
+        return self.revealed_item_id
 
 
 class ScenarioGateRule(BaseModel):
@@ -79,18 +88,34 @@ class ScenarioArea(BaseModel):
 
 
 class ScenarioEntity(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     id: str
     kind: ScenarioEntityKind
     area_id: str
-    grants_item_id: str = ""
-    requires_item_id: str = ""
+    reveals_item_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("reveals_item_id", "grants_item_id"),
+    )
+
+    @property
+    def grants_item_id(self) -> str:
+        return self.reveals_item_id
 
 
 class ScenarioItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     id: str
     kind: ScenarioItemKind = "required_item"
-    granted_by_entity_id: str
+    revealed_by_entity_id: str = Field(
+        validation_alias=AliasChoices("revealed_by_entity_id", "granted_by_entity_id"),
+    )
     required_by_gate_entity_id: str
+
+    @property
+    def granted_by_entity_id(self) -> str:
+        return self.revealed_by_entity_id
 
 
 class ScenarioTopology(BaseModel):

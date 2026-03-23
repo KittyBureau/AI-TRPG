@@ -4,8 +4,13 @@ Last updated: 2026-03-12
 
 ## 1. Alignment summary
 
+- Historical-reading note:
+  - the settled playable runtime no longer uses search direct-grant
+  - current behavior is `search -> reveal -> take -> actor-owned stack`
+  - settled playable entities no longer carry authoritative gate duplication
+  - references below to clue-source `inventory_item_id` / `inventory_granted` or gate-entity `required_item_id` are historical v0 generator design context unless explicitly updated
 - Current stable source example: `test_watchtower_world`.
-- Current verified loop: spawn -> talk guard -> search hut clue -> obtain key -> enter gate -> `goal_achieved`.
+- Current verified loop: spawn -> talk guard -> search hut clue -> reveal key -> take key -> enter gate -> `goal_achieved`.
 - Scope of this design: extract the watchtower loop into one reusable playable scenario template and define the smallest generator shape that can reproduce a structurally equivalent scenario.
 - Non-goals for this round:
   - full world generation

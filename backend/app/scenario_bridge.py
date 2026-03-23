@@ -6,7 +6,7 @@ from backend.domain.scenario_bridge_models import (
     ScenarioBridgeCompletion,
     ScenarioBridgeGate,
     ScenarioBridgeInteractable,
-    ScenarioBridgeKeyItem,
+    ScenarioBridgeRevealedItem,
     ScenarioRuntimeBridge,
 )
 from backend.domain.scenario_models import MaterializedScenario
@@ -39,13 +39,12 @@ def build_scenario_runtime_bridge(
             id=roles.clue_source_id,
             kind="searchable_clue_source",
             area_id=roles.clue_area_id,
-            grants_item_id=roles.required_item_id,
+            reveals_item_id=roles.revealed_item_id,
         ),
         roles.gate_entity_id: ScenarioBridgeInteractable(
             id=roles.gate_entity_id,
             kind="gate",
             area_id=roles.gate_area_id,
-            requires_item_id=roles.required_item_id,
             leads_to_area_id=roles.target_area_id,
         ),
     }
@@ -61,15 +60,15 @@ def build_scenario_runtime_bridge(
         target_area_id=roles.target_area_id,
         areas=areas,
         interactables=interactables,
-        key_item=ScenarioBridgeKeyItem(
-            item_id=roles.required_item_id,
+        revealed_item=ScenarioBridgeRevealedItem(
+            item_id=roles.revealed_item_id,
             source_interactable_id=roles.clue_source_id,
         ),
         gate=ScenarioBridgeGate(
             from_area_id=roles.gate_area_id,
             to_area_id=roles.target_area_id,
             interactable_id=roles.gate_entity_id,
-            required_item_id=roles.required_item_id,
+            required_item_id=scenario.gate_rule.required_item_id,
         ),
         completion=ScenarioBridgeCompletion(
             type="enter_area",

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Dict, Literal, Tuple
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from backend.domain.scenario_models import (
     ScenarioDifficulty,
@@ -32,11 +32,20 @@ class ScenarioBootstrapSearchableClueSource(BaseModel):
     interaction: Literal["search"] = "search"
 
 
-class ScenarioBootstrapKeyItemGrant(BaseModel):
+class ScenarioBootstrapRevealedItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     item_id: str
     source_interactable_id: str
     source_area_id: str
-    grant_interaction: Literal["search"] = "search"
+    reveal_interaction: Literal["search"] = Field(
+        default="search",
+        validation_alias=AliasChoices("reveal_interaction", "grant_interaction"),
+    )
+
+    @property
+    def grant_interaction(self) -> str:
+        return self.reveal_interaction
 
 
 class ScenarioBootstrapGate(BaseModel):
@@ -53,6 +62,8 @@ class ScenarioBootstrapCompletion(BaseModel):
 
 
 class ScenarioBootstrapFragment(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     template_id: ScenarioTemplateId
     template_version: str = "v0"
     layout_type: ScenarioLayoutType
@@ -64,6 +75,12 @@ class ScenarioBootstrapFragment(BaseModel):
     areas: Dict[str, ScenarioBootstrapArea] = Field(default_factory=dict)
     hint_source: ScenarioBootstrapHintSource
     searchable_clue_source: ScenarioBootstrapSearchableClueSource
-    key_item_grant: ScenarioBootstrapKeyItemGrant
+    revealed_item: ScenarioBootstrapRevealedItem = Field(
+        validation_alias=AliasChoices("revealed_item", "key_item_grant"),
+    )
     gate: ScenarioBootstrapGate
     completion: ScenarioBootstrapCompletion
+
+    @property
+    def key_item_grant(self) -> ScenarioBootstrapRevealedItem:
+        return self.revealed_item

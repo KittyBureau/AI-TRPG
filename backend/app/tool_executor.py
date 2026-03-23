@@ -386,7 +386,9 @@ def _apply_inventory_add(
         return None, "inventory_source_required"
     actor_state = character_facade.get_state(campaign, actor_id)
     character_facade.set_state(campaign, actor_id, actor_state)
-    new_qty, error_reason = _grant_inventory_from_source(
+    # Legacy-only acquisition bridge: inventory_add still grants from
+    # source entities, while normal gameplay uses search/reveal/take stacks.
+    new_qty, error_reason = _grant_inventory_from_inventory_add_source_entity(
         campaign,
         actor_id=actor_id,
         item_id=normalized_item_id,
@@ -874,45 +876,6 @@ def _apply_scene_action(
 
         if normalized_action == "search":
             if is_area_search:
-                area_source = _find_area_inventory_source(
-                    campaign,
-                    actor_id=actor_id,
-                    area_id=current_area_id,
-                )
-                if area_source is not None:
-                    source_entity, item_id, quantity = area_source
-                    new_qty, error_reason = _grant_inventory_from_source(
-                        campaign,
-                        actor_id=actor_id,
-                        item_id=item_id,
-                        quantity=quantity,
-                        source_entity_id=source_entity.id,
-                        entity_patches=entity_patches,
-                    )
-                    if new_qty is not None:
-                        return _scene_action_applied(
-                            call,
-                            timestamp,
-                            _scene_action_result(
-                                ok=True,
-                                narrative=f"You search the area and find {item_id} in {source_entity.label}.",
-                                entity_patches=entity_patches,
-                                new_entities=new_entities,
-                                removed_entities=removed_entities,
-                            ),
-                        )
-                    if error_reason == "item_source_depleted":
-                        return _scene_action_applied(
-                            call,
-                            timestamp,
-                            _scene_action_result(
-                                ok=True,
-                                narrative="You search the area but find nothing useful.",
-                                entity_patches=entity_patches,
-                                new_entities=new_entities,
-                                removed_entities=removed_entities,
-                            ),
-                        )
                 stack_discovery = search_area_item_sources(campaign, current_area_id)
                 if stack_discovery is not None:
                     source_stack, found_stack = stack_discovery
@@ -1013,43 +976,6 @@ def _apply_scene_action(
                 )
             if target is None:
                 return None
-            grant_item_id = target.state.get("inventory_item_id")
-            grant_quantity = target.state.get("inventory_quantity", 1)
-            if isinstance(grant_item_id, str):
-                normalized_grant_item_id = grant_item_id.strip()
-                if normalized_grant_item_id and isinstance(grant_quantity, int) and grant_quantity > 0:
-                    new_qty, error_reason = _grant_inventory_from_source(
-                        campaign,
-                        actor_id=actor_id,
-                        item_id=normalized_grant_item_id,
-                        quantity=grant_quantity,
-                        source_entity_id=target.id,
-                        entity_patches=entity_patches,
-                    )
-                    if new_qty is not None:
-                        return _scene_action_applied(
-                            call,
-                            timestamp,
-                            _scene_action_result(
-                                ok=True,
-                                narrative=f"You search {target.label} and find {normalized_grant_item_id}.",
-                                entity_patches=entity_patches,
-                                new_entities=new_entities,
-                                removed_entities=removed_entities,
-                            ),
-                        )
-                    if error_reason == "item_source_depleted":
-                        return _scene_action_applied(
-                            call,
-                            timestamp,
-                            _scene_action_result(
-                                ok=True,
-                                narrative=f"You search {target.label} but find nothing useful.",
-                                entity_patches=entity_patches,
-                                new_entities=new_entities,
-                                removed_entities=removed_entities,
-                            ),
-                        )
             if target.kind == "container" and target.state.get("opened") is True:
                 has_nested = any(
                     entity.loc.type == "entity" and entity.loc.id == target.id
@@ -1682,7 +1608,7 @@ def _take_entity_conversion_block(
             f"You cannot take {target.label} while it still has attached contents.",
             f"take target has child entities: {target.id}",
         )
-    if _entity_has_inventory_source_state(target):
+    if _entity_has_inventory_add_source_state(target):
         return (
             f"You cannot take {target.label} while it is acting as a search source.",
             f"take target is inventory source: {target.id}",
@@ -1713,7 +1639,7 @@ def _drop_entity_conversion_block(
             f"You cannot drop {target.label} while it still has attached contents.",
             f"drop target has child entities: {target.id}",
         )
-    if _entity_has_inventory_source_state(target):
+    if _entity_has_inventory_add_source_state(target):
         return (
             f"You cannot drop {target.label} while it is acting as a search source.",
             f"drop target is inventory source: {target.id}",
@@ -1728,7 +1654,8 @@ def _entity_has_child_entities(campaign: Campaign, entity_id: str) -> bool:
     )
 
 
-def _entity_has_inventory_source_state(target: Entity) -> bool:
+# Legacy-only marker for entities that still back the inventory_add contract.
+def _entity_has_inventory_add_source_state(target: Entity) -> bool:
     granted_item_id = target.state.get("inventory_item_id")
     if not isinstance(granted_item_id, str) or not granted_item_id.strip():
         return False
@@ -1800,18 +1727,49 @@ def _create_entity_search_fallback_stack(
     root_type, root_id = root
     if root_type not in {"actor", "area"}:
         return None
-    definition_id = _next_generated_loot_definition_id(campaign, target.id)
+    configured_definition_id = target.state.get("search_loot_definition_id")
+    definition_id = (
+        configured_definition_id.strip()
+        if isinstance(configured_definition_id, str) and configured_definition_id.strip()
+        else _next_generated_loot_definition_id(campaign, target.id)
+    )
+    configured_stack_id = target.state.get("search_loot_stack_id")
+    stack_id = (
+        configured_stack_id.strip()
+        if isinstance(configured_stack_id, str) and configured_stack_id.strip()
+        else None
+    )
+    configured_label = target.state.get("search_loot_label")
+    label = (
+        configured_label.strip()
+        if isinstance(configured_label, str) and configured_label.strip()
+        else f"{target.label} Trinket"
+    )
+    quantity = target.state.get("search_loot_quantity", 1)
+    if not isinstance(quantity, int) or quantity <= 0:
+        quantity = 1
+    raw_tags = target.state.get("search_loot_tags")
+    tags = raw_tags if isinstance(raw_tags, list) else ["loot"]
+    raw_verbs = target.state.get("search_loot_verbs")
+    verbs = raw_verbs if isinstance(raw_verbs, list) else ["inspect", "take"]
+    raw_state = target.state.get("search_loot_state")
+    stack_state = raw_state if isinstance(raw_state, dict) else {}
+    raw_props = target.state.get("search_loot_props")
+    props = raw_props if isinstance(raw_props, dict) else {"mass": 1}
+    stackable_flag = target.state.get("search_loot_stackable")
+    stackable = stackable_flag if isinstance(stackable_flag, bool) else False
     stack = create_runtime_item_stack(
+        stack_id=stack_id,
         definition_id=definition_id,
-        quantity=1,
+        quantity=quantity,
         parent_type=root_type,
         parent_id=root_id,
-        label=f"{target.label} Trinket",
-        tags=["loot"],
-        verbs=["inspect", "take"],
-        state={},
-        props={"mass": 1},
-        stackable=False,
+        label=label,
+        tags=tags,
+        verbs=verbs,
+        state=stack_state,
+        props=props,
+        stackable=stackable,
         stack_id_salt=f"search:{target.id}:{definition_id}:{root_type}:{root_id}",
     )
     campaign.items[stack.stack_id] = stack
@@ -1893,7 +1851,9 @@ def _scene_hint_suffix(target: Optional[Entity]) -> str:
     return f" {normalized_hint}"
 
 
-def _grant_inventory_from_source(
+# Legacy-only inventory_add grant path. Normal gameplay acquisition no longer
+# flows through source entities.
+def _grant_inventory_from_inventory_add_source_entity(
     campaign: Campaign,
     *,
     actor_id: str,
@@ -1938,35 +1898,3 @@ def _grant_inventory_from_source(
         _append_entity_patch(entity_patches, source, before)
     new_qty = derive_actor_inventory(campaign, actor_id).get(item_id, 0)
     return new_qty, None
-
-
-def _find_area_inventory_source(
-    campaign: Campaign,
-    *,
-    actor_id: str,
-    area_id: Optional[str],
-) -> Optional[Tuple[Entity, str, int]]:
-    if not isinstance(area_id, str) or not area_id.strip():
-        return None
-    for entity in sorted(campaign.entities.values(), key=lambda item: item.id):
-        if entity.loc.type != "area" or entity.loc.id != area_id:
-            continue
-        item_id = entity.state.get("inventory_item_id")
-        quantity = entity.state.get("inventory_quantity", 1)
-        if not isinstance(item_id, str) or not item_id.strip():
-            continue
-        if not isinstance(quantity, int) or quantity <= 0:
-            continue
-        if entity.state.get("inventory_granted") is True:
-            continue
-        if not _is_scene_action_allowed("search", entity):
-            continue
-        if not _is_entity_reachable(
-            campaign,
-            entity,
-            actor_id=actor_id,
-            current_area_id=area_id,
-        ):
-            continue
-        return entity, item_id.strip(), quantity
-    return None

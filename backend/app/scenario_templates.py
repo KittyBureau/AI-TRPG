@@ -35,7 +35,7 @@ _KEY_GATE_SCENARIO_TEMPLATE = ScenarioTemplateDefinition(
         "hint_source",
         "clue_area",
         "clue_source",
-        "granted_item",
+        "revealed_item",
         "gate_area",
         "gate_entity",
         "required_item",

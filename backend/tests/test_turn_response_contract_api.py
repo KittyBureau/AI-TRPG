@@ -178,6 +178,8 @@ def _create_campaign(
                 meta={},
             )
         },
+        # This contract fixture intentionally keeps the inventory_add-only
+        # source-entity shape; it is not asserting mainline search gameplay.
         entities={
             "torch_cache": Entity(
                 id="torch_cache",

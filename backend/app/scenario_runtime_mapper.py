@@ -108,8 +108,12 @@ def _build_map_data(fragment: ScenarioBootstrapFragment) -> MapData:
 def _build_entities(fragment: ScenarioBootstrapFragment) -> Dict[str, Entity]:
     hint_source = fragment.hint_source
     clue_source = fragment.searchable_clue_source
-    key_item_grant = fragment.key_item_grant
+    revealed_item = fragment.revealed_item
     gate = fragment.gate
+    key_stack_id = _build_scenario_key_stack_id(
+        clue_source.interactable_id,
+        revealed_item.item_id,
+    )
 
     return {
         hint_source.interactable_id: Entity(
@@ -124,15 +128,18 @@ def _build_entities(fragment: ScenarioBootstrapFragment) -> Dict[str, Entity]:
         ),
         clue_source.interactable_id: Entity(
             id=clue_source.interactable_id,
-            kind="object",
+            kind="container",
             label=clue_source.interactable_id,
-            tags=["clue", "search_spot"],
+            tags=["clue", "search_spot", "stash"],
             loc=EntityLocation(type="area", id=clue_source.area_id),
             verbs=["inspect", "search"],
             state={
-                "inventory_item_id": key_item_grant.item_id,
-                "inventory_quantity": 1,
-                "inventory_granted": False,
+                "opened": True,
+                "search_loot_stack_id": key_stack_id,
+                "search_loot_definition_id": revealed_item.item_id,
+                "search_loot_label": revealed_item.item_id,
+                "search_loot_tags": ["key"],
+                "search_loot_stackable": False,
             },
             props={},
         ),
@@ -143,10 +150,14 @@ def _build_entities(fragment: ScenarioBootstrapFragment) -> Dict[str, Entity]:
             tags=["door", "gate", "locked"],
             loc=EntityLocation(type="area", id=gate.area_id),
             verbs=["inspect", "open"],
-            state={
-                "locked": True,
-                "required_item_id": gate.required_item_id,
-            },
+            state={"locked": True},
             props={},
         ),
     }
+
+
+def _build_scenario_key_stack_id(
+    source_interactable_id: str,
+    item_id: str,
+) -> str:
+    return f"stk_{source_interactable_id}_{item_id}"

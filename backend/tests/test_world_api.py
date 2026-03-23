@@ -23,6 +23,8 @@ from backend.domain.models import (
 from backend.domain.world_models import World, stable_world_timestamp
 from backend.infra.file_repo import FileRepo
 
+_SCENARIO_KEY_STACK_ID = "stk_clue_source_001_required_item_001"
+
 
 class _ScenarioApiRuntimeLLM:
     def generate(
@@ -73,6 +75,23 @@ class _ScenarioApiRuntimeLLM:
                             "actor_id": "pc_001",
                             "action": "search",
                             "target_id": "clue_source_001",
+                            "params": {},
+                        },
+                    }
+                ],
+            }
+        if token == "TAKE_KEY":
+            return {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": "call_take_key",
+                        "tool": "scene_action",
+                        "args": {
+                            "actor_id": "pc_001",
+                            "action": "take",
+                            "target_id": _SCENARIO_KEY_STACK_ID,
                             "params": {},
                         },
                     }
@@ -541,7 +560,15 @@ def test_api_generated_scenario_world_is_discoverable_and_playable(
 
     service.submit_turn(campaign_id, "MOVE_TO_CLUE")
     search = service.submit_turn(campaign_id, "SEARCH_CLUE")
-    assert search["state_summary"]["active_actor_inventory"] == {"required_item_001": 1}
+    assert "required_item_001" in search["narrative_text"]
+    assert search["state_summary"]["active_actor_inventory"] == {}
+
+    campaign = repo.get_campaign(campaign_id)
+    assert campaign.items[_SCENARIO_KEY_STACK_ID].parent_type == "area"
+    assert campaign.items[_SCENARIO_KEY_STACK_ID].parent_id == "area_clue"
+
+    take = service.submit_turn(campaign_id, "TAKE_KEY")
+    assert take["state_summary"]["active_actor_inventory"] == {"required_item_001": 1}
 
     service.submit_turn(campaign_id, "MOVE_TO_GATE")
     entered = service.submit_turn(campaign_id, "ENTER_TARGET")
@@ -549,6 +576,8 @@ def test_api_generated_scenario_world_is_discoverable_and_playable(
     assert entered["state_summary"]["active_area_id"] == "area_target"
 
     campaign = repo.get_campaign(campaign_id)
+    assert campaign.items[_SCENARIO_KEY_STACK_ID].parent_type == "actor"
+    assert campaign.items[_SCENARIO_KEY_STACK_ID].parent_id == "pc_001"
     assert campaign.goal.status == "completed"
     assert campaign.lifecycle.ended is True
     assert campaign.lifecycle.reason == "goal_achieved"

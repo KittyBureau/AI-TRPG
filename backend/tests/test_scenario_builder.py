@@ -153,6 +153,7 @@ def test_required_roles_exist_in_materialized_scenario() -> None:
     assert scenario.roles.hint_source_id in scenario.entities
     assert scenario.roles.clue_source_id in scenario.entities
     assert scenario.roles.gate_entity_id in scenario.entities
+    assert scenario.roles.revealed_item_id in scenario.items
     assert scenario.roles.required_item_id in scenario.items
 
 
@@ -169,8 +170,8 @@ def test_progression_order_is_start_to_clue_to_gate_to_target() -> None:
     assert main_path.index(scenario.roles.gate_area_id) < main_path.index(
         scenario.roles.target_area_id
     )
-    assert scenario.entities[scenario.roles.clue_source_id].grants_item_id == scenario.roles.required_item_id
-    assert scenario.entities[scenario.roles.gate_entity_id].requires_item_id == scenario.roles.required_item_id
+    assert scenario.entities[scenario.roles.clue_source_id].reveals_item_id == scenario.roles.revealed_item_id
+    assert "required_item_id" not in scenario.entities[scenario.roles.gate_entity_id].model_dump()
 
 
 def test_validator_accepts_valid_generated_scenario() -> None:
@@ -196,6 +197,47 @@ def test_validator_rejects_deliberately_broken_scenario_fixture() -> None:
     )
 
     with pytest.raises(ValueError, match="goal rule"):
+        validate_materialized_scenario(broken)
+
+
+def test_validator_still_requires_roles_required_item_id_to_point_to_a_required_item_role() -> None:
+    scenario = build_materialized_scenario(normalize_scenario_params({}))
+    broken = scenario.model_copy(
+        update={
+            "roles": scenario.roles.model_copy(
+                update={"required_item_id": "missing_required_item_role"}
+            )
+        }
+    )
+
+    with pytest.raises(ValueError, match="required item role is missing or invalid"):
+        validate_materialized_scenario(broken)
+
+
+def test_validator_uses_gate_rule_required_item_id_as_gate_truth() -> None:
+    scenario = build_materialized_scenario(normalize_scenario_params({}))
+    gate_rule_item_id = "required_item_gate_rule_override"
+    broken = scenario.model_copy(
+        update={
+            "gate_rule": scenario.gate_rule.model_copy(
+                update={"required_item_id": gate_rule_item_id}
+            ),
+            "items": {
+                **scenario.items,
+                gate_rule_item_id: scenario.items[scenario.roles.required_item_id].model_copy(
+                    update={
+                        "id": gate_rule_item_id,
+                        "required_by_gate_entity_id": "gate_rogue_001",
+                    }
+                ),
+            },
+        }
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="gate rule required item is not tied to the gate rule gate entity",
+    ):
         validate_materialized_scenario(broken)
 
 

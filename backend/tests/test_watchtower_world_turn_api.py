@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 import backend.app.turn_service as turn_service_module
 from backend.api.main import create_app
-from backend.app.world_presets import TEST_WATCHTOWER_WORLD_ID
+from backend.app.world_presets import TEST_WATCHTOWER_GATE_STACK_ID, TEST_WATCHTOWER_WORLD_ID
 from backend.infra.file_repo import FileRepo
 
 
@@ -63,7 +63,7 @@ class _WatchtowerTurnLLM:
                     }
                 ],
             }
-        if token in {"Search the loose floorboard.", "search Old Hut"}:
+        if token == "Search the loose floorboard.":
             return {
                 "assistant_text": "",
                 "dialog_type": "scene_description",
@@ -74,7 +74,24 @@ class _WatchtowerTurnLLM:
                         "args": {
                             "actor_id": "pc_001",
                             "action": "search",
-                            "target_id": "old_hut",
+                            "target_id": "old_hut_clue",
+                            "params": {},
+                        },
+                    }
+                ],
+            }
+        if token == "Take the tower key.":
+            return {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": "call_take_tower_key",
+                        "tool": "scene_action",
+                        "args": {
+                            "actor_id": "pc_001",
+                            "action": "take",
+                            "target_id": TEST_WATCHTOWER_GATE_STACK_ID,
                             "params": {},
                         },
                     }
@@ -152,7 +169,7 @@ def _create_watchtower_campaign(client: TestClient) -> str:
     return campaign_id
 
 
-def test_watchtower_real_turn_flow_grants_key_via_hut_search(
+def test_watchtower_real_turn_flow_reveals_key_via_hut_search(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -180,12 +197,28 @@ def test_watchtower_real_turn_flow_grants_key_via_hut_search(
     assert search.status_code == 200
     payload = search.json()
     assert payload["applied_actions"][0]["tool"] == "scene_action"
-    assert "tower_key" in payload["narrative_text"]
-    assert payload["state_summary"]["active_actor_inventory"] == {"tower_key": 1}
+    assert "tower key" in payload["narrative_text"].lower()
+    assert payload["state_summary"]["active_actor_inventory"] == {}
+    assert payload["state_summary"]["active_actor_inventory_stacks"] == []
 
     repo = FileRepo(tmp_path / "storage")
     campaign = repo.get_campaign(campaign_id)
-    assert campaign.actors["pc_001"].inventory == {"tower_key": 1}
+    assert campaign.actors["pc_001"].inventory == {}
+    assert TEST_WATCHTOWER_GATE_STACK_ID in campaign.items
+    revealed_stack = campaign.items[TEST_WATCHTOWER_GATE_STACK_ID]
+    assert revealed_stack.definition_id == "tower_key"
+    assert revealed_stack.parent_type == "area"
+    assert revealed_stack.parent_id == "old_hut"
+
+    map_view = client.get(
+        "/api/v1/map/view",
+        params={"campaign_id": campaign_id, "actor_id": "pc_001"},
+    )
+    assert map_view.status_code == 200
+    entities_in_area = map_view.json()["entities_in_area"]
+    projected = next(entity for entity in entities_in_area if entity["id"] == TEST_WATCHTOWER_GATE_STACK_ID)
+    assert projected["kind"] == "item"
+    assert projected["label"] == "Tower Key"
 
 
 def test_watchtower_repeat_search_does_not_duplicate_key_in_real_turn(
@@ -199,7 +232,7 @@ def test_watchtower_repeat_search_does_not_duplicate_key_in_real_turn(
         "Move to village square.",
         "Move to old hut.",
         "Search the loose floorboard.",
-        "search Old Hut",
+        "Search the loose floorboard.",
     ):
         response = client.post(
             "/api/v1/chat/turn",
@@ -209,11 +242,56 @@ def test_watchtower_repeat_search_does_not_duplicate_key_in_real_turn(
 
     repeat_payload = response.json()
     assert "nothing" in repeat_payload["narrative_text"].lower()
-    assert repeat_payload["state_summary"]["active_actor_inventory"] == {"tower_key": 1}
+    assert repeat_payload["state_summary"]["active_actor_inventory"] == {}
 
     repo = FileRepo(tmp_path / "storage")
     campaign = repo.get_campaign(campaign_id)
-    assert campaign.actors["pc_001"].inventory == {"tower_key": 1}
+    assert campaign.actors["pc_001"].inventory == {}
+    assert list(campaign.items.keys()) == [TEST_WATCHTOWER_GATE_STACK_ID]
+
+
+def test_watchtower_real_turn_take_key_after_search_updates_actor_stack(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+    campaign_id = _create_watchtower_campaign(client)
+
+    for token in (
+        "Move to village square.",
+        "Move to old hut.",
+        "Search the loose floorboard.",
+    ):
+        response = client.post(
+            "/api/v1/chat/turn",
+            json={"campaign_id": campaign_id, "user_input": token},
+        )
+        assert response.status_code == 200
+
+    take = client.post(
+        "/api/v1/chat/turn",
+        json={"campaign_id": campaign_id, "user_input": "Take the tower key."},
+    )
+    assert take.status_code == 200
+    payload = take.json()
+    assert payload["applied_actions"][0]["tool"] == "scene_action"
+    assert payload["narrative_text"] == "You take Tower Key."
+    assert payload["state_summary"]["active_actor_inventory"] == {"tower_key": 1}
+    assert payload["state_summary"]["active_actor_inventory_stacks"] == [
+        {
+            "stack_id": TEST_WATCHTOWER_GATE_STACK_ID,
+            "item_id": "tower_key",
+            "quantity": 1,
+            "owner_actor_id": "pc_001",
+            "location": {"type": "actor", "id": "pc_001"},
+            "label": "Tower Key",
+        }
+    ]
+
+    repo = FileRepo(tmp_path / "storage")
+    campaign = repo.get_campaign(campaign_id)
+    assert campaign.items[TEST_WATCHTOWER_GATE_STACK_ID].parent_type == "actor"
+    assert campaign.items[TEST_WATCHTOWER_GATE_STACK_ID].parent_id == "pc_001"
 
 
 def test_rejected_free_form_inventory_add_keeps_truthful_narrative(
@@ -283,6 +361,7 @@ def test_watchtower_real_turn_entry_succeeds_after_legitimate_key(
         "Move to village square.",
         "Move to old hut.",
         "Search the loose floorboard.",
+        "Take the tower key.",
         "Move to village square.",
         "Move to forest path.",
         "Move to watchtower entrance.",
@@ -305,4 +384,6 @@ def test_watchtower_real_turn_entry_succeeds_after_legitimate_key(
     repo = FileRepo(tmp_path / "storage")
     campaign = repo.get_campaign(campaign_id)
     assert campaign.actors["pc_001"].position == "watchtower_inside"
+    assert campaign.items[TEST_WATCHTOWER_GATE_STACK_ID].parent_type == "actor"
+    assert campaign.items[TEST_WATCHTOWER_GATE_STACK_ID].parent_id == "pc_001"
     assert campaign.goal.status == "completed"

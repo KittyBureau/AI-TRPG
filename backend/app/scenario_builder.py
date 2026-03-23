@@ -53,7 +53,7 @@ def build_materialized_scenario_from_template(
         hint_source_id=_HINT_SOURCE_ID,
         clue_area_id=_CLUE_AREA_ID,
         clue_source_id=_CLUE_SOURCE_ID,
-        granted_item_id=_REQUIRED_ITEM_ID,
+        revealed_item_id=_REQUIRED_ITEM_ID,
         gate_area_id=_GATE_AREA_ID,
         gate_entity_id=_GATE_ENTITY_ID,
         required_item_id=_REQUIRED_ITEM_ID,
@@ -70,19 +70,18 @@ def build_materialized_scenario_from_template(
             id=_CLUE_SOURCE_ID,
             kind="clue_source",
             area_id=roles.clue_area_id,
-            grants_item_id=roles.granted_item_id,
+            reveals_item_id=roles.revealed_item_id,
         ),
         _GATE_ENTITY_ID: ScenarioEntity(
             id=_GATE_ENTITY_ID,
             kind="gate",
             area_id=roles.gate_area_id,
-            requires_item_id=roles.required_item_id,
         ),
     }
     items = {
         _REQUIRED_ITEM_ID: ScenarioItem(
             id=_REQUIRED_ITEM_ID,
-            granted_by_entity_id=roles.clue_source_id,
+            revealed_by_entity_id=roles.clue_source_id,
             required_by_gate_entity_id=roles.gate_entity_id,
         )
     }

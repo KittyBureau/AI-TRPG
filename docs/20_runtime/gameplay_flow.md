@@ -10,10 +10,15 @@ This guide documents the complete MVP loop from campaign creation to at least on
 4. `actor_spawn`
 5. `move`
 6. `scene_action`
-7. `inventory_add`
-7. `chat/turn`
+7. optional legacy `inventory_add`
+8. `chat/turn`
 
 It covers both API-first usage and the minimal frontend flow controls.
+
+Current item/gameplay note:
+
+- mainline portable-item flow is `scene_action search -> reveal/discover -> scene_action take`
+- `inventory_add` is still exposed, but only as a bounded legacy contract for source-entity-backed inventory gain
 
 ## Runtime readiness before gameplay
 
@@ -38,6 +43,11 @@ Notes:
 ## Important Constraint
 
 The backend currently exposes `world_generate`, `map_generate`, `actor_spawn`, `move`, `scene_action`, and `inventory_add` as tool calls executed inside `POST /api/v1/chat/turn`. There are no dedicated HTTP endpoints for these tools.
+
+For item interactions:
+
+- normal gameplay uses `scene_action` (`search` to reveal, `take` to possess)
+- `inventory_add` is retained for legacy source-entity-backed inventory gain only
 
 Because of this, frontend flow buttons trigger tool execution through templated `user_input` in `/api/v1/chat/turn`.
 
@@ -148,20 +158,23 @@ Expected check:
 
 - `applied_actions[*].tool` contains `move`
 
-### 6) Trigger `inventory_add` via turn
+### 6) Trigger legacy `inventory_add` via turn
+
+Use this only when you are explicitly exercising the legacy source-entity inventory contract rather than the normal `search -> reveal -> take` gameplay path.
 
 ```bash
 curl -sS -X POST "$BASE/api/v1/chat/turn" \
   -H "Content-Type: application/json" \
   -d '{
     "campaign_id":"camp_0001",
-    "user_input":"[UI_FLOW_STEP] Return JSON with keys assistant_text, dialog_type, tool_calls. Execute exactly one tool_call now: inventory_add. Use args exactly: {\"item_id\":\"torch\",\"quantity\":1}. Do not call any additional tools. Keep assistant_text empty."
+    "user_input":"[UI_FLOW_STEP] Return JSON with keys assistant_text, dialog_type, tool_calls. Execute exactly one tool_call now: inventory_add. Use args exactly: {\"item_id\":\"torch\",\"quantity\":1,\"source_entity_id\":\"torch_cache_01\"}. Do not call any additional tools. Keep assistant_text empty."
   }'
 ```
 
 Expected check:
 
 - `applied_actions[*].tool` contains `inventory_add`
+- the source entity exists and is configured with `inventory_item_id`, `inventory_quantity`, and `inventory_granted`
 
 ### Scene interaction (`scene_action`) via turn
 

@@ -33,3 +33,18 @@ uvicorn backend.api.main:app --reload
 - ChatGPT web project context uses a lightweight Google Drive reference-doc package refreshed via `scripts/sync_chatgpt_docs.ps1`.
 - That package is intentionally small and stage-oriented; detailed implementation lookup should still happen from the local repo, usually through Codex.
 - Current item-system/runtime truth is stack-first: portable item authority is `campaign.items`, frontend inventory authority derives from stack payloads, and `selected_stack_id` is the normal selection/submit path.
+
+## Current Runtime Truth
+
+- Core portable-item loop is `search -> reveal -> take`.
+- `campaign.items` is the authoritative portable-item store.
+- `actors[*].inventory` is a derived compatibility view only.
+- `search` does not grant possession; actor ownership changes on `take`.
+- Gate checks still use `required_item_id` rules, but possession evidence comes from actor-owned stacks derived from `campaign.items`.
+- `inventory_add` still exists as a bounded legacy-only contract for source-entity-backed inventory gain; it is not the mainline gameplay path.
+
+## Current Item Docs
+
+- Runtime truth: `docs/20_runtime/item_runtime_model.md`
+- Persistence truth: `docs/20_runtime/storage_authority.md`
+- Tool contract details: `docs/01_specs/tools.md`

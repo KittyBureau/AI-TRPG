@@ -602,7 +602,9 @@ def test_scene_action_take_rejects_entities_with_children_for_conversion() -> No
     assert campaign.items == {}
 
 
-def test_scene_action_take_rejects_entity_inventory_sources_for_conversion() -> None:
+# inventory_add source entities remain non-portable while that legacy bridge
+# still exists.
+def test_scene_action_take_rejects_inventory_add_source_entities_for_conversion() -> None:
     campaign = _base_campaign()
     campaign.entities["stash_01"] = Entity(
         id="stash_01",
@@ -873,7 +875,9 @@ def test_scene_action_drop_rejects_entities_with_children_for_conversion() -> No
     assert campaign.items == {}
 
 
-def test_scene_action_drop_rejects_entity_inventory_sources_for_conversion() -> None:
+# inventory_add source entities remain non-portable while that legacy bridge
+# still exists.
+def test_scene_action_drop_rejects_inventory_add_source_entities_for_conversion() -> None:
     campaign = _base_campaign()
     campaign.entities["stash_01"] = Entity(
         id="stash_01",
@@ -1109,7 +1113,7 @@ def test_scene_action_search_opened_stack_container_finds_child() -> None:
     assert campaign.items[child_stack.stack_id].parent_id == crate_stack.stack_id
 
 
-def test_scene_action_search_opened_entity_container_creates_stack_loot_not_entity() -> None:
+def test_scene_action_search_opened_entity_container_requires_separate_take_for_possession() -> None:
     campaign = _base_campaign()
     campaign.entities["old_crate"] = Entity(
         id="old_crate",
@@ -1159,6 +1163,29 @@ def test_scene_action_search_opened_entity_container_creates_stack_loot_not_enti
     assert only_stack.parent_id == "area_001"
     assert only_stack.label == "Old Crate Trinket"
     assert only_stack.stackable is False
+    assert campaign.actors["pc_001"].inventory == {}
+
+    take_call = ToolCall(
+        id="call_take_revealed_entity_loot",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "take",
+            "target_id": only_stack.stack_id,
+            "params": {},
+        },
+    )
+
+    take_actions, take_feedback = execute_tool_calls(campaign, "pc_001", [take_call])
+
+    assert take_feedback is None
+    assert len(take_actions) == 1
+    take_result = take_actions[0].result
+    assert take_result["ok"] is True
+    assert take_result["narrative"] == "You take Old Crate Trinket."
+    assert campaign.items[only_stack.stack_id].parent_type == "actor"
+    assert campaign.items[only_stack.stack_id].parent_id == "pc_001"
+    assert campaign.actors["pc_001"].inventory == {"old_crate_loot_01": 1}
 
     repeated_actions, repeated_feedback = execute_tool_calls(campaign, "pc_001", [call])
 
@@ -1171,7 +1198,9 @@ def test_scene_action_search_opened_entity_container_creates_stack_loot_not_enti
     assert len(campaign.items) == 1
 
 
-def test_scene_action_search_fixed_entity_grant_source_still_works() -> None:
+# inventory_add source entities can still exist, but search no longer grants
+# possession directly from them.
+def test_scene_action_search_inventory_add_source_entity_no_longer_grants_on_search() -> None:
     campaign = _base_campaign()
     campaign.entities["old_hut_clue"] = Entity(
         id="old_hut_clue",
@@ -1200,11 +1229,85 @@ def test_scene_action_search_fixed_entity_grant_source_still_works() -> None:
     assert len(applied_actions) == 1
     result = applied_actions[0].result
     assert result["ok"] is True
-    assert "tower_key" in result["narrative"]
+    assert result["narrative"] == "You search Dusty Table but find nothing useful."
+    assert campaign.actors["pc_001"].inventory == {}
+    assert campaign.items == {}
+    assert campaign.entities["old_hut_clue"].state["inventory_item_id"] == "tower_key"
+
+
+def test_scene_action_search_open_container_requires_separate_take_for_possession() -> None:
+    campaign = _base_campaign()
+    campaign.entities["old_hut_clue"] = Entity(
+        id="old_hut_clue",
+        kind="container",
+        label="Loose Floorboard",
+        tags=["clue", "stash"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "search"],
+        state={
+            "opened": True,
+            "search_loot_stack_id": "stk_watchtower_tower_key_01",
+            "search_loot_definition_id": "tower_key",
+            "search_loot_label": "Tower Key",
+            "search_loot_tags": ["key"],
+            "search_loot_stackable": False,
+        },
+        props={},
+    )
+    call = ToolCall(
+        id="call_search_explicit_reveal_stack",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "search",
+            "target_id": "old_hut_clue",
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [call])
+
+    assert tool_feedback is None
+    assert len(applied_actions) == 1
+    result = applied_actions[0].result
+    assert result["ok"] is True
+    assert result["narrative"] == "You search Loose Floorboard and find Tower Key."
+    assert campaign.actors["pc_001"].inventory == {}
+    assert list(campaign.items.keys()) == ["stk_watchtower_tower_key_01"]
+    revealed_stack = campaign.items["stk_watchtower_tower_key_01"]
+    assert revealed_stack.definition_id == "tower_key"
+    assert revealed_stack.parent_type == "area"
+    assert revealed_stack.parent_id == "area_001"
+    assert revealed_stack.label == "Tower Key"
+    assert revealed_stack.tags == ["key"]
+    assert revealed_stack.stackable is False
+
+    take_call = ToolCall(
+        id="call_take_explicit_reveal_stack",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "take",
+            "target_id": revealed_stack.stack_id,
+            "params": {},
+        },
+    )
+
+    take_actions, take_feedback = execute_tool_calls(campaign, "pc_001", [take_call])
+
+    assert take_feedback is None
+    assert len(take_actions) == 1
+    take_result = take_actions[0].result
+    assert take_result["ok"] is True
+    assert take_result["narrative"] == "You take Tower Key."
+    assert campaign.items[revealed_stack.stack_id].parent_type == "actor"
+    assert campaign.items[revealed_stack.stack_id].parent_id == "pc_001"
     assert campaign.actors["pc_001"].inventory == {"tower_key": 1}
 
 
-def test_scene_action_area_search_prefers_entity_grant_source_before_stack_discovery() -> None:
+# Area search now follows stack discovery even when inventory_add source
+# entities are still present in the area.
+def test_scene_action_area_search_ignores_inventory_add_source_entities_and_discovers_stacks() -> None:
     campaign = _base_campaign()
     campaign.entities["old_hut_clue"] = Entity(
         id="old_hut_clue",
@@ -1257,8 +1360,8 @@ def test_scene_action_area_search_prefers_entity_grant_source_before_stack_disco
     assert len(applied_actions) == 1
     result = applied_actions[0].result
     assert result["ok"] is True
-    assert result["narrative"] == "You search the area and find tower_key in Dusty Table."
-    assert campaign.actors["pc_001"].inventory == {"tower_key": 1}
+    assert result["narrative"] == "You search the area and find Coin in Old Crate."
+    assert campaign.actors["pc_001"].inventory == {}
 
 
 def test_scene_action_area_search_falls_back_to_visible_stack_discovery() -> None:

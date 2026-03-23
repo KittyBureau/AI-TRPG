@@ -6,6 +6,7 @@ from backend.app.tool_executor import execute_tool_calls
 from backend.app.turn_service import TurnService
 from backend.app.world_presets import (
     TEST_WATCHTOWER_TARGET_AREA_ID,
+    TEST_WATCHTOWER_GATE_STACK_ID,
     TEST_WATCHTOWER_WORLD_ID,
 )
 from backend.domain.models import ToolCall
@@ -38,6 +39,9 @@ def test_create_campaign_bootstraps_static_watchtower_world(tmp_path: Path) -> N
     assert campaign.actors["pc_001"].position == "village_gate"
     assert "npc_village_guard" in campaign.entities
     assert campaign.entities["npc_village_guard"].loc.id == "village_gate"
+    assert campaign.entities["old_hut_clue"].kind == "container"
+    assert "inventory_item_id" not in campaign.entities["old_hut_clue"].state
+    assert "required_item_id" not in campaign.entities["watchtower_door"].state
 
 
 def test_watchtower_gate_requires_key_and_completes_goal(tmp_path: Path) -> None:
@@ -95,9 +99,35 @@ def test_watchtower_gate_requires_key_and_completes_goal(tmp_path: Path) -> None
     assert tool_feedback is None
     assert [action.tool for action in applied_actions] == ["scene_action", "scene_action"]
     assert applied_actions[0].result["ok"] is True
-    assert "tower_key" in applied_actions[0].result["narrative"]
+    assert "tower key" in applied_actions[0].result["narrative"].lower()
     assert applied_actions[1].result["ok"] is True
     assert "nothing useful" in applied_actions[1].result["narrative"]
+    assert campaign.actors["pc_001"].inventory == {}
+    assert TEST_WATCHTOWER_GATE_STACK_ID in campaign.items
+    revealed_stack = campaign.items[TEST_WATCHTOWER_GATE_STACK_ID]
+    assert revealed_stack.definition_id == "tower_key"
+    assert revealed_stack.parent_type == "area"
+    assert revealed_stack.parent_id == "old_hut"
+
+    take_call = ToolCall(
+        id="call_take_key",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "take",
+            "target_id": TEST_WATCHTOWER_GATE_STACK_ID,
+            "params": {},
+        },
+    )
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [take_call])
+
+    assert tool_feedback is None
+    assert [action.tool for action in applied_actions] == ["scene_action"]
+    assert applied_actions[0].result["ok"] is True
+    assert applied_actions[0].result["narrative"] == "You take Tower Key."
+    moved_stack = campaign.items[TEST_WATCHTOWER_GATE_STACK_ID]
+    assert moved_stack.parent_type == "actor"
+    assert moved_stack.parent_id == "pc_001"
     assert campaign.actors["pc_001"].inventory == {"tower_key": 1}
 
     campaign.actors["pc_001"].position = "watchtower_entrance"

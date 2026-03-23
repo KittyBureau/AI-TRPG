@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Dict, Literal, Tuple
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from backend.domain.scenario_models import (
     ScenarioDifficulty,
@@ -22,15 +22,23 @@ class ScenarioBridgeArea(BaseModel):
 
 
 class ScenarioBridgeInteractable(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     id: str
     kind: ScenarioBridgeInteractableKind
     area_id: str
-    grants_item_id: str = ""
-    requires_item_id: str = ""
+    reveals_item_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("reveals_item_id", "grants_item_id"),
+    )
     leads_to_area_id: str = ""
 
+    @property
+    def grants_item_id(self) -> str:
+        return self.reveals_item_id
 
-class ScenarioBridgeKeyItem(BaseModel):
+
+class ScenarioBridgeRevealedItem(BaseModel):
     item_id: str
     source_interactable_id: str
 
@@ -48,6 +56,8 @@ class ScenarioBridgeCompletion(BaseModel):
 
 
 class ScenarioRuntimeBridge(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     template_id: ScenarioTemplateId
     template_version: str = "v0"
     layout_type: ScenarioLayoutType
@@ -58,6 +68,12 @@ class ScenarioRuntimeBridge(BaseModel):
     target_area_id: str
     areas: Dict[str, ScenarioBridgeArea] = Field(default_factory=dict)
     interactables: Dict[str, ScenarioBridgeInteractable] = Field(default_factory=dict)
-    key_item: ScenarioBridgeKeyItem
+    revealed_item: ScenarioBridgeRevealedItem = Field(
+        validation_alias=AliasChoices("revealed_item", "key_item"),
+    )
     gate: ScenarioBridgeGate
     completion: ScenarioBridgeCompletion
+
+    @property
+    def key_item(self) -> ScenarioBridgeRevealedItem:
+        return self.revealed_item

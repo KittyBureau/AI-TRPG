@@ -27,7 +27,8 @@ Contract:
 
 - Output schema: `assistant_text`, `dialog_type`, `tool_calls`.
 - Movement intent -> tool_calls must include `move`; assistant_text may be empty or a very short plan_note.
-- If narration implies item gain (obtain/loot/pick up/receive), tool_calls must include `inventory_add`.
+- Mainline portable-item acquisition should use `scene_action` (`search` to reveal, `take` to possess).
+- If narration explicitly implies source-entity-backed item gain outside the normal reveal/take loop, tool_calls must include `inventory_add`.
 - If narration implies injury/heal/HP change, tool_calls must include `hp_delta`.
 - Target unclear or user asks where they can go -> use `move_options`; explicitly state no movement yet.
 - If tool_calls is empty -> assistant_text MUST be a non-empty GM response; must not claim completed movement.
@@ -142,8 +143,12 @@ Optional args:
 
 Notes:
 
-- Adds quantity to `actors[actor_id].inventory[item_id]` only when `source_entity_id`
-  resolves to a reachable authoritative entity configured to grant that item.
+- Legacy-only contract; not the normal gameplay acquisition path.
+- Requires a reachable authoritative source entity with:
+  - `state.inventory_item_id`
+  - `state.inventory_quantity`
+  - `state.inventory_granted`
+- On success, runtime grants an actor-owned stack in `campaign.items` and derives compatibility inventory from that stack state.
 - `item_id` must be a non-empty string.
 - Reusing an already-consumed source or referencing a mismatched/unreachable source fails.
 
@@ -228,6 +233,8 @@ Notes:
 - This is the single interaction tool for non-move scene actions.
 - `move` remains a separate tool.
 - Reachability is required: target must resolve to current area or actor inventory chain.
+- `search` reveals or discovers stack-backed loot; it does not grant actor possession directly.
+- `take` is the normal portable-item possession step and moves ownership into actor-held stacks.
 - Verb checks use `entity.verbs` with fallbacks:
   - `inspect` is allowed by default unless explicitly blocked.
   - `talk` is allowed for `kind=npc` or when `talk` verb exists.

@@ -89,7 +89,9 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - Portable items must not be created as authority-carrying entities; scene entities may still gate or expose interactions, but portable item persistence belongs in `campaign.items`.
 - `move_options` is read-only and must not change positions or other state.
 - Movement state changes require a `move` tool_call; narration alone does not change positions.
-- Inventory gain requires an `inventory_add` tool_call; narration alone does not change inventory.
+- Mainline portable-item acquisition uses `scene_action search` to reveal/discover and `scene_action take` to move ownership into actor-held stacks.
+- `search` alone does not grant possession.
+- `inventory_add` remains a bounded legacy-only contract for source-entity-backed inventory gain; narration alone still does not change inventory.
 - Injury/healing narration requires an `hp_delta` tool_call.
 - Actor-bound tool checks use the turn effective actor id (not UI-selected active actor by default).
 - Tool `args.actor_id` must match effective actor id when provided; mismatch is rejected as `actor_context_mismatch`.

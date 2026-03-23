@@ -34,6 +34,7 @@
 
 ## Runtime Guides
 
+- `docs/20_runtime/item_runtime_model.md` - Stack-first item authority, reveal/take flow, gate check shape, and bounded legacy `inventory_add`.
 - `docs/20_runtime/gameplay_flow.md` - End-to-end gameplay flow and UI/API chain.
 - `docs/20_runtime/api_v1_route_migration.md` - `/api/v1` route migration note.
 - `docs/20_runtime/frontend_entrypoints.md` - Frontend panel architecture and entry policy.

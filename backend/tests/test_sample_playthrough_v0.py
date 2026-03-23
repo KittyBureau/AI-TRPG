@@ -161,6 +161,9 @@ def test_sample_playthrough_v0_persists_state_without_drift(
     repo = FileRepo(tmp_path / "storage")
     campaign = repo.get_campaign(campaign_id)
     campaign.goal.text = "Retrieve supplies and stay alive."
+    # This sample still covers the inventory_add loop, so these caches remain
+    # inventory_add source entities by design rather than stack-first search
+    # fixtures.
     campaign.entities["torch_cache_01"] = Entity(
         id="torch_cache_01",
         kind="object",
