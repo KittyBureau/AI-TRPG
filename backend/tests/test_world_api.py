@@ -11,7 +11,11 @@ from fastapi.testclient import TestClient
 
 from backend.api.main import create_app
 from backend.app.turn_service import TurnService
-from backend.app.world_presets import DEV_KEY_GATE_SCENARIO_WORLD_ID, build_world_preset
+from backend.app.world_presets import (
+    DEV_KEY_GATE_SCENARIO_WORLD_ID,
+    MIDNIGHT_ARCHIVE_WORLD_ID,
+    build_world_preset,
+)
 from backend.domain.models import (
     ActorState,
     Campaign,
@@ -253,6 +257,7 @@ def test_list_worlds_returns_minimal_summaries_sorted_by_updated_at_desc(
         "world_new",
         DEV_KEY_GATE_SCENARIO_WORLD_ID,
         "test_watchtower_world",
+        MIDNIGHT_ARCHIVE_WORLD_ID,
         "world_old",
     ]
     assert body[0] == {
@@ -284,6 +289,31 @@ def test_list_worlds_includes_watchtower_preset_without_storage_copy(
         "updated_at": stable_world_timestamp("test_watchtower_world"),
     }
     world_path = tmp_path / "storage" / "worlds" / "test_watchtower_world" / "world.json"
+    assert not world_path.exists()
+
+
+def test_list_worlds_includes_midnight_archive_preset_without_storage_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path, monkeypatch)
+
+    response = client.get("/api/v1/worlds/list")
+
+    assert response.status_code == 200
+    body = response.json()
+    midnight_archive = next(
+        item for item in body if item["world_id"] == MIDNIGHT_ARCHIVE_WORLD_ID
+    )
+    assert midnight_archive == {
+        "world_id": MIDNIGHT_ARCHIVE_WORLD_ID,
+        "name": "Midnight Archive",
+        "generator": {"id": "static_test_world"},
+        "scenario": None,
+        "updated_at": stable_world_timestamp(MIDNIGHT_ARCHIVE_WORLD_ID),
+    }
+    world_path = (
+        tmp_path / "storage" / "worlds" / MIDNIGHT_ARCHIVE_WORLD_ID / "world.json"
+    )
     assert not world_path.exists()
 
 
@@ -349,6 +379,7 @@ def test_list_worlds_skips_invalid_world_json_without_stub_side_effects(
         "world_valid",
         DEV_KEY_GATE_SCENARIO_WORLD_ID,
         "test_watchtower_world",
+        MIDNIGHT_ARCHIVE_WORLD_ID,
     ]
     assert not (tmp_path / "storage" / "worlds" / "world_missing").exists()
 
