@@ -10,6 +10,15 @@ async function loadPanelModule() {
   return import(`${modulePath}?t=${Date.now()}_${Math.random()}`);
 }
 
+test("buildSceneActionPrompt encodes selected-target scene actions explicitly", async () => {
+  const { buildSceneActionPrompt } = await loadPanelModule();
+  const prompt = buildSceneActionPrompt("pc_001", "talk", "guide_01");
+
+  assert.match(prompt, /scene_action/);
+  assert.match(prompt, /"action":"talk"/);
+  assert.match(prompt, /"target_id":"guide_01"/);
+});
+
 test("buildTurnPayload includes selected_stack_id on the primary path", async () => {
   const { buildTurnPayload } = await loadPanelModule();
   const payload = buildTurnPayload(

@@ -105,7 +105,7 @@ test("refreshMapView stores current area scene entities and reachable areas", as
   });
 });
 
-test("selected scene target is stored per active actor and emitted through turn context hints", async () => {
+test("selected scene target accepts NPCs and inspectable or usable entities", async () => {
   const store = await loadStoreModule();
   store.getState().campaign.active_actor_id = "pc_001";
   store.getState().mapView = {
@@ -115,6 +115,22 @@ test("selected scene target is stored per active actor and emitted through turn 
     current_area_actor_ids: ["pc_001"],
     reachable_areas: [],
     entities_in_area: [
+      {
+        id: "porter_01",
+        kind: "npc",
+        label: "Porter",
+        tags: ["npc"],
+        verbs: ["inspect", "talk"],
+        state: {},
+      },
+      {
+        id: "lever_01",
+        kind: "object",
+        label: "Lever",
+        tags: ["mechanism"],
+        verbs: ["inspect", "use"],
+        state: {},
+      },
       {
         id: "apple_01",
         kind: "item",
@@ -131,20 +147,49 @@ test("selected scene target is stored per active actor and emitted through turn 
         verbs: ["inspect", "open", "search"],
         state: {},
       },
+      {
+        id: "statue_01",
+        kind: "object",
+        label: "Statue",
+        tags: ["scenery"],
+        verbs: [],
+        state: {},
+      },
     ],
   };
 
-  assert.equal(store.setSelectedSceneTargetForActor("pc_001", "apple_01"), true);
-  assert.equal(store.setSelectedSceneTargetForActor("pc_001", "crate_01"), false);
+  assert.equal(store.setSelectedSceneTargetForActor("pc_001", "porter_01"), true);
   assert.deepEqual(store.getSelectedSceneTargetForActor("pc_001"), {
-    id: "apple_01",
-    kind: "item",
-    label: "Apple",
-    tags: ["loot"],
-    verbs: ["inspect", "take"],
+    id: "porter_01",
+    kind: "npc",
+    label: "Porter",
+    tags: ["npc"],
+    verbs: ["inspect", "talk"],
+    state: {},
+  });
+
+  assert.equal(store.setSelectedSceneTargetForActor("pc_001", "lever_01"), true);
+  assert.deepEqual(store.getSelectedSceneTargetForActor("pc_001"), {
+    id: "lever_01",
+    kind: "object",
+    label: "Lever",
+    tags: ["mechanism"],
+    verbs: ["inspect", "use"],
+    state: {},
+  });
+
+  assert.equal(store.setSelectedSceneTargetForActor("pc_001", "apple_01"), true);
+  assert.equal(store.setSelectedSceneTargetForActor("pc_001", "crate_01"), true);
+  assert.equal(store.setSelectedSceneTargetForActor("pc_001", "statue_01"), false);
+  assert.deepEqual(store.getSelectedSceneTargetForActor("pc_001"), {
+    id: "crate_01",
+    kind: "container",
+    label: "Crate",
+    tags: ["container"],
+    verbs: ["inspect", "open", "search"],
     state: {},
   });
   assert.deepEqual(store.buildTurnContextHintsForActor("pc_001"), {
-    selected_target_id: "apple_01",
+    selected_target_id: "crate_01",
   });
 });

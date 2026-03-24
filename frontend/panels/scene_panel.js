@@ -1,5 +1,14 @@
+import {
+  deriveSceneAffordanceTags,
+  deriveSceneEntityFlags,
+} from "../utils/scene_targets.js";
+
 function normalizeString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function isSelectableSceneTarget(entity) {
+  return deriveSceneEntityFlags(entity).selectable;
 }
 
 function entityStateSummary(entity) {
@@ -46,17 +55,24 @@ export function deriveScenePanelView(state) {
       : null;
   const mapMatchesActor = mapView && normalizeString(mapView.active_actor_id) === activeActorId;
   const entities = mapMatchesActor && Array.isArray(mapView.entities_in_area) ? mapView.entities_in_area : [];
-  const npcs = entities.filter((entity) => entity.kind === "npc");
-  const takeables = entities.filter((entity) =>
-    Array.isArray(entity.verbs) ? entity.verbs.includes("take") : false
-  );
+  const enrichEntity = (entity) => ({
+    ...entity,
+    flags: deriveSceneEntityFlags(entity),
+    affordance_tags: deriveSceneAffordanceTags(entity),
+  });
+  const npcs = entities.filter((entity) => entity.kind === "npc").map(enrichEntity);
+  const takeables = entities
+    .filter((entity) => deriveSceneEntityFlags(entity).takeable)
+    .map(enrichEntity);
   const interactives = entities.filter(
     (entity) =>
       entity.kind !== "npc" &&
-      !(Array.isArray(entity.verbs) && entity.verbs.includes("take")) &&
-      Array.isArray(entity.verbs) &&
-      entity.verbs.length > 0
-  );
+      !deriveSceneEntityFlags(entity).takeable &&
+      deriveSceneEntityFlags(entity).interactable
+  ).map(enrichEntity);
+  const visibleCount = entities.length;
+  const interactableCount = entities.filter((entity) => deriveSceneEntityFlags(entity).interactable).length;
+  const takeableCount = entities.filter((entity) => deriveSceneEntityFlags(entity).takeable).length;
   return {
     activeActorId,
     currentAreaName: normalizeString(mapView?.current_area?.name) || "Unknown Area",
@@ -65,6 +81,9 @@ export function deriveScenePanelView(state) {
     npcs,
     takeables,
     interactives,
+    visibleCount,
+    interactableCount,
+    takeableCount,
     hasMapView: Boolean(mapMatchesActor),
   };
 }
@@ -75,7 +94,11 @@ export function initPanel(store) {
     return;
   }
 
-  function renderEntityList(titleText, entities, { selectable = false, selectedId = "" } = {}) {
+  function renderEntityList(
+    titleText,
+    entities,
+    { selectable = false, selectedId = "" } = {}
+  ) {
     const title = document.createElement("div");
     title.className = "scene-section-title";
     title.textContent = `${titleText} (${entities.length})`;
@@ -93,13 +116,14 @@ export function initPanel(store) {
     }
 
     for (const entity of entities) {
-      const button = document.createElement(selectable ? "button" : "div");
-      button.className = selectable
+      const canSelect = selectable && isSelectableSceneTarget(entity);
+      const button = document.createElement(canSelect ? "button" : "div");
+      button.className = canSelect
         ? selectedId === entity.id
           ? "scene-card scene-target selected"
           : "scene-card scene-target"
         : "scene-card";
-      if (selectable) {
+      if (canSelect) {
         button.type = "button";
         button.setAttribute("aria-pressed", selectedId === entity.id ? "true" : "false");
         button.addEventListener("click", () => {
@@ -119,7 +143,7 @@ export function initPanel(store) {
       label.className = "scene-card-title";
       label.textContent = entity.label;
       header.appendChild(label);
-      if (selectable && selectedId === entity.id) {
+      if (canSelect && selectedId === entity.id) {
         const badge = document.createElement("div");
         badge.className = "scene-card-badge";
         badge.textContent = "Selected";
@@ -131,6 +155,22 @@ export function initPanel(store) {
       meta.className = "scene-card-meta";
       meta.textContent = entityStateSummary(entity);
       button.appendChild(meta);
+
+      const affordances = Array.isArray(entity.affordance_tags) ? entity.affordance_tags : [];
+      if (affordances.length) {
+        const affordanceRow = document.createElement("div");
+        affordanceRow.className = "scene-affordances";
+        for (const tag of affordances) {
+          const badge = document.createElement("span");
+          badge.className =
+            tag === "Visible" || tag === "Interactable" || tag === "Takeable"
+              ? "scene-affordance scene-affordance-state"
+              : "scene-affordance";
+          badge.textContent = tag;
+          affordanceRow.appendChild(badge);
+        }
+        button.appendChild(affordanceRow);
+      }
       list.appendChild(button);
     }
     mount.appendChild(list);
@@ -174,8 +214,19 @@ export function initPanel(store) {
       return;
     }
 
-    renderEntityList("NPCs", view.npcs);
-    renderEntityList("Interactive Objects", view.interactives);
+    const visibilitySummary = document.createElement("div");
+    visibilitySummary.className = "scene-visibility-summary";
+    visibilitySummary.textContent = `Visible now: ${view.visibleCount} | Interactable: ${view.interactableCount} | Takeable: ${view.takeableCount}`;
+    mount.appendChild(visibilitySummary);
+
+    renderEntityList("NPCs", view.npcs, {
+      selectable: true,
+      selectedId: normalizeString(selectedSceneTarget?.id),
+    });
+    renderEntityList("Interactive Objects", view.interactives, {
+      selectable: true,
+      selectedId: normalizeString(selectedSceneTarget?.id),
+    });
     renderEntityList("Takeable Items", view.takeables, {
       selectable: true,
       selectedId: normalizeString(selectedSceneTarget?.id),

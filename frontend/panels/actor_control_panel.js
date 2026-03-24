@@ -4,14 +4,18 @@ import {
   buildInventoryItemViews,
   buildInventoryItemViewsFromStacks,
 } from "../utils/inventory_items.js";
+import {
+  sceneEntitySupportsAction,
+  selectedTargetActionLabels,
+} from "../utils/scene_targets.js";
 
-function buildTakePrompt(actorId, targetId) {
+export function buildSceneActionPrompt(actorId, action, targetId) {
   return `[UI_FLOW_STEP]
 Return JSON with keys assistant_text, dialog_type, tool_calls.
 Keep assistant_text empty.
 Execute exactly one tool_call now: scene_action.
 Use args exactly:
-${JSON.stringify({ actor_id: actorId, action: "take", target_id: targetId, params: {} })}
+${JSON.stringify({ actor_id: actorId, action, target_id: targetId, params: {} })}
 Do not call any additional tools.`;
 }
 
@@ -168,7 +172,13 @@ function selectedTargetSummary(selectedSceneTarget) {
   if (!selectedSceneTarget) {
     return "Selected scene target: none";
   }
-  return `Selected scene target: ${selectedSceneTarget.label} (${selectedSceneTarget.id})`;
+  const actionLabels = selectedTargetActionLabels(selectedSceneTarget);
+  const actionText = actionLabels.length ? ` | available: ${actionLabels.join(", ")}` : "";
+  return `Selected scene target: ${selectedSceneTarget.label} (${selectedSceneTarget.id})${actionText}`;
+}
+
+function selectedSceneTargetSupportsAction(selectedSceneTarget, action) {
+  return sceneEntitySupportsAction(selectedSceneTarget, action);
 }
 
 export function buildTurnPayload(state, actorId, userInput, store) {
@@ -269,7 +279,7 @@ export function initPanel(store) {
     await submitPayload(buildTurnPayload(state, actorId, userInput, store), "Turn");
   }
 
-  async function runTakeSelected() {
+  async function runSelectedSceneAction(action, successPrefix) {
     const state = store.getState();
     if (!state.campaignId) {
       store.setStatusMessage("Select a campaign first.");
@@ -285,16 +295,20 @@ export function initPanel(store) {
         ? store.getSelectedSceneTargetForActor(actorId)
         : null;
     if (!selectedSceneTarget?.id) {
-      store.setStatusMessage("Select a takeable scene target first.");
+      store.setStatusMessage("Select a scene target first.");
+      return;
+    }
+    if (!selectedSceneTargetSupportsAction(selectedSceneTarget, action)) {
+      store.setStatusMessage(`Selected target does not support ${action}.`);
       return;
     }
     const payload = buildTurnPayload(
       state,
       actorId,
-      buildTakePrompt(actorId, selectedSceneTarget.id),
+      buildSceneActionPrompt(actorId, action, selectedSceneTarget.id),
       store
     );
-    await submitPayload(payload, "Pickup");
+    await submitPayload(payload, successPrefix);
   }
 
   function render() {
@@ -380,10 +394,40 @@ export function initPanel(store) {
     turnButton.addEventListener("click", runTurn);
     actionsBar.appendChild(turnButton);
 
+    const inspectButton = document.createElement("button");
+    inspectButton.textContent = "Inspect Selected";
+    inspectButton.disabled =
+      !canAct || !selectedSceneTargetSupportsAction(selectedSceneTarget, "inspect");
+    inspectButton.addEventListener("click", () =>
+      runSelectedSceneAction("inspect", "Inspect")
+    );
+    actionsBar.appendChild(inspectButton);
+
+    const talkButton = document.createElement("button");
+    talkButton.textContent = "Talk to Selected";
+    talkButton.disabled =
+      !canAct || !selectedSceneTargetSupportsAction(selectedSceneTarget, "talk");
+    talkButton.addEventListener("click", () =>
+      runSelectedSceneAction("talk", "Talk")
+    );
+    actionsBar.appendChild(talkButton);
+
+    const useButton = document.createElement("button");
+    useButton.textContent = "Use Selected";
+    useButton.disabled =
+      !canAct || !selectedSceneTargetSupportsAction(selectedSceneTarget, "use");
+    useButton.addEventListener("click", () =>
+      runSelectedSceneAction("use", "Use")
+    );
+    actionsBar.appendChild(useButton);
+
     const takeButton = document.createElement("button");
     takeButton.textContent = "Take Selected";
-    takeButton.disabled = !canAct || !selectedSceneTarget?.id;
-    takeButton.addEventListener("click", runTakeSelected);
+    takeButton.disabled =
+      !canAct || !selectedSceneTargetSupportsAction(selectedSceneTarget, "take");
+    takeButton.addEventListener("click", () =>
+      runSelectedSceneAction("take", "Pickup")
+    );
     actionsBar.appendChild(takeButton);
 
     mount.appendChild(actionsBar);

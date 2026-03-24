@@ -10,7 +10,7 @@ async function loadScenePanelModule() {
   return import(`${modulePath}?t=${Date.now()}_${Math.random()}`);
 }
 
-test("deriveScenePanelView splits NPCs, interactives, and takeable items from mapView", async () => {
+test("deriveScenePanelView exposes visible, interactable, and takeable affordances from mapView", async () => {
   const { deriveScenePanelView } = await loadScenePanelModule();
 
   const view = deriveScenePanelView({
@@ -66,7 +66,24 @@ test("deriveScenePanelView splits NPCs, interactives, and takeable items from ma
   assert.equal(view.activeActorId, "pc_001");
   assert.equal(view.currentAreaName, "Archive Lobby");
   assert.equal(view.currentAreaDescription, "Scene summary");
+  assert.equal(view.visibleCount, 3);
+  assert.equal(view.interactableCount, 3);
+  assert.equal(view.takeableCount, 1);
   assert.deepEqual(view.npcs.map((entity) => entity.id), ["porter_npc"]);
   assert.deepEqual(view.interactives.map((entity) => entity.id), ["notice_board"]);
   assert.deepEqual(view.takeables.map((entity) => entity.id), ["office_pass"]);
+  assert.deepEqual(view.npcs[0].flags, {
+    visible: true,
+    interactable: true,
+    selectable: true,
+    talkable: true,
+    inspectable: true,
+    usable: false,
+    takeable: false,
+    searchable: false,
+    openable: false,
+  });
+  assert.deepEqual(view.npcs[0].affordance_tags, ["Visible", "Interactable", "Talk", "Inspect"]);
+  assert.deepEqual(view.interactives[0].affordance_tags, ["Visible", "Interactable", "Inspect"]);
+  assert.deepEqual(view.takeables[0].affordance_tags, ["Visible", "Interactable", "Takeable", "Take", "Inspect"]);
 });

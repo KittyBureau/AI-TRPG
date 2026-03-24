@@ -12,6 +12,10 @@ import {
   loadCharacterToCampaign as loadCharacterToCampaignApi,
   selectActor as selectActorApi,
 } from "../api/api.js";
+import {
+  deriveSceneEntityFlags,
+  sceneEntitySupportsAction,
+} from "../utils/scene_targets.js";
 
 const BASE_URL_KEY = "raw-console-base-url";
 const DEFAULT_BACKEND_BASE_URL = "http://127.0.0.1:8000";
@@ -505,11 +509,11 @@ function normalizeMapViewPayload(payload) {
 }
 
 function isTakeableSceneEntity(entity) {
-  return Boolean(
-    entity &&
-      typeof entity === "object" &&
-      normalizeStringList(entity.verbs).includes("take")
-  );
+  return sceneEntitySupportsAction(entity, "take");
+}
+
+function isSelectableSceneTarget(entity) {
+  return deriveSceneEntityFlags(entity).selectable;
 }
 
 function getSceneEntitiesForActor(actorId) {
@@ -543,7 +547,7 @@ function reconcileSelectedSceneTargetWithMapView() {
   const selectedTarget = getSceneEntitiesForActor(actorId).find(
     (entity) => entity.id === selectedTargetId
   );
-  if (selectedTarget && isTakeableSceneEntity(selectedTarget)) {
+  if (selectedTarget && isSelectableSceneTarget(selectedTarget)) {
     return;
   }
   state.selectedSceneTargetIdByActor = {
@@ -1061,7 +1065,7 @@ export function setSelectedSceneTargetForActor(actorId, targetId) {
   const sceneTarget = getSceneEntitiesForActor(normalizedActorId).find(
     (entity) => entity.id === normalizedTargetId
   );
-  if (!sceneTarget || !isTakeableSceneEntity(sceneTarget)) {
+  if (!sceneTarget || !isSelectableSceneTarget(sceneTarget)) {
     return false;
   }
   const currentTargetId = normalizeStringId(state.selectedSceneTargetIdByActor[normalizedActorId]);

@@ -275,6 +275,16 @@ button.inventory-item.selected {
   line-height: 1.45;
 }
 
+.scene-visibility-summary {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border: 1px solid #d7e3de;
+  background: #f2f8f5;
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .scene-section-title {
   margin: 12px 0 8px 0;
   font-size: 13px;
@@ -334,6 +344,30 @@ button.scene-card {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
+}
+
+.scene-affordances {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.scene-affordance {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #b9d9d0;
+  background: #eef6f3;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.scene-affordance-state {
+  border-color: var(--border);
+  background: #f8faf9;
+  color: var(--muted);
 }
 
 .note {

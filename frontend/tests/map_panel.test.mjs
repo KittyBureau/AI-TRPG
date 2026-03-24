@@ -45,6 +45,31 @@ test("deriveMapPanelView uses campaign snapshot as truth and applies matching st
       active_area_name: "Campfire",
       active_area_description: "Summary override",
     },
+    mapView: {
+      active_actor_id: "pc_001",
+      current_area: { id: "area_001", name: "Campfire" },
+      entities_in_area: [
+        {
+          id: "porter_01",
+          kind: "npc",
+          label: "Porter",
+          verbs: ["inspect", "talk"],
+        },
+        {
+          id: "lever_01",
+          kind: "object",
+          label: "Lever",
+          verbs: ["inspect", "use"],
+        },
+        {
+          id: "apple_01",
+          kind: "item",
+          label: "Apple",
+          verbs: ["inspect", "take"],
+        },
+      ],
+      reachable_areas: [{ id: "area_002", name: "Gate" }],
+    },
   });
 
   assert.equal(view.activeActorId, "pc_001");
@@ -58,6 +83,11 @@ test("deriveMapPanelView uses campaign snapshot as truth and applies matching st
       description: "North gate",
     },
   ]);
+  assert.deepEqual(view.sceneSummary, {
+    visibleCount: 3,
+    interactableCount: 3,
+    takeableCount: 1,
+  });
 });
 
 test("deriveMapPanelView ignores mismatched state_summary area labels", async () => {

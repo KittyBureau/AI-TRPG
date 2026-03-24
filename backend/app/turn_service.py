@@ -652,6 +652,12 @@ class TurnService:
                 )
                 dialog_type, dialog_type_source = _resolve_dialog_type(raw_dialog_type)
                 tool_calls = _parse_tool_calls(llm_output.get("tool_calls", []))
+                tool_calls = _apply_selected_scene_target_adapter(
+                    campaign,
+                    effective_actor_id,
+                    tool_calls,
+                    selected_scene_target=selected_scene_target,
+                )
                 tool_calls, suppressed_failed_calls = _suppress_repeated_illegal_requests(
                     self.repo,
                     campaign_id,
@@ -964,6 +970,13 @@ def _parse_tool_calls(raw_calls: object) -> List[ToolCall]:
     return parsed
 
 
+def _normalize_scene_action_name(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    normalized = value.strip().lower()
+    return normalized or ""
+
+
 def _model_to_dict(model: object) -> Dict[str, object]:
     if hasattr(model, "model_dump"):
         return model.model_dump()  # type: ignore[no-any-return]
@@ -1139,6 +1152,7 @@ def _scene_prompt_payload(campaign: Campaign, actor_id: str) -> Dict[str, object
 
 
 _GATE_ITEM_HINT_KEYWORDS = ("key", "pass", "card", "slip", "seal", "badge", "permit")
+_SELECTED_SCENE_TARGET_ACTIONS = {"inspect", "talk", "take", "use"}
 
 
 def _humanize_identifier(value: object) -> str:
@@ -2309,6 +2323,113 @@ def _build_selected_scene_target_debug(
     return payload
 
 
+def _scene_target_view_supports_action(
+    action: str,
+    *,
+    kind: str,
+    verbs: object,
+) -> bool:
+    normalized_action = _normalize_scene_action_name(action)
+    if normalized_action not in _SELECTED_SCENE_TARGET_ACTIONS:
+        return False
+    normalized_verbs = (
+        {
+            verb.strip().lower()
+            for verb in verbs
+            if isinstance(verb, str) and verb.strip()
+        }
+        if isinstance(verbs, list)
+        else set()
+    )
+    if normalized_action == "talk":
+        return kind == "npc" or "talk" in normalized_verbs
+    return normalized_action in normalized_verbs
+
+
+def _selected_scene_target_supports_action(
+    campaign: Campaign,
+    effective_actor_id: str,
+    *,
+    target_id: str,
+    action: str,
+) -> bool:
+    normalized_target_id = target_id.strip() if isinstance(target_id, str) else ""
+    if not normalized_target_id:
+        return False
+    area_id, _, _ = _active_area_context(campaign, effective_actor_id)
+    if not isinstance(area_id, str) or not area_id.strip():
+        return False
+
+    for stack_view in build_area_root_stack_views(campaign, area_id):
+        candidate_id = stack_view.get("id")
+        if not isinstance(candidate_id, str) or candidate_id.strip() != normalized_target_id:
+            continue
+        return _scene_target_view_supports_action(
+            action,
+            kind="item",
+            verbs=stack_view.get("verbs"),
+        )
+
+    for entity_view in build_area_local_entity_views(campaign, area_id):
+        candidate_id = entity_view.get("id")
+        if not isinstance(candidate_id, str) or candidate_id.strip() != normalized_target_id:
+            continue
+        kind = entity_view.get("kind")
+        normalized_kind = kind.strip() if isinstance(kind, str) and kind.strip() else ""
+        return _scene_target_view_supports_action(
+            action,
+            kind=normalized_kind,
+            verbs=entity_view.get("verbs"),
+        )
+
+    return False
+
+
+def _apply_selected_scene_target_adapter(
+    campaign: Campaign,
+    effective_actor_id: str,
+    tool_calls: List[ToolCall],
+    *,
+    selected_scene_target: Optional[Dict[str, object]],
+) -> List[ToolCall]:
+    if not isinstance(selected_scene_target, dict):
+        return tool_calls
+    target_id = selected_scene_target.get("id")
+    if not isinstance(target_id, str) or not target_id.strip():
+        return tool_calls
+    normalized_target_id = target_id.strip()
+    adapted: List[ToolCall] = []
+    for call in tool_calls:
+        if not isinstance(call, ToolCall) or call.tool != "scene_action":
+            adapted.append(call)
+            continue
+        action = _normalize_scene_action_name(call.args.get("action"))
+        if action not in _SELECTED_SCENE_TARGET_ACTIONS:
+            adapted.append(call)
+            continue
+        if not _selected_scene_target_supports_action(
+            campaign,
+            effective_actor_id,
+            target_id=normalized_target_id,
+            action=action,
+        ):
+            adapted.append(call)
+            continue
+        current_target_id = call.args.get("target_id")
+        if isinstance(current_target_id, str) and current_target_id.strip() == normalized_target_id:
+            adapted.append(call)
+            continue
+        adapted.append(
+            ToolCall(
+                id=call.id,
+                tool=call.tool,
+                args={**call.args, "target_id": normalized_target_id},
+                reason=call.reason,
+            )
+        )
+    return adapted
+
+
 def _build_debug_append(conflicts: List[object], campaign: Campaign) -> str:
     payload = {
         "conflicts": [_model_to_dict(conflict) for conflict in conflicts],
@@ -2846,10 +2967,14 @@ def _resolve_selected_scene_target_context(
         candidate_id = stack_view.get("id")
         if not isinstance(candidate_id, str) or candidate_id.strip() != normalized_target_id:
             continue
-        verbs = stack_view.get("verbs")
-        if not isinstance(verbs, list) or "take" not in [
-            verb.strip().lower() for verb in verbs if isinstance(verb, str)
-        ]:
+        if not any(
+            _scene_target_view_supports_action(
+                action,
+                kind="item",
+                verbs=stack_view.get("verbs"),
+            )
+            for action in _SELECTED_SCENE_TARGET_ACTIONS
+        ):
             break
         payload: Dict[str, object] = {
             "id": candidate_id.strip(),
@@ -2869,16 +2994,19 @@ def _resolve_selected_scene_target_context(
         if not isinstance(candidate_id, str) or candidate_id.strip() != normalized_target_id:
             continue
         kind = entity_view.get("kind")
-        verbs = entity_view.get("verbs")
-        if kind not in {"item", "object"}:
-            break
-        if not isinstance(verbs, list) or "take" not in [
-            verb.strip().lower() for verb in verbs if isinstance(verb, str)
-        ]:
+        normalized_kind = kind.strip() if isinstance(kind, str) and kind.strip() else ""
+        if not any(
+            _scene_target_view_supports_action(
+                action,
+                kind=normalized_kind,
+                verbs=entity_view.get("verbs"),
+            )
+            for action in _SELECTED_SCENE_TARGET_ACTIONS
+        ):
             break
         payload = {
             "id": candidate_id.strip(),
-            "kind": kind,
+            "kind": normalized_kind,
             "source": "entity",
         }
         label = entity_view.get("label")
@@ -2887,7 +3015,7 @@ def _resolve_selected_scene_target_context(
         return payload
 
     raise ValueError(
-        f"selected_target_id is not takeable in the current area: {normalized_target_id}"
+        f"selected_target_id is not interactable in the current area: {normalized_target_id}"
     )
 
 

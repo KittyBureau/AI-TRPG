@@ -1,5 +1,6 @@
 import { chatTurn } from "../api/api.js";
 import { resolveActingActorId } from "../utils/acting_actor.js";
+import { deriveSceneEntityFlags } from "../utils/scene_targets.js";
 
 function normalizeString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
@@ -99,6 +100,14 @@ export function deriveMapPanelView(state) {
       description: normalizeString(area?.description),
     };
   });
+  const visibleEntities = mapMatchesActor && Array.isArray(mapView?.entities_in_area)
+    ? mapView.entities_in_area
+    : [];
+  const sceneSummary = {
+    visibleCount: visibleEntities.length,
+    interactableCount: visibleEntities.filter((entity) => deriveSceneEntityFlags(entity).interactable).length,
+    takeableCount: visibleEntities.filter((entity) => deriveSceneEntityFlags(entity).takeable).length,
+  };
 
   return {
     activeActorId,
@@ -106,6 +115,7 @@ export function deriveMapPanelView(state) {
     currentArea,
     hasCurrentAreaSnapshot: Boolean(baseArea) || Boolean(mapMatchesActor),
     reachableAreas,
+    sceneSummary,
   };
 }
 
@@ -210,6 +220,11 @@ export function initPanel(store) {
       description.textContent = view.currentArea.description;
       mount.appendChild(description);
     }
+
+    const sceneSummary = document.createElement("div");
+    sceneSummary.className = "row";
+    sceneSummary.textContent = `Visible here: ${view.sceneSummary.visibleCount} | Interactable: ${view.sceneSummary.interactableCount} | Takeable: ${view.sceneSummary.takeableCount}`;
+    mount.appendChild(sceneSummary);
 
     const reachableTitle = document.createElement("div");
     reachableTitle.className = "scene-section-title";

@@ -37,6 +37,57 @@ class _SceneTargetCaptureLLM:
         debug_append: Any,
     ) -> Dict[str, Any]:
         _SceneTargetCaptureLLM.last_system_prompt = system_prompt
+        if user_input == "Inspect the selected target.":
+            return {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": "call_inspect_selected_target",
+                        "tool": "scene_action",
+                        "args": {
+                            "actor_id": "pc_001",
+                            "action": "inspect",
+                            "target_id": "apple_01",
+                            "params": {},
+                        },
+                    }
+                ],
+            }
+        if user_input == "Talk to the selected target.":
+            return {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": "call_talk_selected_target",
+                        "tool": "scene_action",
+                        "args": {
+                            "actor_id": "pc_001",
+                            "action": "talk",
+                            "target_id": "crate_01",
+                            "params": {},
+                        },
+                    }
+                ],
+            }
+        if user_input == "Use the selected target.":
+            return {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": "call_use_selected_target",
+                        "tool": "scene_action",
+                        "args": {
+                            "actor_id": "pc_001",
+                            "action": "use",
+                            "target_id": "crate_01",
+                            "params": {},
+                        },
+                    }
+                ],
+            }
         return {
             "assistant_text": "Selected scene target context checked.",
             "dialog_type": "scene_description",
@@ -133,6 +184,36 @@ def _seed_campaign(tmp_path: Path, campaign_id: str, *, trace_enabled: bool = Tr
                 state={"opened": False},
                 props={},
             ),
+            "guide_01": Entity(
+                id="guide_01",
+                kind="npc",
+                label="Guide",
+                tags=["npc"],
+                loc=EntityLocation(type="area", id="area_001"),
+                verbs=["inspect", "talk"],
+                state={},
+                props={},
+            ),
+            "lever_01": Entity(
+                id="lever_01",
+                kind="object",
+                label="Lever",
+                tags=["mechanism"],
+                loc=EntityLocation(type="area", id="area_001"),
+                verbs=["inspect", "use"],
+                state={},
+                props={},
+            ),
+            "statue_01": Entity(
+                id="statue_01",
+                kind="object",
+                label="Statue",
+                tags=["scenery"],
+                loc=EntityLocation(type="area", id="area_001"),
+                verbs=[],
+                state={},
+                props={},
+            ),
         },
     )
     repo.create_campaign(campaign)
@@ -216,7 +297,82 @@ def test_chat_turn_injects_selected_scene_target_for_visible_takeable_entity(
     }
 
 
-def test_chat_turn_rejects_selected_scene_target_outside_current_area(
+def test_chat_turn_inspect_uses_selected_scene_target_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_campaign(tmp_path, "camp_selected_scene_target_inspect")
+    client = _client(tmp_path, monkeypatch)
+
+    response = client.post(
+        "/api/v1/chat/turn",
+        json={
+            "campaign_id": "camp_selected_scene_target_inspect",
+            "user_input": "Inspect the selected target.",
+            "execution": {"actor_id": "pc_001"},
+            "context_hints": {"selected_target_id": "crate_01"},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["applied_actions"][0]["tool"] == "scene_action"
+    assert payload["applied_actions"][0]["args"]["action"] == "inspect"
+    assert payload["applied_actions"][0]["args"]["target_id"] == "crate_01"
+    assert "crate" in payload["narrative_text"].lower()
+
+
+def test_chat_turn_talk_uses_selected_scene_target_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_campaign(tmp_path, "camp_selected_scene_target_talk")
+    client = _client(tmp_path, monkeypatch)
+
+    response = client.post(
+        "/api/v1/chat/turn",
+        json={
+            "campaign_id": "camp_selected_scene_target_talk",
+            "user_input": "Talk to the selected target.",
+            "execution": {"actor_id": "pc_001"},
+            "context_hints": {"selected_target_id": "guide_01"},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["applied_actions"][0]["tool"] == "scene_action"
+    assert payload["applied_actions"][0]["args"]["action"] == "talk"
+    assert payload["applied_actions"][0]["args"]["target_id"] == "guide_01"
+    assert "guide" in payload["narrative_text"].lower()
+
+
+def test_chat_turn_use_uses_selected_scene_target_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_campaign(tmp_path, "camp_selected_scene_target_use")
+    client = _client(tmp_path, monkeypatch)
+
+    response = client.post(
+        "/api/v1/chat/turn",
+        json={
+            "campaign_id": "camp_selected_scene_target_use",
+            "user_input": "Use the selected target.",
+            "execution": {"actor_id": "pc_001"},
+            "context_hints": {"selected_target_id": "lever_01"},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["applied_actions"][0]["tool"] == "scene_action"
+    assert payload["applied_actions"][0]["args"]["action"] == "use"
+    assert payload["applied_actions"][0]["args"]["target_id"] == "lever_01"
+    assert "lever" in payload["narrative_text"].lower()
+
+
+def test_chat_turn_rejects_selected_scene_target_when_not_interactable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -227,11 +383,11 @@ def test_chat_turn_rejects_selected_scene_target_outside_current_area(
         "/api/v1/chat/turn",
         json={
             "campaign_id": "camp_selected_scene_target_invalid",
-            "user_input": "Take the selected item.",
+            "user_input": "Inspect the selected target.",
             "execution": {"actor_id": "pc_001"},
-            "context_hints": {"selected_target_id": "coin_01"},
+            "context_hints": {"selected_target_id": "statue_01"},
         },
     )
 
     assert response.status_code == 400
-    assert "selected_target_id is not takeable in the current area" in response.json()["detail"]
+    assert "selected_target_id is not interactable in the current area" in response.json()["detail"]
