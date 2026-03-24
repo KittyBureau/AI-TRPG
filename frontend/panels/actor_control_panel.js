@@ -5,13 +5,13 @@ import {
   buildInventoryItemViewsFromStacks,
 } from "../utils/inventory_items.js";
 
-function buildMovePrompt(actorId, toAreaId) {
+function buildTakePrompt(actorId, targetId) {
   return `[UI_FLOW_STEP]
 Return JSON with keys assistant_text, dialog_type, tool_calls.
 Keep assistant_text empty.
-Execute exactly one tool_call now: move.
+Execute exactly one tool_call now: scene_action.
 Use args exactly:
-${JSON.stringify({ actor_id: actorId, to_area_id: toAreaId })}
+${JSON.stringify({ actor_id: actorId, action: "take", target_id: targetId, params: {} })}
 Do not call any additional tools.`;
 }
 
@@ -133,7 +133,10 @@ function getActorInventoryView(state, actorId, store = null) {
     store && typeof store.getSelectedItemIdForActor === "function"
       ? store.getSelectedItemIdForActor(actorId) || ""
       : deriveSelectedItemIdFromState(state, actorId) || "";
-  const selectionAudit = getActorSelectionAudit(state, actorId);
+  const selectionAudit =
+    state?.selectionAuditByActor && typeof state.selectionAuditByActor === "object"
+      ? state.selectionAuditByActor[actorId] || null
+      : null;
   if (Array.isArray(actorStacks)) {
     return {
       known: true,
@@ -154,49 +157,18 @@ function getActorInventoryView(state, actorId, store = null) {
   };
 }
 
-function getActorSelectionAudit(state, actorId) {
-  if (!actorId || !state?.selectionAuditByActor || typeof state.selectionAuditByActor !== "object") {
-    return null;
+function selectedItemSummary(selectedItemView) {
+  if (!selectedItemView) {
+    return "Selected inventory item: none";
   }
-  const audit = state.selectionAuditByActor[actorId];
-  return audit && typeof audit === "object" && !Array.isArray(audit) ? audit : null;
+  return `Selected inventory item: ${selectedItemView.name} (${selectedItemView.item_id})`;
 }
 
-function formatSelectionSummary(selectedItemView, selectedItemId, selectedStackId, selectionAudit) {
-  if (selectedItemView) {
-    const mode =
-      selectionAudit && typeof selectionAudit.mode === "string" && selectionAudit.mode.trim()
-        ? selectionAudit.mode.trim()
-        : "stack_primary";
-    const selectedStackLabel =
-      selectedItemView.selected_stack_id || selectedStackId || selectedItemView.primary_stack_id || "none";
-    const stackScope =
-      typeof selectedItemView.stack_count === "number" && selectedItemView.stack_count > 1
-        ? `, ${selectedItemView.stack_count} stacks`
-        : "";
-    return `Selected item: ${selectedItemView.name} (${selectedItemView.item_id}) via ${selectedStackLabel}${stackScope} [${mode}]`;
+function selectedTargetSummary(selectedSceneTarget) {
+  if (!selectedSceneTarget) {
+    return "Selected scene target: none";
   }
-  if (selectedItemId) {
-    const mode =
-      selectionAudit && typeof selectionAudit.mode === "string" && selectionAudit.mode.trim()
-        ? selectionAudit.mode.trim()
-        : "item_fallback";
-    return `Selected item: ${selectedItemId} [${mode}]`;
-  }
-  return "Selected item: none";
-}
-
-function formatSelectionNote(selectionAudit) {
-  if (selectionAudit?.mode === "item_fallback") {
-    return "Selection fallback active: the next turn request will use selected_item_id until a stack can be resolved.";
-  }
-  if (
-    Array.isArray(selectionAudit?.candidate_stack_ids) &&
-    selectionAudit.candidate_stack_ids.length > 1
-  ) {
-    return `Selection uses selected_stack_id. Multiple stacks are present; the current adapter path picked ${selectionAudit.selected_stack_id}.`;
-  }
-  return "Selection is stored per actor and sent as selected_stack_id by default. selected_item_id is fallback-only.";
+  return `Selected scene target: ${selectedSceneTarget.label} (${selectedSceneTarget.id})`;
 }
 
 export function buildTurnPayload(state, actorId, userInput, store) {
@@ -228,22 +200,47 @@ export function initPanel(store) {
 
   const uiState = {
     userInput: "",
-    moveToAreaId: "",
   };
 
-  async function refreshCampaignState(campaignId) {
-    if (!campaignId || typeof store.refreshCampaign !== "function") {
+  async function refreshPlayState() {
+    const state = store.getState();
+    if (!state.campaignId || typeof store.refreshCampaign !== "function") {
       return true;
     }
-    const state = store.getState();
-    const refreshResult = await store.refreshCampaign(campaignId, state.baseUrl);
+    const refreshResult = await store.refreshCampaign(state.campaignId, state.baseUrl);
     if (!refreshResult.ok) {
       store.setStatusMessage(`Refresh campaign failed: ${parseApiError(refreshResult)}`);
       return false;
     }
     if (typeof store.refreshCampaignWorldPreview === "function") {
-      await store.refreshCampaignWorldPreview(campaignId, state.baseUrl, { emit: true });
+      await store.refreshCampaignWorldPreview(state.campaignId, state.baseUrl, { emit: true });
     }
+    if (typeof store.refreshMapView === "function") {
+      await store.refreshMapView(state.campaignId, store.getState().campaign.active_actor_id, state.baseUrl, {
+        emit: true,
+      });
+    }
+    return true;
+  }
+
+  async function submitPayload(payload, successPrefix) {
+    const state = store.getState();
+    const result = await chatTurn(state.baseUrl, payload);
+    if (!result.ok || !result.data) {
+      store.setStatusMessage(`${successPrefix} failed: ${parseApiError(result)}`);
+      store.setDebugResponseText(result.text || "");
+      return false;
+    }
+    store.recordTurnResult(result.data, JSON.stringify(result.data, null, 2));
+    const refreshed = await refreshPlayState();
+    if (!refreshed) {
+      return false;
+    }
+    const effectiveActorId =
+      typeof result.data.effective_actor_id === "string" && result.data.effective_actor_id.trim()
+        ? result.data.effective_actor_id.trim()
+        : state.campaign.active_actor_id;
+    store.setStatusMessage(`${successPrefix} completed as ${effectiveActorId}.`);
     return true;
   }
 
@@ -269,68 +266,35 @@ export function initPanel(store) {
       store.setStatusMessage("Turn input is required.");
       return;
     }
-    const payload = buildTurnPayload(state, actorId, userInput, store);
-    const result = await chatTurn(state.baseUrl, payload);
-    if (!result.ok || !result.data) {
-      store.setStatusMessage(`Turn failed: ${parseApiError(result)}`);
-      store.setDebugResponseText(result.text || "");
-      return;
-    }
-    store.recordTurnResult(result.data, JSON.stringify(result.data, null, 2));
-    const refreshed = await refreshCampaignState(state.campaignId);
-    if (!refreshed) {
-      return;
-    }
-    const effectiveActorId =
-      typeof result.data.effective_actor_id === "string" && result.data.effective_actor_id.trim()
-        ? result.data.effective_actor_id.trim()
-        : actorId;
-    store.setStatusMessage(`Turn completed as ${effectiveActorId}.`);
+    await submitPayload(buildTurnPayload(state, actorId, userInput, store), "Turn");
   }
 
-  async function runMove() {
+  async function runTakeSelected() {
     const state = store.getState();
     if (!state.campaignId) {
       store.setStatusMessage("Select a campaign first.");
       return;
     }
-    if (state.baseUrl && typeof store.checkBackendReady === "function") {
-      const readiness = await store.checkBackendReady(state.baseUrl, { silent: false });
-      if (readiness.ready === false) {
-        return;
-      }
-    }
     const actorId = resolveActingActorId(state);
-    const toAreaId = uiState.moveToAreaId.trim();
-    if (!actorId || !toAreaId) {
-      if (!actorId) {
-        store.setStatusMessage("Party empty / no actor selected.");
-      } else {
-        store.setStatusMessage("to_area_id is required.");
-      }
+    if (!actorId) {
+      store.setStatusMessage("Party empty / no actor selected.");
       return;
     }
-    const payload = {
-      campaign_id: state.campaignId,
-      user_input: buildMovePrompt(actorId, toAreaId),
-      execution: { actor_id: actorId },
-    };
-    const result = await chatTurn(state.baseUrl, payload);
-    if (!result.ok || !result.data) {
-      store.setStatusMessage(`Move failed: ${parseApiError(result)}`);
-      store.setDebugResponseText(result.text || "");
+    const selectedSceneTarget =
+      typeof store.getSelectedSceneTargetForActor === "function"
+        ? store.getSelectedSceneTargetForActor(actorId)
+        : null;
+    if (!selectedSceneTarget?.id) {
+      store.setStatusMessage("Select a takeable scene target first.");
       return;
     }
-    store.recordTurnResult(result.data, JSON.stringify(result.data, null, 2));
-    const refreshed = await refreshCampaignState(state.campaignId);
-    if (!refreshed) {
-      return;
-    }
-    const effectiveActorId =
-      typeof result.data.effective_actor_id === "string" && result.data.effective_actor_id.trim()
-        ? result.data.effective_actor_id.trim()
-        : actorId;
-    store.setStatusMessage(`Move completed as ${effectiveActorId}.`);
+    const payload = buildTurnPayload(
+      state,
+      actorId,
+      buildTakePrompt(actorId, selectedSceneTarget.id),
+      store
+    );
+    await submitPayload(payload, "Pickup");
   }
 
   function render() {
@@ -340,41 +304,27 @@ export function initPanel(store) {
     const actingActorId = resolveActingActorId(state);
     const canAct = Boolean(actingActorId);
     const inventoryView = getActorInventoryView(state, actingActorId, store);
-    const selectedStackId =
-      actingActorId && state.selectedStackIdByActor
-        ? state.selectedStackIdByActor[actingActorId] || null
-        : null;
-    const selectedItemId =
-      actingActorId && typeof store.getSelectedItemIdForActor === "function"
-        ? store.getSelectedItemIdForActor(actingActorId)
-        : deriveSelectedItemIdFromState(state, actingActorId);
-    const selectionAudit = getActorSelectionAudit(state, actingActorId);
     const selectedItemView =
       inventoryView.known && Array.isArray(inventoryView.items)
         ? inventoryView.items.find((item) => item.is_selected) || null
+        : null;
+    const selectedSceneTarget =
+      canAct && typeof store.getSelectedSceneTargetForActor === "function"
+        ? store.getSelectedSceneTargetForActor(actingActorId)
         : null;
 
     mount.innerHTML = "";
 
     const title = document.createElement("h2");
     title.className = "panel-title";
-    title.textContent = "Actor Control";
+    title.textContent = "Actions";
     mount.appendChild(title);
-
-    const actingAs = document.createElement("div");
-    actingAs.className = "row";
-    actingAs.textContent = `Acting as: ${actingActorId || "none"}`;
-    mount.appendChild(actingAs);
 
     const actorField = document.createElement("label");
     actorField.className = "field";
-    actorField.innerHTML = '<span class="field-label">Actor</span>';
+    actorField.innerHTML = '<span class="field-label">Acting As</span>';
     const actorSelect = document.createElement("select");
     actorSelect.setAttribute("data-focus-key", "actor-select");
-    const actorEmpty = document.createElement("option");
-    actorEmpty.value = "";
-    actorEmpty.textContent = "Select actor";
-    actorSelect.appendChild(actorEmpty);
     for (const actorId of party) {
       const option = document.createElement("option");
       option.value = actorId;
@@ -396,48 +346,68 @@ export function initPanel(store) {
     actorField.appendChild(actorSelect);
     mount.appendChild(actorField);
 
-    if (!canAct) {
-      const emptyHint = document.createElement("div");
-      emptyHint.className = "note";
-      emptyHint.textContent = "Party empty / no actor selected.";
-      mount.appendChild(emptyHint);
-    }
+    const selectedTarget = document.createElement("div");
+    selectedTarget.className = "selection-summary";
+    selectedTarget.textContent = selectedTargetSummary(selectedSceneTarget);
+    mount.appendChild(selectedTarget);
+
+    const selectedInventory = document.createElement("div");
+    selectedInventory.className = "selection-summary";
+    selectedInventory.textContent = selectedItemSummary(selectedItemView);
+    mount.appendChild(selectedInventory);
+
+    const turnField = document.createElement("label");
+    turnField.className = "field";
+    turnField.innerHTML = '<span class="field-label">What do you do?</span>';
+    const turnInput = document.createElement("textarea");
+    turnInput.setAttribute("data-focus-key", "turn-input");
+    turnInput.rows = 4;
+    turnInput.placeholder = "Talk, inspect, use an item, or describe your next move...";
+    turnInput.value = uiState.userInput;
+    turnInput.addEventListener("input", () => {
+      uiState.userInput = turnInput.value;
+    });
+    turnField.appendChild(turnInput);
+    mount.appendChild(turnField);
+
+    const actionsBar = document.createElement("div");
+    actionsBar.className = "action-bar";
+
+    const turnButton = document.createElement("button");
+    turnButton.className = "primary";
+    turnButton.textContent = "Send Turn";
+    turnButton.disabled = !canAct;
+    turnButton.addEventListener("click", runTurn);
+    actionsBar.appendChild(turnButton);
+
+    const takeButton = document.createElement("button");
+    takeButton.textContent = "Take Selected";
+    takeButton.disabled = !canAct || !selectedSceneTarget?.id;
+    takeButton.addEventListener("click", runTakeSelected);
+    actionsBar.appendChild(takeButton);
+
+    mount.appendChild(actionsBar);
 
     const inventoryTitle = document.createElement("h3");
     inventoryTitle.textContent = "Inventory";
     mount.appendChild(inventoryTitle);
 
-    const selectionRow = document.createElement("div");
-    selectionRow.className = "note";
-    selectionRow.textContent = formatSelectionSummary(
-      selectedItemView,
-      selectedItemId,
-      selectedStackId,
-      selectionAudit
-    );
-    mount.appendChild(selectionRow);
-
-    const inventoryNote = document.createElement("div");
-    inventoryNote.className = "note";
-    inventoryNote.textContent = formatSelectionNote(selectionAudit);
-    mount.appendChild(inventoryNote);
-
     if (!canAct) {
-      const inventoryEmpty = document.createElement("div");
-      inventoryEmpty.className = "note";
-      inventoryEmpty.textContent = "Select an actor to inspect inventory.";
-      mount.appendChild(inventoryEmpty);
+      const empty = document.createElement("div");
+      empty.className = "note";
+      empty.textContent = "Select an actor to act.";
+      mount.appendChild(empty);
     } else if (!inventoryView.known) {
-      const inventoryUnknown = document.createElement("div");
-      inventoryUnknown.className = "note";
-      inventoryUnknown.textContent =
+      const unknown = document.createElement("div");
+      unknown.className = "note";
+      unknown.textContent =
         "Inventory snapshot unavailable yet. It will appear after a successful turn response.";
-      mount.appendChild(inventoryUnknown);
+      mount.appendChild(unknown);
     } else if (!inventoryView.items.length) {
-      const inventoryNone = document.createElement("div");
-      inventoryNone.className = "note";
-      inventoryNone.textContent = "No items in inventory.";
-      mount.appendChild(inventoryNone);
+      const none = document.createElement("div");
+      none.className = "note";
+      none.textContent = "No items in inventory.";
+      mount.appendChild(none);
     } else {
       const inventoryList = document.createElement("div");
       inventoryList.className = "stack";
@@ -478,75 +448,12 @@ export function initPanel(store) {
         itemDescription.className = "inventory-item-description";
         itemDescription.textContent = item.description;
 
-        const itemMeta = document.createElement("div");
-        itemMeta.className = "inventory-item-meta";
-        const itemMetaParts = [`item_id: ${item.item_id}`];
-        if (typeof item.stack_count === "number" && item.stack_count > 0) {
-          itemMetaParts.push(`stacks: ${item.stack_count}`);
-        }
-        if (item.is_selected && item.selected_stack_id) {
-          itemMetaParts.push(`selected_stack_id: ${item.selected_stack_id}`);
-        } else if (item.primary_stack_id) {
-          itemMetaParts.push(`primary_stack_id: ${item.primary_stack_id}`);
-        }
-        if (item.selection_reason) {
-          itemMetaParts.push(`selection_rule: ${item.selection_reason}`);
-        }
-        itemMeta.textContent = itemMetaParts.join(" | ");
-
         itemButton.appendChild(itemHeader);
         itemButton.appendChild(itemDescription);
-        itemButton.appendChild(itemMeta);
-        if (Array.isArray(item.stack_ids) && item.stack_ids.length > 1) {
-          const itemStacks = document.createElement("div");
-          itemStacks.className = "inventory-item-meta";
-          itemStacks.textContent = `stack_ids: ${item.stack_ids.join(", ")}`;
-          itemButton.appendChild(itemStacks);
-        }
         inventoryList.appendChild(itemButton);
       }
       mount.appendChild(inventoryList);
     }
-
-    const turnField = document.createElement("label");
-    turnField.className = "field";
-    turnField.innerHTML = '<span class="field-label">Turn Input</span>';
-    const turnInput = document.createElement("textarea");
-    turnInput.setAttribute("data-focus-key", "turn-input");
-    turnInput.rows = 3;
-    turnInput.placeholder = "Describe action...";
-    turnInput.value = uiState.userInput;
-    turnInput.addEventListener("input", () => {
-      uiState.userInput = turnInput.value;
-    });
-    turnField.appendChild(turnInput);
-    mount.appendChild(turnField);
-
-    const turnButton = document.createElement("button");
-    turnButton.className = "primary";
-    turnButton.textContent = "Send Turn";
-    turnButton.disabled = !canAct;
-    turnButton.addEventListener("click", runTurn);
-    mount.appendChild(turnButton);
-
-    const moveField = document.createElement("label");
-    moveField.className = "field";
-    moveField.innerHTML = '<span class="field-label">Move to area_id</span>';
-    const moveInput = document.createElement("input");
-    moveInput.setAttribute("data-focus-key", "move-input");
-    moveInput.placeholder = "area_002";
-    moveInput.value = uiState.moveToAreaId;
-    moveInput.addEventListener("input", () => {
-      uiState.moveToAreaId = moveInput.value;
-    });
-    moveField.appendChild(moveInput);
-    mount.appendChild(moveField);
-
-    const moveButton = document.createElement("button");
-    moveButton.textContent = "Move";
-    moveButton.disabled = !canAct;
-    moveButton.addEventListener("click", runMove);
-    mount.appendChild(moveButton);
 
     restoreFocusState(mount, focusSnapshot);
   }

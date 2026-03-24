@@ -5,6 +5,7 @@ from backend.app.turn_service import TurnService
 from backend.app.world_presets import (
     MIDNIGHT_ARCHIVE_ARCHIVE_KEY_STACK_ID,
     MIDNIGHT_ARCHIVE_OFFICE_PASS_STACK_ID,
+    MIDNIGHT_ARCHIVE_PAYOFF_ENTITY_ID,
     MIDNIGHT_ARCHIVE_ROUTING_SLIP_STACK_ID,
     MIDNIGHT_ARCHIVE_TARGET_AREA_ID,
     MIDNIGHT_ARCHIVE_WORLD_ID,
@@ -29,7 +30,7 @@ def test_create_campaign_bootstraps_midnight_archive_world(tmp_path) -> None:
     assert campaign.selected.world_id == MIDNIGHT_ARCHIVE_WORLD_ID
     assert (
         campaign.goal.text
-        == "Reach the restricted archive and recover proof that the inspection record was falsified."
+        == "Reach the restricted archive and inspect the forged file shelf to recover proof that the inspection record was falsified."
     )
     assert sorted(campaign.map.areas.keys()) == [
         "clerk_office",
@@ -48,7 +49,7 @@ def test_create_campaign_bootstraps_midnight_archive_world(tmp_path) -> None:
     assert campaign.entities["desk_safe"].kind == "container"
 
 
-def test_midnight_archive_official_route_requires_pass_then_key_and_completes_goal(
+def test_midnight_archive_official_route_requires_pass_then_key_then_final_interaction(
     tmp_path,
 ) -> None:
     repo = FileRepo(tmp_path / "storage")
@@ -140,6 +141,16 @@ def test_midnight_archive_official_route_requires_pass_then_key_and_completes_go
         tool="move",
         args={"actor_id": "pc_001", "to_area_id": MIDNIGHT_ARCHIVE_TARGET_AREA_ID},
     )
+    inspect_shelf = ToolCall(
+        id="call_inspect_shelf",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "inspect",
+            "target_id": MIDNIGHT_ARCHIVE_PAYOFF_ENTITY_ID,
+            "params": {},
+        },
+    )
 
     applied_actions, tool_feedback = execute_tool_calls(
         campaign,
@@ -174,10 +185,18 @@ def test_midnight_archive_official_route_requires_pass_then_key_and_completes_go
         "archive_key": 1,
     }
     assert campaign.actors["pc_001"].position == MIDNIGHT_ARCHIVE_TARGET_AREA_ID
+    assert campaign.goal.status == "active"
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [inspect_shelf])
+
+    assert tool_feedback is None
+    assert [action.tool for action in applied_actions] == ["scene_action"]
+    assert applied_actions[0].result["ok"] is True
+    assert "forged file shelf" in applied_actions[0].result["narrative"].lower()
     assert campaign.goal.status == "completed"
 
 
-def test_midnight_archive_service_route_reaches_archive_without_archive_key(
+def test_midnight_archive_service_route_requires_routing_slip_and_final_interaction(
     tmp_path,
 ) -> None:
     repo = FileRepo(tmp_path / "storage")
@@ -221,6 +240,29 @@ def test_midnight_archive_service_route_reaches_archive_without_archive_key(
         tool="move",
         args={"actor_id": "pc_001", "to_area_id": MIDNIGHT_ARCHIVE_TARGET_AREA_ID},
     )
+    search_shelf = ToolCall(
+        id="call_search_shelf",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "search",
+            "target_id": MIDNIGHT_ARCHIVE_PAYOFF_ENTITY_ID,
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [move_annex, move_archive],
+    )
+
+    assert [action.tool for action in applied_actions] == ["move"]
+    assert tool_feedback is not None
+    assert tool_feedback.failed_calls[0].reason == "missing_required_item"
+    assert campaign.actors["pc_001"].position == "returns_annex"
+    assert campaign.goal.status == "active"
+    campaign.actors["pc_001"].position = "reading_room"
 
     applied_actions, tool_feedback = execute_tool_calls(
         campaign,
@@ -239,6 +281,13 @@ def test_midnight_archive_service_route_reaches_archive_without_archive_key(
     assert campaign.actors["pc_001"].inventory == {"routing_slip": 1}
     assert "archive_key" not in campaign.actors["pc_001"].inventory
     assert campaign.actors["pc_001"].position == MIDNIGHT_ARCHIVE_TARGET_AREA_ID
+    assert campaign.goal.status == "active"
+
+    applied_actions, tool_feedback = execute_tool_calls(campaign, "pc_001", [search_shelf])
+
+    assert tool_feedback is None
+    assert [action.tool for action in applied_actions] == ["scene_action"]
+    assert applied_actions[0].result["ok"] is True
     assert campaign.goal.status == "completed"
 
 
@@ -293,11 +342,29 @@ def test_midnight_archive_player_can_finish_without_entering_clerk_office(tmp_pa
         tool="move",
         args={"actor_id": "pc_001", "to_area_id": MIDNIGHT_ARCHIVE_TARGET_AREA_ID},
     )
+    inspect_shelf = ToolCall(
+        id="call_inspect_shelf",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "inspect",
+            "target_id": MIDNIGHT_ARCHIVE_PAYOFF_ENTITY_ID,
+            "params": {},
+        },
+    )
 
     applied_actions, tool_feedback = execute_tool_calls(
         campaign,
         "pc_001",
-        [move_lobby, move_reading, search_routing, take_routing, move_annex, move_archive],
+        [
+            move_lobby,
+            move_reading,
+            search_routing,
+            take_routing,
+            move_annex,
+            move_archive,
+            inspect_shelf,
+        ],
     )
 
     assert tool_feedback is None

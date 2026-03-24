@@ -11,7 +11,7 @@
       <header class="page-header">
         <div>
           <h1 class="page-title">AI-TRPG Play</h1>
-          <p class="page-subtitle">Minimal panel flow for campaign and actors</p>
+          <p class="page-subtitle">Basic player-facing screen. Use debug.html for raw traces.</p>
         </div>
         <div class="inline">
           <span class="status-chip" id="statusLine">Idle</span>
@@ -20,15 +20,21 @@
         </div>
       </header>
 
-      <main class="main-container">
-        <section id="campaignPanel" class="panel"></section>
-        <section id="worldPanel" class="panel"></section>
-        <section id="worldPreviewPanel" class="panel"></section>
-        <section id="characterLibraryPanel" class="panel"></section>
-        <section id="partyPanel" class="panel"></section>
-        <section id="mapPanel" class="panel"></section>
-        <section id="actorControlPanel" class="panel"></section>
-        <section id="debugPanel" class="panel"></section>
+      <main class="play-layout">
+        <aside class="setup-column">
+          <section id="campaignPanel" class="panel"></section>
+          <section id="worldPanel" class="panel"></section>
+          <section id="worldPreviewPanel" class="panel"></section>
+          <section id="characterLibraryPanel" class="panel"></section>
+          <section id="partyPanel" class="panel"></section>
+        </aside>
+
+        <section class="play-column">
+          <section id="storyPanel" class="panel"></section>
+          <section id="scenePanel" class="panel"></section>
+          <section id="actorControlPanel" class="panel"></section>
+          <section id="mapPanel" class="panel"></section>
+        </section>
       </main>
     </div>
 

@@ -26,6 +26,7 @@ class TurnContextHints(BaseModel):
     selected_stack_id: Optional[str] = None
     # Fallback-only compatibility hint for older callers that cannot yet resolve a stack.
     selected_item_id: Optional[str] = None
+    selected_target_id: Optional[str] = None
 
 
 class TurnRequest(BaseModel):
@@ -62,6 +63,9 @@ def submit_turn(request: TurnRequest) -> TurnResponse:
             ),
             selected_item_id=(
                 request.context_hints.selected_item_id if request.context_hints else None
+            ),
+            selected_target_id=(
+                request.context_hints.selected_target_id if request.context_hints else None
             ),
         )
     except FileNotFoundError as exc:

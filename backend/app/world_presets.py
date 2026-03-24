@@ -15,11 +15,14 @@ TEST_WATCHTOWER_GATE_STACK_ID = "stk_watchtower_tower_key_01"
 MIDNIGHT_ARCHIVE_WORLD_ID = "midnight_archive_world"
 MIDNIGHT_ARCHIVE_START_AREA_ID = "street_gate"
 MIDNIGHT_ARCHIVE_TARGET_AREA_ID = "restricted_archive"
+MIDNIGHT_ARCHIVE_PAYOFF_ENTITY_ID = "forged_file_shelf"
 MIDNIGHT_ARCHIVE_OFFICIAL_ROUTE_FROM_AREA_ID = "lobby"
 MIDNIGHT_ARCHIVE_OFFICIAL_ROUTE_TO_AREA_ID = "clerk_office"
 MIDNIGHT_ARCHIVE_OFFICIAL_ROUTE_ITEM_ID = "office_pass"
 MIDNIGHT_ARCHIVE_ARCHIVE_GATE_FROM_AREA_ID = "storage_room"
 MIDNIGHT_ARCHIVE_ARCHIVE_GATE_ITEM_ID = "archive_key"
+MIDNIGHT_ARCHIVE_SERVICE_ROUTE_FROM_AREA_ID = "returns_annex"
+MIDNIGHT_ARCHIVE_SERVICE_ROUTE_ITEM_ID = "routing_slip"
 MIDNIGHT_ARCHIVE_OFFICE_PASS_STACK_ID = "stk_midnight_office_pass_01"
 MIDNIGHT_ARCHIVE_ROUTING_SLIP_STACK_ID = "stk_midnight_routing_slip_01"
 MIDNIGHT_ARCHIVE_ARCHIVE_KEY_STACK_ID = "stk_midnight_archive_key_01"
@@ -76,7 +79,9 @@ def build_world_preset(world_id: str) -> Optional[World]:
             world_description=(
                 "A fixed investigation scenario set in a rain-soaked civic archive with an official route and a service-route bypass."
             ),
-            objective="Reach the restricted archive and recover proof that the inspection record was falsified.",
+            objective=(
+                "Reach the restricted archive and inspect the forged file shelf to recover proof that the inspection record was falsified."
+            ),
             start_area=MIDNIGHT_ARCHIVE_START_AREA_ID,
             generator=WorldGenerator(
                 id="static_test_world",
@@ -128,7 +133,9 @@ def build_campaign_world_preset(world_id: str) -> Optional[CampaignWorldPreset]:
     if normalized_world_id == MIDNIGHT_ARCHIVE_WORLD_ID:
         return CampaignWorldPreset(
             start_area_id=MIDNIGHT_ARCHIVE_START_AREA_ID,
-            goal_text="Reach the restricted archive and recover proof that the inspection record was falsified.",
+            goal_text=(
+                "Reach the restricted archive and inspect the forged file shelf to recover proof that the inspection record was falsified."
+            ),
             map_data=MapData(
                 areas={
                     "street_gate": MapArea(
@@ -376,14 +383,16 @@ def build_campaign_world_preset(world_id: str) -> Optional[CampaignWorldPreset]:
                     props={},
                 ),
                 "forged_file_shelf": Entity(
-                    id="forged_file_shelf",
+                    id=MIDNIGHT_ARCHIVE_PAYOFF_ENTITY_ID,
                     kind="object",
                     label="Forged File Shelf",
                     tags=["goal", "archive"],
                     loc=EntityLocation(type="area", id="restricted_archive"),
                     verbs=["inspect", "search"],
                     state={
-                        "hint": "The hidden inspection record is here. Reaching this room completes the scenario."
+                        "hint": (
+                            "The hidden inspection record is here. Inspect or search the shelf to confirm the forgery and finish the scenario."
+                        )
                     },
                     props={},
                 ),
@@ -500,6 +509,11 @@ def required_item_for_move(
             and to_area_id == MIDNIGHT_ARCHIVE_TARGET_AREA_ID
         ):
             return MIDNIGHT_ARCHIVE_ARCHIVE_GATE_ITEM_ID
+        if (
+            from_area_id == MIDNIGHT_ARCHIVE_SERVICE_ROUTE_FROM_AREA_ID
+            and to_area_id == MIDNIGHT_ARCHIVE_TARGET_AREA_ID
+        ):
+            return MIDNIGHT_ARCHIVE_SERVICE_ROUTE_ITEM_ID
         return None
     if normalized_world_id != TEST_WATCHTOWER_WORLD_ID:
         return None
@@ -513,6 +527,4 @@ def required_item_for_move(
 
 def is_goal_area(world_id: str, area_id: str) -> bool:
     normalized_world_id = world_id.strip()
-    if normalized_world_id == MIDNIGHT_ARCHIVE_WORLD_ID:
-        return area_id == MIDNIGHT_ARCHIVE_TARGET_AREA_ID
     return normalized_world_id == TEST_WATCHTOWER_WORLD_ID and area_id == TEST_WATCHTOWER_TARGET_AREA_ID

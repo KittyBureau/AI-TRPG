@@ -4,6 +4,7 @@ import {
   generateWorld as generateWorldApi,
   getCampaign as getCampaignApi,
   getCampaignWorld as getCampaignWorldApi,
+  getMapView as getMapViewApi,
   getRuntimeStatus as getRuntimeStatusApi,
   listCampaigns as listCampaignsApi,
   listCharacters,
@@ -70,11 +71,13 @@ const state = {
   roundState: "idle",
   roundNumber: 0,
   stateSummary: null,
+  mapView: null,
   inventoryStacksByActor: {},
   inventoryByActor: {},
   inventoryStackIdsByActor: {},
   inventoryAuthoritySourceByActor: {},
   selectedStackIdByActor: {},
+  selectedSceneTargetIdByActor: {},
   selectionAuditByActor: {},
   submitSelectionAuditByActor: {},
   turnHistory: [],
@@ -430,6 +433,123 @@ function buildFallbackInventoryStacksByActor(
     );
   }
   return stacksByActor;
+}
+
+function normalizeStringList(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  return [...new Set(values.map(normalizeStringId).filter(Boolean))];
+}
+
+function normalizeSceneEntityView(rawEntity) {
+  if (!rawEntity || typeof rawEntity !== "object" || Array.isArray(rawEntity)) {
+    return null;
+  }
+  const id = normalizeStringId(rawEntity.id);
+  const kind = normalizeStringId(rawEntity.kind);
+  const label = normalizeStringId(rawEntity.label);
+  if (!id || !kind) {
+    return null;
+  }
+  return {
+    id,
+    kind,
+    label: label || id,
+    tags: normalizeStringList(rawEntity.tags),
+    verbs: normalizeStringList(rawEntity.verbs),
+    state:
+      rawEntity.state && typeof rawEntity.state === "object" && !Array.isArray(rawEntity.state)
+        ? { ...rawEntity.state }
+        : {},
+  };
+}
+
+function normalizeMapAreaView(rawArea) {
+  if (!rawArea || typeof rawArea !== "object" || Array.isArray(rawArea)) {
+    return null;
+  }
+  const id = normalizeStringId(rawArea.id);
+  const name = normalizeStringId(rawArea.name);
+  if (!id) {
+    return null;
+  }
+  return {
+    id,
+    name: name || id,
+  };
+}
+
+function normalizeMapViewPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const campaignId = normalizeStringId(payload.campaign_id);
+  const activeActorId = normalizeActorId(payload.active_actor_id);
+  const currentArea = normalizeMapAreaView(payload.current_area);
+  if (!campaignId || !activeActorId || !currentArea) {
+    return null;
+  }
+  return {
+    campaign_id: campaignId,
+    active_actor_id: activeActorId,
+    current_area: currentArea,
+    current_area_actor_ids: normalizeStringList(payload.current_area_actor_ids),
+    reachable_areas: Array.isArray(payload.reachable_areas)
+      ? payload.reachable_areas.map(normalizeMapAreaView).filter(Boolean)
+      : [],
+    entities_in_area: Array.isArray(payload.entities_in_area)
+      ? payload.entities_in_area.map(normalizeSceneEntityView).filter(Boolean)
+      : [],
+  };
+}
+
+function isTakeableSceneEntity(entity) {
+  return Boolean(
+    entity &&
+      typeof entity === "object" &&
+      normalizeStringList(entity.verbs).includes("take")
+  );
+}
+
+function getSceneEntitiesForActor(actorId) {
+  const normalizedActorId = normalizeActorId(actorId);
+  const mapView =
+    state.mapView && typeof state.mapView === "object" && !Array.isArray(state.mapView)
+      ? state.mapView
+      : null;
+  if (!normalizedActorId || !mapView || mapView.active_actor_id !== normalizedActorId) {
+    return [];
+  }
+  return Array.isArray(mapView.entities_in_area) ? mapView.entities_in_area : [];
+}
+
+function reconcileSelectedSceneTargetWithMapView() {
+  const mapView =
+    state.mapView && typeof state.mapView === "object" && !Array.isArray(state.mapView)
+      ? state.mapView
+      : null;
+  if (!mapView) {
+    return;
+  }
+  const actorId = normalizeActorId(mapView.active_actor_id);
+  if (!actorId) {
+    return;
+  }
+  const selectedTargetId = normalizeStringId(state.selectedSceneTargetIdByActor[actorId]);
+  if (!selectedTargetId) {
+    return;
+  }
+  const selectedTarget = getSceneEntitiesForActor(actorId).find(
+    (entity) => entity.id === selectedTargetId
+  );
+  if (selectedTarget && isTakeableSceneEntity(selectedTarget)) {
+    return;
+  }
+  state.selectedSceneTargetIdByActor = {
+    ...state.selectedSceneTargetIdByActor,
+    [actorId]: null,
+  };
 }
 
 function getActorInventoryStacks(actorId) {
@@ -828,6 +948,7 @@ export function setCampaignId(campaignId) {
     state.campaign.actors = {};
     state.campaign.map = { areas: {} };
     state.campaign.world = null;
+    state.mapView = null;
   }
   emit();
 }
@@ -923,11 +1044,57 @@ export function setSelectedItemForActor(actorId, itemId) {
   return false;
 }
 
+export function setSelectedSceneTargetForActor(actorId, targetId) {
+  const normalizedActorId = normalizeActorId(actorId);
+  if (!normalizedActorId) {
+    return false;
+  }
+  const normalizedTargetId = normalizeStringId(targetId);
+  if (!normalizedTargetId) {
+    state.selectedSceneTargetIdByActor = {
+      ...state.selectedSceneTargetIdByActor,
+      [normalizedActorId]: null,
+    };
+    emit();
+    return true;
+  }
+  const sceneTarget = getSceneEntitiesForActor(normalizedActorId).find(
+    (entity) => entity.id === normalizedTargetId
+  );
+  if (!sceneTarget || !isTakeableSceneEntity(sceneTarget)) {
+    return false;
+  }
+  const currentTargetId = normalizeStringId(state.selectedSceneTargetIdByActor[normalizedActorId]);
+  state.selectedSceneTargetIdByActor = {
+    ...state.selectedSceneTargetIdByActor,
+    [normalizedActorId]: currentTargetId === normalizedTargetId ? null : normalizedTargetId,
+  };
+  emit();
+  return true;
+}
+
+export function getSelectedSceneTargetForActor(actorId) {
+  const normalizedActorId = normalizeActorId(actorId);
+  if (!normalizedActorId) {
+    return null;
+  }
+  const selectedTargetId = normalizeStringId(state.selectedSceneTargetIdByActor[normalizedActorId]);
+  if (!selectedTargetId) {
+    return null;
+  }
+  return (
+    getSceneEntitiesForActor(normalizedActorId).find((entity) => entity.id === selectedTargetId) ||
+    null
+  );
+}
+
 export function buildTurnContextHintsForActor(actorId) {
   const normalizedActorId = normalizeActorId(actorId);
   if (!normalizedActorId) {
     return null;
   }
+  const selectedSceneTarget = getSelectedSceneTargetForActor(normalizedActorId);
+  const targetHint = selectedSceneTarget ? { selected_target_id: selectedSceneTarget.id } : {};
   const selectedStack = findInventoryStack(
     normalizedActorId,
     state.selectedStackIdByActor[normalizedActorId]
@@ -942,6 +1109,7 @@ export function buildTurnContextHintsForActor(actorId) {
     setSubmitSelectionAuditForActor(normalizedActorId, audit);
     return {
       selected_stack_id: audit.selected_stack_id,
+      ...targetHint,
     };
   }
   const currentAudit = normalizeSelectionAudit(
@@ -961,6 +1129,7 @@ export function buildTurnContextHintsForActor(actorId) {
     logSelectionAudit(audit);
     return {
       selected_item_id: selectedItemId,
+      ...targetHint,
     };
   }
   setSubmitSelectionAuditForActor(normalizedActorId, {
@@ -968,7 +1137,7 @@ export function buildTurnContextHintsForActor(actorId) {
     actor_id: normalizedActorId,
     reason: "no_selection",
   });
-  return null;
+  return Object.keys(targetHint).length ? targetHint : null;
 }
 
 export function setCharacterCreateForm(nextForm) {
@@ -1869,6 +2038,60 @@ export async function refreshCampaignWorldPreview(
   }
 
   state.campaign.world = normalizeCampaignWorld(result.data);
+  if (options.emit !== false) {
+    emit();
+  }
+  return result;
+}
+
+export async function refreshMapView(
+  campaignId = state.campaignId,
+  actorId = state.campaign.active_actor_id,
+  baseUrl = state.baseUrl,
+  options = {}
+) {
+  const resolvedCampaignId =
+    typeof campaignId === "string" && campaignId.trim() ? campaignId.trim() : "";
+  const resolvedActorId =
+    typeof actorId === "string" && actorId.trim() ? actorId.trim() : "";
+  if (!resolvedCampaignId || !resolvedActorId) {
+    state.mapView = null;
+    if (options.emit !== false) {
+      emit();
+    }
+    return {
+      ok: false,
+      status: 400,
+      data: null,
+      text: "campaign_id and actor_id are required",
+    };
+  }
+
+  const result = await getMapViewApi(baseUrl, resolvedCampaignId, resolvedActorId);
+  if (!result.ok || !result.data) {
+    state.mapView = null;
+    if (options.emit !== false) {
+      emit();
+    }
+    return result;
+  }
+
+  const normalizedPayload = normalizeMapViewPayload(result.data);
+  if (!normalizedPayload) {
+    state.mapView = null;
+    if (options.emit !== false) {
+      emit();
+    }
+    return {
+      ok: false,
+      status: result.status || 500,
+      data: { detail: "map/view returned invalid payload" },
+      text: result.text,
+    };
+  }
+
+  state.mapView = normalizedPayload;
+  reconcileSelectedSceneTargetWithMapView();
   if (options.emit !== false) {
     emit();
   }

@@ -63,3 +63,32 @@ test("buildTurnPayload keeps explicit fallback-only hints when that is the selec
     },
   });
 });
+
+test("buildTurnPayload forwards selected_target_id alongside other hints", async () => {
+  const { buildTurnPayload } = await loadPanelModule();
+  const payload = buildTurnPayload(
+    {
+      campaignId: "camp_001",
+    },
+    "pc_001",
+    "take the selected item",
+    {
+      buildTurnContextHintsForActor() {
+        return {
+          selected_stack_id: "stk_torch_0001",
+          selected_target_id: "apple_01",
+        };
+      },
+    }
+  );
+
+  assert.deepEqual(payload, {
+    campaign_id: "camp_001",
+    user_input: "take the selected item",
+    execution: { actor_id: "pc_001" },
+    context_hints: {
+      selected_stack_id: "stk_torch_0001",
+      selected_target_id: "apple_01",
+    },
+  });
+});

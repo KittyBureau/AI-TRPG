@@ -143,8 +143,12 @@ Then:
 
 1. Set Base URL to `http://127.0.0.1:8000`
 2. In `Campaign Panel`, create/select a campaign using `midnight_archive_world`
-3. Refresh campaign
-4. Use `Actor Control Panel` to send turns
+3. Wait for the play page to load the current scene
+4. Use:
+   - `Narrative` for latest story text and result
+   - `Scene` for NPCs, objects, and takeable items
+   - `Actions` for free-text turns and `Take Selected`
+   - `Navigation` for reachable-area movement buttons
 
 Raw request/response page:
 
@@ -185,6 +189,12 @@ Use:
 - `reachable_areas`
 - `entities_in_area`
 
+Controlled pickup in UI:
+
+1. Click a visible item in `Scene -> Takeable Items`
+2. Confirm it appears as `Selected scene target`
+3. Click `Take Selected`
+
 Good example inputs:
 
 - `Talk to the night porter about the inspection records.`
@@ -210,11 +220,14 @@ High-level steps:
 6. Take `Archive Key`
 7. Reach `Storage Room`
 8. Enter `Restricted Archive`
+9. Inspect or search `Forged File Shelf`
 
 Expected:
 
 - entering `Clerk Office` fails before the pass
 - entering `Restricted Archive` from `Storage Room` fails before the key
+- entering `Restricted Archive` alone does not end the scenario
+- final completion happens only after interacting with `Forged File Shelf`
 
 ### Path 2 - Service Route
 
@@ -233,9 +246,11 @@ Key steps:
 3. Move to `Returns Annex`
 4. Inspect `Document Lift`
 5. Enter `Restricted Archive` from the annex side
+6. Inspect or search `Forged File Shelf`
 
 Expected:
 
+- entering `Restricted Archive` from `Returns Annex` fails before `Routing Slip`
 - player reaches the archive without `Archive Key`
 - player never needs `Clerk Office`
 
@@ -256,6 +271,7 @@ Expected:
 - no hard deadlock
 - repeated actions feel less useful
 - route distinction still becomes visible
+- reaching the final area still requires the last shelf interaction to finish
 
 ## 7. What to Observe
 
@@ -297,6 +313,8 @@ If stuck, check:
 3. Was the clue source already searched once?
 4. Are you trying `Storage Room -> Restricted Archive` without `Archive Key`?
 5. Are you standing in `Returns Annex` before trying the bypass route?
+6. Did you actually take `Routing Slip` before trying the service route?
+7. Did you inspect or search `Forged File Shelf` after reaching the archive?
 
 Last-resort local check:
 

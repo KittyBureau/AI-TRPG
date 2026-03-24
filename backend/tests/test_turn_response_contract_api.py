@@ -388,7 +388,7 @@ def test_chat_turn_keeps_existing_narrative_when_tool_success_also_occurs(
     assert payload["narrative_text"] == "Existing narration."
 
 
-def test_chat_turn_failed_tool_only_keeps_empty_narrative_without_success_fallback(
+def test_chat_turn_failed_tool_only_returns_truthful_invalid_move_narrative(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -411,7 +411,7 @@ def test_chat_turn_failed_tool_only_keeps_empty_narrative_without_success_fallba
             "reason": "invalid_args",
         }
     ]
-    assert payload["narrative_text"] == ""
+    assert payload["narrative_text"] == "You are already in Start."
 
 
 def test_chat_turn_conflict_response_contract_is_stable_and_not_logged(

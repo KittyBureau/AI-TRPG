@@ -42,7 +42,13 @@ from backend.app.scenario_runtime_mapper import (
     is_scenario_world_goal_area,
     required_item_for_scenario_world_move,
 )
-from backend.app.world_presets import build_world_preset, is_goal_area, required_item_for_move
+from backend.app.world_presets import (
+    MIDNIGHT_ARCHIVE_PAYOFF_ENTITY_ID,
+    MIDNIGHT_ARCHIVE_WORLD_ID,
+    build_world_preset,
+    is_goal_area,
+    required_item_for_move,
+)
 from backend.app.world_service import generate_world
 from backend.domain.character_access import (
     CharacterFacade,
@@ -737,6 +743,19 @@ def _apply_scene_action(
                 ),
             )
         if not _is_scene_action_allowed(normalized_action, target):
+            if normalized_action == "take":
+                take_search_guidance = _take_search_first_guidance(campaign, target)
+                if take_search_guidance is not None:
+                    return _scene_action_applied(
+                        call,
+                        timestamp,
+                        _scene_action_result(
+                            ok=False,
+                            narrative=take_search_guidance,
+                            error_code="not_allowed",
+                            error_message=f"take requires search first: {target.id}",
+                        ),
+                    )
             return _scene_action_applied(
                 call,
                 timestamp,
@@ -758,6 +777,7 @@ def _apply_scene_action(
         if normalized_action == "inspect":
             label = target.label if target is not None else "the scene"
             hint_suffix = _scene_hint_suffix(target)
+            _maybe_complete_scene_goal(campaign, action=normalized_action, target=target)
             return _scene_action_applied(
                 call,
                 timestamp,
@@ -1009,6 +1029,7 @@ def _apply_scene_action(
                             removed_entities=removed_entities,
                         ),
                     )
+            _maybe_complete_scene_goal(campaign, action=normalized_action, target=target)
             return _scene_action_applied(
                 call,
                 timestamp,
@@ -1079,6 +1100,18 @@ def _apply_scene_action(
                 )
             if target is None:
                 return None
+            take_search_guidance = _take_search_first_guidance(campaign, target)
+            if take_search_guidance is not None:
+                return _scene_action_applied(
+                    call,
+                    timestamp,
+                    _scene_action_result(
+                        ok=False,
+                        narrative=take_search_guidance,
+                        error_code="not_allowed",
+                        error_message=f"take requires search first: {target.id}",
+                    ),
+                )
             if target.loc.type == "actor" and target.loc.id == actor_id:
                 return _scene_action_applied(
                     call,
@@ -1421,7 +1454,7 @@ def _apply_scene_action(
                     timestamp,
                     _scene_action_result(
                         ok=False,
-                        narrative="That item is not ready to use right now.",
+                        narrative="That item cannot be used here right now.",
                         error_code="missing_item",
                         error_message=f"item not usable: {use_stack.stack_id}",
                     ),
@@ -1616,6 +1649,43 @@ def _take_entity_conversion_block(
     return None
 
 
+def _take_search_first_guidance(
+    campaign: Campaign,
+    target: Entity,
+) -> Optional[str]:
+    searchable = "search" in _normalized_verbs(target.verbs)
+    if not searchable:
+        return None
+    if target.kind == "container" and target.state.get("opened") is not True:
+        return (
+            f"You notice {target.label} may hold something, "
+            "but you need to open and search it first."
+        )
+    if _entity_has_pending_search_loot(campaign, target):
+        return (
+            f"You notice something in {target.label}, "
+            "but it is not directly accessible. You may need to search it first."
+        )
+    return None
+
+
+def _entity_has_pending_search_loot(campaign: Campaign, target: Entity) -> bool:
+    if target.state.get("search_generated_loot") is True:
+        return False
+    for key in (
+        "search_loot_definition_id",
+        "search_loot_stack_id",
+        "search_loot_label",
+    ):
+        value = target.state.get(key)
+        if isinstance(value, str) and value.strip():
+            return True
+    return any(
+        entity.loc.type == "entity" and entity.loc.id == target.id
+        for entity in campaign.entities.values()
+    )
+
+
 def _drop_entity_conversion_block(
     campaign: Campaign, target: Entity
 ) -> Optional[Tuple[str, str]]:
@@ -1800,6 +1870,21 @@ def _append_entity_patch(
         if before.get(key) != value:
             changes[key] = value
     entity_patches.append({"id": entity.id, "changes": changes})
+
+
+def _maybe_complete_scene_goal(
+    campaign: Campaign,
+    *,
+    action: str,
+    target: Optional[Entity],
+) -> None:
+    if campaign.selected.world_id != MIDNIGHT_ARCHIVE_WORLD_ID:
+        return
+    if action not in {"inspect", "search"}:
+        return
+    if target is None or target.id != MIDNIGHT_ARCHIVE_PAYOFF_ENTITY_ID:
+        return
+    campaign.goal.status = "completed"
 
 
 def _actor_inventory_mass(campaign: Campaign, actor_id: str) -> float:
