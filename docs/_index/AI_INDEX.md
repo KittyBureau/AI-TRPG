@@ -229,3 +229,17 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - Run generation/fact API tests when touching generation/reading logic.
 **Scope**
 - `backend/api/routes/characters.py`, `backend/app/character_fact_api_service.py`, `backend/app/character_fact_generation.py`, `backend/domain/character_fact_schema.py`, `backend/infra/character_fact_store.py`, `backend/infra/file_repo.py`, `backend/scripts/generate_character_facts.py`, `backend/domain/character_access.py`, `backend/tests/test_character_fact_api.py`, `backend/tests/test_character_fact_generation.py`, `docs/01_specs/character_fact_v1.md`, `docs/01_specs/storage_layout.md`, `docs/01_specs/schemas/character_fact.v1.schema.json`, `docs/01_specs/prompts/character_fact_generate_v1.md`.
+
+## 14. Formal Gameplay Model v0
+**Rules**
+- Formal Gameplay Model v0 is a read-only design-time and validation-time layer only.
+- It currently covers generated scenarios plus the minimal preset adapter path for `test_watchtower_world` and `midnight_archive_world`.
+- Authoritative goal state lives in `Goal(...)`; goal nodes are optional and non-authoritative.
+- `dependency_groups` is schema-only and inactive in current validation logic.
+- Formal validation must not change turn execution, tool execution, inventory, or goal completion timing.
+**Checks**
+- Run `backend/tests/test_formal_gameplay_v0.py` for generator-path validation coverage.
+- Run `backend/tests/test_formal_preset_adapter.py` for preset-path mapping and validation coverage.
+- Keep `docs/01_specs/formal_gameplay_model_v0.md` aligned with current implementation truth, especially current Midnight Archive limitations.
+**Scope**
+- `backend/domain/formal_gameplay_model.py`, `backend/app/formal_mapper.py`, `backend/app/formal_preset_mapper.py`, `backend/app/formal_validator.py`, `backend/app/scenario_bridge.py`, `backend/domain/scenario_bridge_models.py`, `backend/app/world_presets.py`, `backend/tests/test_formal_gameplay_v0.py`, `backend/tests/test_formal_preset_adapter.py`, `docs/01_specs/formal_gameplay_model_v0.md`.

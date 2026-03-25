@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Dict, Optional
 
+from backend.domain.formal_gameplay_model import ValidationIssue, ValidationResult
 from backend.domain.models import Entity, EntityLocation, MapArea, MapData, RuntimeItemStack
 from backend.domain.world_models import World, WorldGenerator, stable_seed_from_world_id, stable_world_timestamp
 
@@ -38,6 +39,7 @@ class CampaignWorldPreset:
     map_data: MapData
     items: Dict[str, RuntimeItemStack]
     entities: Dict[str, Entity]
+    formal_validation: ValidationResult | None = None
 
 
 def build_world_preset(world_id: str) -> Optional[World]:
@@ -131,7 +133,7 @@ def list_world_presets() -> list[World]:
 def build_campaign_world_preset(world_id: str) -> Optional[CampaignWorldPreset]:
     normalized_world_id = world_id.strip()
     if normalized_world_id == MIDNIGHT_ARCHIVE_WORLD_ID:
-        return CampaignWorldPreset(
+        preset = CampaignWorldPreset(
             start_area_id=MIDNIGHT_ARCHIVE_START_AREA_ID,
             goal_text=(
                 "Reach the restricted archive and inspect the forged file shelf to recover proof that the inspection record was falsified."
@@ -398,9 +400,10 @@ def build_campaign_world_preset(world_id: str) -> Optional[CampaignWorldPreset]:
                 ),
             },
         )
+        return _attach_preset_formal_validation(normalized_world_id, preset)
     if normalized_world_id != TEST_WATCHTOWER_WORLD_ID:
         return None
-    return CampaignWorldPreset(
+    preset = CampaignWorldPreset(
         start_area_id=TEST_WATCHTOWER_START_AREA_ID,
         goal_text="Find the tower key in the old hut and enter the watchtower.",
         map_data=MapData(
@@ -490,6 +493,7 @@ def build_campaign_world_preset(world_id: str) -> Optional[CampaignWorldPreset]:
             ),
         },
     )
+    return _attach_preset_formal_validation(normalized_world_id, preset)
 
 
 def required_item_for_move(
@@ -528,3 +532,32 @@ def required_item_for_move(
 def is_goal_area(world_id: str, area_id: str) -> bool:
     normalized_world_id = world_id.strip()
     return normalized_world_id == TEST_WATCHTOWER_WORLD_ID and area_id == TEST_WATCHTOWER_TARGET_AREA_ID
+
+
+def _attach_preset_formal_validation(
+    world_id: str,
+    preset: CampaignWorldPreset,
+) -> CampaignWorldPreset:
+    try:
+        from backend.app.formal_preset_mapper import build_formal_model_from_preset
+        from backend.app.formal_validator import validate_formal_model
+
+        formal_model = build_formal_model_from_preset(world_id, preset)
+        if formal_model is None:
+            return preset
+        validation = validate_formal_model(formal_model)
+    except Exception as exc:
+        validation = ValidationResult(
+            main_path_solvable=False,
+            issues=[
+                ValidationIssue(
+                    code="missing_structure",
+                    refs={
+                        "kind": "preset_formal_mapping",
+                        "world_id": world_id,
+                        "reason": str(exc),
+                    },
+                )
+            ],
+        )
+    return replace(preset, formal_validation=validation)

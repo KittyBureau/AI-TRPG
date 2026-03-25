@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.app.formal_mapper import build_formal_model_from_scenario
+from backend.app.formal_validator import validate_formal_model
 from backend.app.scenario_validator import validate_materialized_scenario
 from backend.domain.scenario_bridge_models import (
     ScenarioBridgeArea,
@@ -16,6 +18,8 @@ def build_scenario_runtime_bridge(
     scenario: MaterializedScenario,
 ) -> ScenarioRuntimeBridge:
     validate_materialized_scenario(scenario)
+    formal_model = build_formal_model_from_scenario(scenario)
+    validation_result = validate_formal_model(formal_model)
 
     if scenario.template_id != "key_gate_scenario":
         raise ValueError(f"unsupported bridge template: {scenario.template_id}")
@@ -74,4 +78,5 @@ def build_scenario_runtime_bridge(
             type="enter_area",
             target_area_id=roles.target_area_id,
         ),
+        formal_validation=validation_result,
     )

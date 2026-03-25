@@ -150,6 +150,22 @@
         "docs/01_specs/schemas/character_fact.v1.schema.json",
         "docs/01_specs/prompts/character_fact_generate_v1.md"
       ]
+    },
+    {
+      "id": "14",
+      "title": "Formal Gameplay Model v0",
+      "paths": [
+        "backend/domain/formal_gameplay_model.py",
+        "backend/app/formal_mapper.py",
+        "backend/app/formal_preset_mapper.py",
+        "backend/app/formal_validator.py",
+        "backend/app/scenario_bridge.py",
+        "backend/domain/scenario_bridge_models.py",
+        "backend/app/world_presets.py",
+        "backend/tests/test_formal_gameplay_v0.py",
+        "backend/tests/test_formal_preset_adapter.py",
+        "docs/01_specs/formal_gameplay_model_v0.md"
+      ]
     }
   ],
   "triggers": [
@@ -193,6 +209,7 @@
     "docs/01_specs/tools.md",
     "docs/01_specs/state_machine.md",
     "docs/01_specs/conflict_and_retry.md",
+    "docs/01_specs/formal_gameplay_model_v0.md",
     "docs/01_specs/character_fact_v1.md",
     "docs/01_specs/schemas/character_fact.v1.schema.json",
     "docs/01_specs/prompts/character_fact_generate_v1.md"

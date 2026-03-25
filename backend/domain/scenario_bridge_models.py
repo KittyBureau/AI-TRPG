@@ -4,6 +4,7 @@ from typing import Dict, Literal, Tuple
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
+from backend.domain.formal_gameplay_model import ValidationResult
 from backend.domain.scenario_models import (
     ScenarioDifficulty,
     ScenarioLayoutType,
@@ -73,6 +74,7 @@ class ScenarioRuntimeBridge(BaseModel):
     )
     gate: ScenarioBridgeGate
     completion: ScenarioBridgeCompletion
+    formal_validation: ValidationResult | None = None
 
     @property
     def key_item(self) -> ScenarioBridgeRevealedItem:
