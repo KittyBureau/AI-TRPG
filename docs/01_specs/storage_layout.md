@@ -128,6 +128,18 @@ World lazy-create migration (v1):
       "meta": {}
     }
   },
+  "facts": {},
+  "mistakes": {
+    "total_count": 0,
+    "level": 0,
+    "last_turn_index": 0,
+    "entries": {}
+  },
+  "consequences": {
+    "level": 0,
+    "last_turn_index": 0,
+    "entries": {}
+  },
   "items": {
     "stk_crate_01_7b8e3f4a": {
       "stack_id": "stk_crate_01_7b8e3f4a",
@@ -242,6 +254,22 @@ World lazy-create migration (v1):
 | state.positions_child | object | Legacy position mirrors (empty after migration). |
 | actors | object | Actor state keyed by actor id (`position`, `hp`, and `character_state` are authoritative actor-state fields). |
 | actors.*.inventory | object | Derived compatibility inventory view keyed by `item_id`; synchronized from `items`. |
+| facts | object | Campaign-level fact container keyed by `fact_id`; stores authoritative or uncertain structured facts for future reuse. |
+| facts.*.authority | string | `authoritative` or `uncertain`; authoritative facts must not be silently overridden by uncertain facts. |
+| facts.*.scope | object | Minimal selection scope for future prompt/context filtering (`campaign`, `actor`, `area`, `entity`, `item`). |
+| facts.*.lifecycle | string | `persistent` or `temporary`; temporary facts can expire out of prompt selection. |
+| facts.*.expires_turn_index | int/null | Optional explicit expiry turn for temporary facts. |
+| mistakes | object | Campaign-level recoverable failure carrier keyed by `signal_id`; stores bounded mistake/consequence signals for reuse by later systems. |
+| mistakes.total_count | int | Capped total number of recorded recoverable-failure writes. |
+| mistakes.level | int | Coarse aggregate pressure level derived from active entries (`0..3`). |
+| mistakes.last_turn_index | int | Most recent turn index that recorded a recoverable-failure signal. |
+| mistakes.entries | object | Active recoverable-failure entries keyed by stable `signal_id`. |
+| mistakes.entries.* | object | Stores `category`, `count`, `level`, `last_turn_index`, `source_tool`, `reason`, and optional source/target context such as `target_id`, `item_id`, or `required_item_id`. |
+| consequences | object | Campaign-level light world-reaction carrier keyed by `consequence_id`; stores explainable consequence entries derived from repeated mistakes. |
+| consequences.level | int | Coarse aggregate consequence level derived from active entries (`0..2`). |
+| consequences.last_turn_index | int | Most recent turn index that triggered or refreshed a consequence. |
+| consequences.entries | object | Active consequence entries keyed by stable `consequence_id`. |
+| consequences.entries.* | object | Stores `type`, `level`, `scope_kind`, `tone`, `source_categories`, `source_signal_ids`, optional `area_id` / `target_id`, `target_label`, `narrative_hint`, and `last_turn_index`. |
 | items | object | Authoritative portable-item runtime stacks keyed by `stack_id`. |
 | items.*.stack_id | string | Stable runtime stack id. |
 | items.*.definition_id | string | Logical item definition id used for compatibility aggregation. |
@@ -274,6 +302,55 @@ Frontend campaign refresh note:
 - `actors[*]` includes read-only runtime snapshot fields used by Play refresh, including `position`, `hp`, `character_state`, and `inventory`.
 - `actors[*].inventory` in that payload is derived from `campaign.items`; `campaign/get.inventory_stacks` is the primary stack-first inventory contract and `inventory_stack_ids` is a companion compatibility map.
 - Play uses that shared-store snapshot for current actor/map situation; `/api/v1/map/view` remains optional inspection data, not the primary Play source of truth.
+
+## Campaign facts (T4 foundation)
+
+- Storage stays campaign-level only in T4: `campaign.json.facts`.
+- Facts are keyed by `fact_id`.
+- Each fact carries:
+  - `fact_type`
+  - `summary`
+  - optional `content`
+  - `source`
+  - `authority`
+  - `reliability`
+  - `scope`
+  - `lifecycle`
+  - optional `expires_turn_index`
+  - `created_turn_index`
+  - `metadata`
+- Missing `facts` on older campaigns normalizes to `{}`.
+- T4 does not add a separate `facts/` directory or per-fact sidecar files.
+- Prompt injection uses the reserved `Context.fact_context` slot; recoverable failure tracking uses a separate `campaign.json.mistakes` carrier.
+- Prompt fact selection is hard-capped and excludes expired temporary facts before ranking.
+- Weak pruning may remove expired or low-priority temporary facts from `campaign.json` when fact count exceeds the soft limit.
+
+## Campaign mistakes (T3 foundation)
+
+- Storage stays campaign-level only in T3: `campaign.json.mistakes`.
+- Mistakes are keyed by stable `signal_id`.
+- T3 only records a small subset of recoverable-failure signals with stable runtime semantics:
+  - `wrong_item`
+  - `blocked_attempt`
+  - `invalid_interaction`
+  - `repeated_misuse`
+- T3 does not convert every failed turn into a fact, NPC memory item, or global fail tree mutation.
+- Missing `mistakes` on older campaigns normalizes to the zero-state carrier.
+- `state_summary.mistakes` is a lightweight projection only (`level`, `total_count`, `last_turn_index`, `entry_count`, `categories`); detailed per-signal data remains under `campaign.json.mistakes` and trace-only `debug.mistakes`.
+- See `docs/01_specs/generated_fact_foundation.md` for the authoritative T4/T5 behavior.
+
+## Campaign consequences (T7 foundation)
+
+- Storage stays campaign-level only in T7: `campaign.json.consequences`.
+- Consequences are keyed by stable `consequence_id`.
+- T7 is not another fact or memory system. It is a light world-reaction layer derived from repeated mistake signals.
+- Current minimal T7 consequence types:
+  - `area_pressure`
+  - `guarded_response`
+- T7 reads `campaign.json.mistakes` as trigger input but persists a separate consequence carrier.
+- T7 does not make hard fail, branching-event, or global event-tree decisions.
+- Missing `consequences` on older campaigns normalizes to the zero-state carrier.
+- `state_summary.consequences` is a lightweight projection only (`level`, `active_count`, `last_turn_index`, `types`, `tones`); detailed per-entry data remains under `campaign.json.consequences` and trace-only `debug.consequences`.
 
 ## Character access boundary (current)
 
@@ -506,7 +583,21 @@ Each line is a JSON object:
         "location": { "type": "actor", "id": "pc_001" },
         "label": "torch"
       }
-    ]
+    ],
+    "mistakes": {
+      "level": 1,
+      "total_count": 1,
+      "last_turn_index": 7,
+      "entry_count": 1,
+      "categories": ["blocked_attempt"]
+    },
+    "consequences": {
+      "level": 1,
+      "active_count": 1,
+      "last_turn_index": 7,
+      "types": ["area_pressure"],
+      "tones": ["watchful"]
+    }
   }
 }
 ```
@@ -537,4 +628,4 @@ tool feedback may include reason `repeat_illegal_request`.
 | applied_actions | array | Applied tool results. |
 | tool_feedback | object | Failed tool calls with reasons; may be `null` when no failures occurred. |
 | conflict_report | object | Conflict info when retries occur; may be `null` on normal turns. |
-| state_summary | object | Stable v1 summary contract: `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, derived compatibility `inventories` / `inventory_stack_ids`, primary `inventory_stacks`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, compatibility `active_actor_inventory` / `active_actor_inventory_stack_ids`, and primary `active_actor_inventory_stacks`. |
+| state_summary | object | Stable v1 summary contract: `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, derived compatibility `inventories` / `inventory_stack_ids`, primary `inventory_stacks`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, compatibility `active_actor_inventory` / `active_actor_inventory_stack_ids`, primary `active_actor_inventory_stacks`, lightweight `mistakes` summary (`level`, `total_count`, `last_turn_index`, `entry_count`, `categories`), and lightweight `consequences` summary (`level`, `active_count`, `last_turn_index`, `types`, `tones`). |

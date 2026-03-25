@@ -11,6 +11,14 @@ This changelog tracks versioned External Resources updates and rollback notes.
 - Rollback:
   - how to revert manifest `enabled` selection and/or restore previous file
 
+## 2026-03-25
+
+- Summary: Added local NPC memory guidance and light consequence-context prompt guidance for selected runtime reactions.
+- Affected resources:
+  - `prompts/turn_profile_default@v2` `hash=78608772fb1215e41c4162f79f659fd1d371b85f2fc1ab2b3e2a68530fb881c1`
+- Rollback:
+  - Re-enable `resources/prompts/turn_profile_default_v1.txt` in `resources/manifest.json` and run `pytest -q backend/tests/test_resources_manifest_hashes.py`.
+
 ## 2026-03-05
 
 - Summary: Added manifest hash fields for governance and static consistency testing.

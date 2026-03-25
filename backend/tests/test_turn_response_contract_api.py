@@ -247,6 +247,8 @@ def _assert_state_summary_contract(summary: Dict[str, Any]) -> None:
         "active_actor_inventory",
         "active_actor_inventory_stack_ids",
         "active_actor_inventory_stacks",
+        "mistakes",
+        "consequences",
     ):
         assert key in summary
 
@@ -272,6 +274,20 @@ def test_chat_turn_narrative_response_contract_and_turn_log_shape(
     assert payload["tool_feedback"] is None
     assert payload["conflict_report"] is None
     _assert_state_summary_contract(payload["state_summary"])
+    assert payload["state_summary"]["mistakes"] == {
+        "level": 0,
+        "total_count": 0,
+        "last_turn_index": 0,
+        "entry_count": 0,
+        "categories": [],
+    }
+    assert payload["state_summary"]["consequences"] == {
+        "level": 0,
+        "active_count": 0,
+        "last_turn_index": 0,
+        "types": [],
+        "tones": [],
+    }
 
     turn_log_path = (
         tmp_path / "storage" / "campaigns" / "camp_contract_narrative" / "turn_log.jsonl"
@@ -302,6 +318,20 @@ def test_chat_turn_narrative_response_contract_and_turn_log_shape(
     assert row["tool_feedback"] is None
     assert row["conflict_report"] is None
     _assert_state_summary_contract(row["state_summary"])
+    assert row["state_summary"]["mistakes"] == {
+        "level": 0,
+        "total_count": 0,
+        "last_turn_index": 0,
+        "entry_count": 0,
+        "categories": [],
+    }
+    assert row["state_summary"]["consequences"] == {
+        "level": 0,
+        "active_count": 0,
+        "last_turn_index": 0,
+        "types": [],
+        "tones": [],
+    }
 
 
 def test_chat_turn_tool_response_contract_keeps_applied_actions_and_tool_feedback(
@@ -341,6 +371,20 @@ def test_chat_turn_tool_response_contract_keeps_applied_actions_and_tool_feedbac
     assert payload["state_summary"]["active_actor_inventory"] == {"torch": 1}
     assert payload["state_summary"]["active_actor_inventory_stack_ids"] == {
         "torch": payload["state_summary"]["inventory_stack_ids"]["pc_001"]["torch"]
+    }
+    assert payload["state_summary"]["mistakes"] == {
+        "level": 1,
+        "total_count": 1,
+        "last_turn_index": 1,
+        "entry_count": 1,
+        "categories": ["invalid_interaction"],
+    }
+    assert payload["state_summary"]["consequences"] == {
+        "level": 0,
+        "active_count": 0,
+        "last_turn_index": 0,
+        "types": [],
+        "tones": [],
     }
     assert payload["state_summary"]["inventory_stacks"] == {
         "pc_001": [
@@ -484,6 +528,29 @@ def test_chat_turn_trace_on_keeps_debug_resources_contract(
     assert isinstance(debug, dict)
     resources = debug.get("resources")
     assert isinstance(resources, dict)
+    assert debug.get("mistakes") == {
+        "slot": "mistake_budget_v1",
+        "level": 0,
+        "total_count": 0,
+        "last_turn_index": 0,
+        "entry_count": 0,
+        "entries": [],
+        "recorded_signal_ids": [],
+        "recorded_signals": [],
+        "pruned_signal_ids": [],
+        "soft_limit": 12,
+    }
+    assert debug.get("consequences") == {
+        "slot": "narrative_consequence_v1",
+        "level": 0,
+        "last_turn_index": 0,
+        "active_count": 0,
+        "entries": [],
+        "triggered_consequence_ids": [],
+        "triggered_consequences": [],
+        "removed_consequence_ids": [],
+        "source_signal_ids": [],
+    }
     assert debug.get("selected_item_resolution") == {
         "requested_item_id": "",
         "requested_stack_id": "",

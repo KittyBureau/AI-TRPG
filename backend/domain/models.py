@@ -5,6 +5,10 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, computed_field
 
+from backend.domain.consequence_models import CampaignConsequenceState
+from backend.domain.fact_models import CampaignFact
+from backend.domain.mistake_models import CampaignMistakeState
+
 
 class MapArea(BaseModel):
     id: str
@@ -175,6 +179,9 @@ class Campaign(BaseModel):
     map: MapData = Field(default_factory=MapData)
     state: CampaignState = Field(default_factory=CampaignState)
     actors: Dict[str, ActorState] = Field(default_factory=dict)
+    facts: Dict[str, CampaignFact] = Field(default_factory=dict)
+    mistakes: CampaignMistakeState = Field(default_factory=CampaignMistakeState)
+    consequences: CampaignConsequenceState = Field(default_factory=CampaignConsequenceState)
     items: Dict[str, RuntimeItemStack] = Field(default_factory=dict)
     entities: Dict[str, Entity] = Field(default_factory=dict)
     positions: Dict[str, str] = Field(default_factory=dict)
@@ -248,6 +255,8 @@ class StateSummary(BaseModel):
     active_actor_inventory: Dict[str, int] = Field(default_factory=dict)
     active_actor_inventory_stack_ids: Dict[str, List[str]] = Field(default_factory=dict)
     active_actor_inventory_stacks: List[InventoryStackView] = Field(default_factory=list)
+    mistakes: Dict[str, Any] = Field(default_factory=dict)
+    consequences: Dict[str, Any] = Field(default_factory=dict)
 
 
 class TurnLogEntry(BaseModel):

@@ -1,6 +1,6 @@
 ﻿# API Test Guide (Authoritative)
 
-Last updated: 2026-03-10
+Last updated: 2026-03-25
 
 This is the single authoritative API test guide.
 
@@ -119,6 +119,8 @@ Stable response semantics:
 - when trace is on and selection validation succeeds:
   - `debug.selected_item` may be present as a minimal compatibility block
   - `debug.selected_item_resolution` should expose requested/resolved stack/item ids plus status/reason
+- when trace is on, `debug.mistakes` should expose the current recoverable-failure carrier plus `recorded_signal_ids` / `recorded_signals` for the current turn
+- when trace is on, `debug.consequences` should expose the current consequence carrier plus `triggered_consequence_ids` / `source_signal_ids` for the current turn
 - `tool_feedback` may be `null` when there are no failed calls
 - `conflict_report` may be `null` when no retry-exhausted conflict occurred
 - `tool_calls` and `applied_actions` are always arrays
@@ -132,6 +134,10 @@ Stable response semantics:
   - `active_area_id`, `active_area_name`, `active_area_description`
   - `active_actor_inventory`, `active_actor_inventory_stack_ids` as compatibility snapshots
   - `active_actor_inventory_stacks`
+  - `mistakes` as the lightweight recoverable-failure summary:
+    - `level`, `total_count`, `last_turn_index`, `entry_count`, `categories`
+  - `consequences` as the lightweight narrative-consequence summary:
+    - `level`, `active_count`, `last_turn_index`, `types`, `tones`
 
 Actor context priority:
 

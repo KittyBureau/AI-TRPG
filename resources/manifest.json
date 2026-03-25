@@ -1,9 +1,9 @@
 {
   "prompts": {
     "turn_profile_default": {
-      "version": "v1",
-      "path": "resources/prompts/turn_profile_default_v1.txt",
-      "hash": "fa04d5f5faa162b23a0fa1ed74fc8f74263b87dfb199e069cb5898f69e6fddaa",
+      "version": "v2",
+      "path": "resources/prompts/turn_profile_default_v2.txt",
+      "hash": "78608772fb1215e41c4162f79f659fd1d371b85f2fc1ab2b3e2a68530fb881c1",
       "enabled": true
     }
   },

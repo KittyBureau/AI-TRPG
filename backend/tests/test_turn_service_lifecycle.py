@@ -10,9 +10,12 @@ import pytest
 import backend.app.turn_service as turn_service_module
 from backend.app.item_runtime import create_runtime_item_stack
 from backend.app.turn_service import TurnService
+from backend.domain.fact_models import CampaignFact
 from backend.domain.models import (
     ActorState,
     Campaign,
+    Entity,
+    EntityLocation,
     Goal,
     MapArea,
     Milestone,
@@ -344,6 +347,345 @@ def test_turn_prompt_hygiene_keeps_adopted_profile_and_selected_item_but_filters
         "name": "Fallback Name",
         "summary": "fallback-summary",
     }
+
+
+def test_turn_prompt_includes_fact_context_slot_without_changing_turn_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_fact_prompt")
+    campaign.facts = {
+        "fact_route_authoritative": CampaignFact.model_validate({
+            "fact_id": "fact_route_authoritative",
+            "fact_type": "route_hint",
+            "summary": "The side room is the only reachable route right now.",
+            "source": {"kind": "system", "ref_id": "movement_rules"},
+            "authority": "authoritative",
+            "reliability": "confirmed",
+            "scope": {"kind": "area", "ref_id": "area_001"},
+            "created_turn_index": 1,
+            "metadata": {},
+        }),
+        "fact_guard_uncertain": CampaignFact.model_validate({
+            "fact_id": "fact_guard_uncertain",
+            "fact_type": "npc_read",
+            "summary": "The guard may be stalling for time.",
+            "source": {"kind": "llm", "ref_id": "turn_0001", "actor_id": "pc_001"},
+            "authority": "uncertain",
+            "reliability": "generated",
+            "scope": {"kind": "actor", "ref_id": "pc_001"},
+            "created_turn_index": 1,
+            "metadata": {},
+        }),
+    }
+    repo.save_campaign(campaign)
+    llm = _StubLLM(
+        {
+            "assistant_text": "Facts noted.",
+            "dialog_type": "scene_description",
+            "tool_calls": [],
+        }
+    )
+    service.llm = llm
+
+    result = service.submit_turn("camp_fact_prompt", "look around")
+
+    context = _extract_prompt_context(llm.system_prompt)
+    assert result["narrative_text"] == "Facts noted."
+    assert context["fact_context"]["slot"] == "campaign_facts_v1"
+    assert [fact["fact_id"] for fact in context["fact_context"]["authoritative"]] == [
+        "fact_route_authoritative"
+    ]
+    assert [fact["fact_id"] for fact in context["fact_context"]["uncertain"]] == [
+        "fact_guard_uncertain"
+    ]
+
+
+def test_turn_profile_trace_includes_fact_context_debug(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_fact_trace")
+    campaign.settings_snapshot.dialog.turn_profile_trace_enabled = True
+    campaign.facts = {
+        "fact_route_authoritative": CampaignFact.model_validate({
+            "fact_id": "fact_route_authoritative",
+            "fact_type": "route_hint",
+            "summary": "The side room is the only reachable route right now.",
+            "source": {"kind": "system", "ref_id": "movement_rules"},
+            "authority": "authoritative",
+            "reliability": "confirmed",
+            "scope": {"kind": "area", "ref_id": "area_001"},
+            "created_turn_index": 1,
+            "metadata": {},
+        }),
+        "fact_route_uncertain": CampaignFact.model_validate({
+            "fact_id": "fact_route_uncertain",
+            "fact_type": "route_hint",
+            "summary": "A hidden route might exist behind the shelves.",
+            "source": {"kind": "llm", "ref_id": "turn_0001", "actor_id": "pc_001"},
+            "authority": "uncertain",
+            "reliability": "generated",
+            "scope": {"kind": "area", "ref_id": "area_001"},
+            "created_turn_index": 1,
+            "metadata": {},
+        }),
+    }
+    repo.save_campaign(campaign)
+
+    result = service.submit_turn("camp_fact_trace", "look around")
+
+    debug = result.get("debug")
+    assert isinstance(debug, dict)
+    fact_context = debug.get("fact_context")
+    assert isinstance(fact_context, dict)
+    assert fact_context["slot"] == "campaign_facts_v1"
+    assert [fact["fact_id"] for fact in fact_context["authoritative"]] == [
+        "fact_route_authoritative"
+    ]
+    assert fact_context["uncertain"] == []
+    assert fact_context["suppressed_uncertain_ids"] == ["fact_route_uncertain"]
+
+
+def test_turn_prompt_fact_context_respects_hard_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_fact_limit")
+    campaign.facts = {
+        f"fact_{index}": CampaignFact.model_validate(
+            {
+                "fact_id": f"fact_{index}",
+                "fact_type": f"hint_{index}",
+                "summary": f"Summary {index}",
+                "source": {"kind": "llm", "ref_id": f"turn_{index:04d}"},
+                "authority": "uncertain",
+                "reliability": "generated",
+                "scope": {"kind": "campaign"},
+                "created_turn_index": index,
+                "metadata": {},
+            }
+        )
+        for index in range(8)
+    }
+    repo.save_campaign(campaign)
+    llm = _StubLLM(
+        {
+            "assistant_text": "Still clean.",
+            "dialog_type": "scene_description",
+            "tool_calls": [],
+        }
+    )
+    service.llm = llm
+
+    result = service.submit_turn("camp_fact_limit", "look around")
+
+    context = _extract_prompt_context(llm.system_prompt)
+    total = len(context["fact_context"]["authoritative"]) + len(
+        context["fact_context"]["uncertain"]
+    )
+    assert result["narrative_text"] == "Still clean."
+    assert total == 5
+
+
+def test_successful_npc_talk_writes_npc_memory_fact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_npc_memory_write")
+    campaign.entities["guide_01"] = Entity(
+        id="guide_01",
+        kind="npc",
+        label="Guide",
+        tags=["npc"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "talk"],
+        state={},
+        props={},
+    )
+    repo.save_campaign(campaign)
+    service.llm = _StubLLM(
+        {
+            "assistant_text": "",
+            "dialog_type": "scene_description",
+            "tool_calls": [
+                {
+                    "id": "call_talk_guide",
+                    "tool": "scene_action",
+                    "args": {
+                        "actor_id": "pc_001",
+                        "action": "talk",
+                        "target_id": "guide_01",
+                        "params": {},
+                    },
+                }
+            ],
+        }
+    )
+
+    result = service.submit_turn(
+        "camp_npc_memory_write",
+        "Ask the guide about the hidden door.",
+        selected_target_id="guide_01",
+    )
+
+    reloaded = repo.get_campaign("camp_npc_memory_write")
+    npc_memory_facts = [
+        fact for fact in reloaded.facts.values() if fact.fact_type == "npc_memory"
+    ]
+    assert result["applied_actions"][0]["tool"] == "scene_action"
+    assert result["applied_actions"][0]["args"]["action"] == "talk"
+    assert "guide" in result["narrative_text"].lower()
+    assert len(npc_memory_facts) == 1
+    assert npc_memory_facts[0].scope.kind == "npc"
+    assert npc_memory_facts[0].scope.ref_id == "guide_01"
+    assert npc_memory_facts[0].authority == "uncertain"
+    assert npc_memory_facts[0].lifecycle == "temporary"
+    assert "hidden door" in npc_memory_facts[0].summary.lower()
+
+
+def test_npc_memory_injected_only_for_selected_npc_and_not_global_fact_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_npc_memory_injection")
+    campaign.settings_snapshot.dialog.turn_profile_trace_enabled = True
+    campaign.entities["guide_01"] = Entity(
+        id="guide_01",
+        kind="npc",
+        label="Guide",
+        tags=["npc"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "talk"],
+        state={},
+        props={},
+    )
+    campaign.entities["guard_01"] = Entity(
+        id="guard_01",
+        kind="npc",
+        label="Guard",
+        tags=["npc"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "talk"],
+        state={},
+        props={},
+    )
+    campaign.facts = {
+        "fact_guide_memory": CampaignFact.model_validate(
+            {
+                "fact_id": "fact_guide_memory",
+                "fact_type": "npc_memory",
+                "summary": "Previous topic: archive key",
+                "source": {"kind": "system", "ref_id": "turn_0002", "actor_id": "pc_001"},
+                "authority": "uncertain",
+                "reliability": "generated",
+                "scope": {"kind": "npc", "ref_id": "guide_01"},
+                "lifecycle": "temporary",
+                "expires_turn_index": 8,
+                "created_turn_index": 2,
+                "metadata": {"npc_label": "Guide"},
+            }
+        )
+    }
+    repo.save_campaign(campaign)
+    llm = _StubLLM(
+        {
+            "assistant_text": "npc memory check",
+            "dialog_type": "scene_description",
+            "tool_calls": [],
+        }
+    )
+    service.llm = llm
+
+    guide_result = service.submit_turn(
+        "camp_npc_memory_injection",
+        "Ask the guide again.",
+        selected_target_id="guide_01",
+    )
+
+    guide_context = _extract_prompt_context(llm.system_prompt)
+    assert guide_context["npc_memory"]["npc_id"] == "guide_01"
+    assert guide_context["npc_memory"]["fact_ids"] == ["fact_guide_memory"]
+    assert len(guide_context["npc_memory"]["items"]) == 1
+    assert guide_result["debug"]["npc_memory"]["fact_ids"] == ["fact_guide_memory"]
+    assert guide_context["fact_context"]["authoritative"] == []
+    assert guide_context["fact_context"]["uncertain"] == []
+
+    service.llm = _StubLLM(
+        {
+            "assistant_text": "other npc check",
+            "dialog_type": "scene_description",
+            "tool_calls": [],
+        }
+    )
+    guard_result = service.submit_turn(
+        "camp_npc_memory_injection",
+        "Ask the guard something else.",
+        selected_target_id="guard_01",
+    )
+
+    guard_context = _extract_prompt_context(service.llm.system_prompt)
+    assert guard_context["npc_memory"]["npc_id"] == "guard_01"
+    assert guard_context["npc_memory"]["items"] == []
+    assert guard_result["debug"]["npc_memory"]["fact_ids"] == []
+
+
+def test_npc_memory_prompt_limit_is_controlled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    campaign = _create_campaign(repo, "camp_npc_memory_limit")
+    campaign.entities["guide_01"] = Entity(
+        id="guide_01",
+        kind="npc",
+        label="Guide",
+        tags=["npc"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "talk"],
+        state={},
+        props={},
+    )
+    campaign.facts = {
+        f"fact_guide_memory_{index}": CampaignFact.model_validate(
+            {
+                "fact_id": f"fact_guide_memory_{index}",
+                "fact_type": "npc_memory",
+                "summary": f"Previous topic: clue {index}",
+                "source": {"kind": "system", "ref_id": f"turn_{index:04d}", "actor_id": "pc_001"},
+                "authority": "uncertain",
+                "reliability": "generated",
+                "scope": {"kind": "npc", "ref_id": "guide_01"},
+                "lifecycle": "temporary",
+                "expires_turn_index": 12,
+                "created_turn_index": index,
+                "metadata": {"npc_label": "Guide"},
+            }
+        )
+        for index in range(1, 6)
+    }
+    repo.save_campaign(campaign)
+    llm = _StubLLM(
+        {
+            "assistant_text": "limit check",
+            "dialog_type": "scene_description",
+            "tool_calls": [],
+        }
+    )
+    service.llm = llm
+
+    service.submit_turn(
+        "camp_npc_memory_limit",
+        "Ask the guide one more question.",
+        selected_target_id="guide_01",
+    )
+
+    context = _extract_prompt_context(llm.system_prompt)
+    assert len(context["npc_memory"]["items"]) == 3
+    assert context["npc_memory"]["fact_ids"] == [
+        "fact_guide_memory_5",
+        "fact_guide_memory_4",
+        "fact_guide_memory_3",
+    ]
 
 
 def test_turn_prompt_scene_surfaces_area_root_item_stacks(

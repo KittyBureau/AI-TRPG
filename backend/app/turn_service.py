@@ -8,6 +8,25 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from backend.app.campaign_consequence_service import (
+    build_consequence_debug_context,
+    build_consequence_prompt_context,
+    build_consequence_state_summary,
+    refresh_campaign_consequences,
+)
+from backend.app.campaign_fact_service import (
+    build_fact_debug_context,
+    build_fact_prompt_context,
+    build_npc_memory_context,
+    build_npc_memory_debug_context,
+    prune_campaign_facts,
+    record_npc_memory_fact,
+)
+from backend.app.campaign_mistake_service import (
+    build_mistake_debug_context,
+    build_mistake_state_summary,
+    record_mistake_signals,
+)
 from backend.app.character_facade_factory import create_runtime_character_facade
 from backend.app.conflict_detector import detect_conflicts
 from backend.app.debug_resources import build_resources_payload
@@ -39,6 +58,7 @@ from backend.domain.character_access import (
 )
 from backend.domain.dialog_rules import DEFAULT_DIALOG_TYPE, DIALOG_TYPES
 from backend.domain.map_models import normalize_map
+from backend.domain.mistake_models import CampaignMistakeSignalCreate
 from backend.domain.models import (
     AppliedAction,
     AssistantStructured,
@@ -149,6 +169,12 @@ def _builtin_turn_prompt_template() -> str:
         "If Context.selected_scene_target is present and the player intent is to take/pick up/grab something, "
         "use that exact target_id in one 'scene_action' take call instead of guessing another pickup target. "
         "Context.selected_scene_target is only a disambiguation hint and does not override scene rules. "
+        "If Context.npc_memory is present, use it only as local memory for that specific NPC. "
+        "Treat Context.npc_memory as uncertain conversational context, not authoritative world truth, "
+        "and do not apply it to other NPCs or to the global scene state. "
+        "If Context.consequences is present, use it only as a light world-reaction modifier. "
+        "It may make the local atmosphere feel more watchful or make nearby NPCs sound more guarded, "
+        "but it must not be treated as a hard lock, branching event, or invented world mutation. "
         "For immediate movement truth, treat Context.movement_rules.reachable_areas as the only areas the actor can enter right now. "
         "If an area appears in Context.movement_rules.blocked_transitions, it is connected but blocked; "
         "describe the obstruction and listed requirement instead of saying the actor can go there now. "
@@ -539,7 +565,12 @@ class TurnService:
         try:
             campaign = self.repo.get_campaign(campaign_id)
             state_updated = _ensure_minimum_state(campaign, self.repo)
-            if state_updated:
+            current_turn_index = _turn_id_to_number(self.repo.next_turn_id(campaign_id))
+            pruned_fact_ids = prune_campaign_facts(
+                campaign,
+                current_turn_index=current_turn_index,
+            )
+            if state_updated or pruned_fact_ids:
                 self.repo.save_campaign(campaign)
             effective_actor_id = _resolve_effective_actor_id(
                 campaign,
@@ -568,6 +599,7 @@ class TurnService:
                 effective_actor_id,
                 selected_target_id=selected_target_id,
             )
+            selected_npc_memory_target = _selected_npc_memory_target(selected_scene_target)
             world = _resolve_world_context(self.repo, campaign.selected.world_id)
             movement_rules = _movement_rules_prompt_payload(
                 campaign,
@@ -582,6 +614,32 @@ class TurnService:
                 world=world,
                 movement_rules=movement_rules,
             )
+            fact_context = build_fact_prompt_context(
+                campaign,
+                effective_actor_id,
+                current_turn_index=current_turn_index,
+                selected_item_id=_selected_item_fact_id(
+                    selected_item, selected_scene_target
+                ),
+                selected_scene_target_id=_selected_scene_target_fact_id(
+                    selected_scene_target
+                ),
+            )
+            npc_memory_context = build_npc_memory_context(
+                campaign,
+                npc_id=selected_npc_memory_target.get("id")
+                if isinstance(selected_npc_memory_target, dict)
+                else None,
+                npc_label=selected_npc_memory_target.get("label")
+                if isinstance(selected_npc_memory_target, dict)
+                else None,
+                current_turn_index=current_turn_index,
+            )
+            consequence_context = build_consequence_prompt_context(
+                campaign,
+                effective_actor_id,
+                selected_scene_target=selected_scene_target,
+            )
             turn_prompt = _load_turn_prompt(self.repo)
             turn_flow = _load_turn_flow(self.repo)
             system_prompt = _build_system_prompt(
@@ -593,6 +651,9 @@ class TurnService:
                 guidance=guidance,
                 selected_item=selected_item,
                 selected_scene_target=selected_scene_target,
+                fact_context=fact_context,
+                npc_memory=npc_memory_context,
+                consequence_context=consequence_context,
             )
             turn_prompt["rendered_hash"] = hashlib.sha256(
                 system_prompt.encode("utf-8")
@@ -632,6 +693,28 @@ class TurnService:
                     selected_item=selected_item,
                     selected_item_resolution=selected_item_resolution,
                     selected_scene_target=selected_scene_target,
+                    fact_context=build_fact_debug_context(
+                        campaign,
+                        effective_actor_id,
+                        current_turn_index=current_turn_index,
+                        selected_item_id=_selected_item_fact_id(
+                            selected_item, selected_scene_target
+                        ),
+                        selected_scene_target_id=_selected_scene_target_fact_id(
+                            selected_scene_target
+                        ),
+                    ),
+                    npc_memory=build_npc_memory_debug_context(
+                        campaign,
+                        npc_id=selected_npc_memory_target.get("id")
+                        if isinstance(selected_npc_memory_target, dict)
+                        else None,
+                        npc_label=selected_npc_memory_target.get("label")
+                        if isinstance(selected_npc_memory_target, dict)
+                        else None,
+                        current_turn_index=current_turn_index,
+                    ),
+                    consequence_context=consequence_context,
                 )
                 if campaign.settings_snapshot.dialog.turn_profile_trace_enabled
                 else None
@@ -712,6 +795,39 @@ class TurnService:
 
                 turn_id = self.repo.next_turn_id(campaign_id)
                 turn_number = _turn_id_to_number(turn_id)
+                npc_memory_written_fact_ids = _write_npc_memory_from_applied_actions(
+                    campaign,
+                    applied_actions,
+                    effective_actor_id=effective_actor_id,
+                    user_input=user_input,
+                    turn_id=turn_id,
+                    turn_number=turn_number,
+                )
+                mistake_record = _record_recoverable_failures(
+                    campaign,
+                    tool_calls,
+                    applied_actions,
+                    tool_feedback,
+                    effective_actor_id=effective_actor_id,
+                    turn_id=turn_id,
+                    turn_number=turn_number,
+                    world=world,
+                )
+                consequence_record = refresh_campaign_consequences(campaign)
+                response_consequence_context = build_consequence_prompt_context(
+                    campaign,
+                    effective_actor_id,
+                    selected_scene_target=selected_scene_target,
+                )
+                pruned_after_write_fact_ids = (
+                    prune_campaign_facts(
+                        campaign,
+                        current_turn_index=turn_number,
+                        keep_fact_ids=set(npc_memory_written_fact_ids),
+                    )
+                    if npc_memory_written_fact_ids
+                    else []
+                )
                 milestone_changed = _advance_milestone(
                     campaign,
                     turn_number=turn_number,
@@ -719,8 +835,43 @@ class TurnService:
                 )
                 lifecycle_changed = _mark_ended_if_needed(campaign)
 
-                if applied_actions or milestone_changed or lifecycle_changed:
+                if (
+                    applied_actions
+                    or milestone_changed
+                    or lifecycle_changed
+                    or npc_memory_written_fact_ids
+                    or pruned_after_write_fact_ids
+                    or mistake_record["recorded_signal_ids"]
+                    or mistake_record["pruned_signal_ids"]
+                    or consequence_record["triggered_consequence_ids"]
+                    or consequence_record["removed_consequence_ids"]
+                ):
                     self.repo.save_campaign(campaign)
+                if response_debug is not None and npc_memory_written_fact_ids:
+                    response_debug["npc_memory_written_fact_ids"] = list(
+                        npc_memory_written_fact_ids
+                    )
+                if response_debug is not None and pruned_after_write_fact_ids:
+                    response_debug["pruned_fact_ids_after_write"] = list(
+                        pruned_after_write_fact_ids
+                    )
+                if response_debug is not None:
+                    response_debug["mistakes"] = build_mistake_debug_context(
+                        campaign,
+                        recorded_signal_ids=mistake_record["recorded_signal_ids"],
+                        pruned_signal_ids=mistake_record["pruned_signal_ids"],
+                    )
+                    response_debug["consequences"] = build_consequence_debug_context(
+                        campaign,
+                        prompt_context=response_consequence_context,
+                        triggered_consequence_ids=consequence_record[
+                            "triggered_consequence_ids"
+                        ],
+                        removed_consequence_ids=consequence_record[
+                            "removed_consequence_ids"
+                        ],
+                        source_signal_ids=consequence_record["source_signal_ids"],
+                    )
 
                 conflict_report = (
                     ConflictReport(retries=retry_count, conflicts=last_conflicts)
@@ -781,6 +932,10 @@ class TurnService:
                 entry.state_summary.active_actor_inventory_stacks = (
                     _active_actor_inventory_stacks(campaign, effective_actor_id)
                 )
+                entry.state_summary.mistakes = build_mistake_state_summary(campaign)
+                entry.state_summary.consequences = build_consequence_state_summary(
+                    campaign
+                )
                 self.repo.append_turn_log(campaign_id, entry)
                 return _build_success_response(
                     entry,
@@ -792,10 +947,316 @@ class TurnService:
                     effective_actor_id=effective_actor_id,
                     guidance=guidance,
                     user_input=user_input,
+                    consequence_context=response_consequence_context,
+                    triggered_consequence_ids=consequence_record[
+                        "triggered_consequence_ids"
+                    ],
                     debug_payload=response_debug,
                 )
         finally:
             _CAMPAIGN_TURN_LOCKS.release(campaign_lock)
+
+
+def _write_npc_memory_from_applied_actions(
+    campaign: Campaign,
+    applied_actions: List[AppliedAction],
+    *,
+    effective_actor_id: str,
+    user_input: str,
+    turn_id: str,
+    turn_number: int,
+) -> List[str]:
+    written_fact_ids: List[str] = []
+    for action in applied_actions:
+        if not isinstance(action, AppliedAction) or action.tool != "scene_action":
+            continue
+        args = action.args if isinstance(action.args, dict) else {}
+        if args.get("action") != "talk":
+            continue
+        result = action.result if isinstance(action.result, dict) else {}
+        if result.get("ok") is False:
+            continue
+        target_id = args.get("target_id")
+        if not isinstance(target_id, str) or not target_id.strip():
+            continue
+        target = campaign.entities.get(target_id.strip())
+        if target is None or target.kind != "npc":
+            continue
+        fact = record_npc_memory_fact(
+            campaign,
+            actor_id=effective_actor_id,
+            npc_id=target.id,
+            npc_label=target.label,
+            user_input=user_input,
+            turn_id=turn_id,
+            current_turn_index=turn_number,
+        )
+        if fact is not None:
+            written_fact_ids.append(fact.fact_id)
+    return written_fact_ids
+
+
+def _record_recoverable_failures(
+    campaign: Campaign,
+    tool_calls: List[ToolCall],
+    applied_actions: List[AppliedAction],
+    tool_feedback: Optional[ToolFeedback],
+    *,
+    effective_actor_id: str,
+    turn_id: str,
+    turn_number: int,
+    world: Optional[object],
+) -> Dict[str, List[str]]:
+    signals = _collect_recoverable_failure_signals(
+        campaign,
+        tool_calls,
+        applied_actions,
+        tool_feedback,
+        effective_actor_id=effective_actor_id,
+        world=world,
+    )
+    if not signals:
+        return {"recorded_signal_ids": [], "pruned_signal_ids": []}
+    return record_mistake_signals(
+        campaign,
+        signals,
+        current_turn_index=turn_number,
+        turn_id=turn_id,
+    )
+
+
+def _collect_recoverable_failure_signals(
+    campaign: Campaign,
+    tool_calls: List[ToolCall],
+    applied_actions: List[AppliedAction],
+    tool_feedback: Optional[ToolFeedback],
+    *,
+    effective_actor_id: str,
+    world: Optional[object],
+) -> List[CampaignMistakeSignalCreate]:
+    tool_call_by_id = {
+        call.id: call
+        for call in tool_calls
+        if isinstance(call, ToolCall) and isinstance(call.id, str) and call.id.strip()
+    }
+    signals: List[CampaignMistakeSignalCreate] = []
+    failed_calls = (
+        tool_feedback.failed_calls if isinstance(tool_feedback, ToolFeedback) else []
+    )
+    for failed_call in failed_calls:
+        if not isinstance(failed_call, FailedCall):
+            continue
+        signal = _recoverable_failure_signal_from_failed_call(
+            campaign,
+            failed_call,
+            tool_call_by_id,
+            effective_actor_id=effective_actor_id,
+            world=world,
+        )
+        if signal is not None:
+            signals.append(signal)
+    for action in applied_actions:
+        if not isinstance(action, AppliedAction):
+            continue
+        signal = _recoverable_failure_signal_from_applied_action(
+            campaign,
+            action,
+            effective_actor_id=effective_actor_id,
+        )
+        if signal is not None:
+            signals.append(signal)
+    return signals
+
+
+def _recoverable_failure_signal_from_failed_call(
+    campaign: Campaign,
+    failed_call: FailedCall,
+    tool_call_by_id: Dict[str, ToolCall],
+    *,
+    effective_actor_id: str,
+    world: Optional[object],
+) -> Optional[CampaignMistakeSignalCreate]:
+    call = tool_call_by_id.get(failed_call.id)
+    area_id, _, _ = _active_area_context(campaign, effective_actor_id)
+    target_id = _mistake_target_id_for_tool_call(failed_call.tool, call)
+    if failed_call.reason == "repeat_illegal_request":
+        return CampaignMistakeSignalCreate(
+            category="repeated_misuse",
+            source_tool=failed_call.tool,
+            reason=failed_call.reason,
+            target_id=target_id,
+            target_label=_mistake_target_label(campaign, target_id),
+            area_id=area_id if isinstance(area_id, str) and area_id.strip() else None,
+            metadata={"status": failed_call.status},
+        )
+    if failed_call.tool != "move":
+        return None
+    return _recoverable_failure_signal_from_failed_move(
+        campaign,
+        failed_call,
+        call,
+        effective_actor_id=effective_actor_id,
+        world=world,
+    )
+
+
+def _recoverable_failure_signal_from_failed_move(
+    campaign: Campaign,
+    failed_call: FailedCall,
+    call: Optional[ToolCall],
+    *,
+    effective_actor_id: str,
+    world: Optional[object],
+) -> Optional[CampaignMistakeSignalCreate]:
+    reason = failed_call.reason.strip().lower()
+    if reason not in {"missing_required_item", "invalid_args"}:
+        return None
+    from_area_id, _, _ = _active_area_context(campaign, effective_actor_id)
+    to_area_id = _mistake_target_id_for_tool_call("move", call)
+    if reason == "missing_required_item":
+        required_item_id = None
+        if (
+            isinstance(from_area_id, str)
+            and from_area_id.strip()
+            and isinstance(to_area_id, str)
+            and to_area_id.strip()
+        ):
+            required_item_id = _required_item_for_transition(
+                campaign,
+                from_area_id=from_area_id,
+                to_area_id=to_area_id,
+                world=world,
+            )
+        wrong_item = _actor_gate_item_hint(
+            campaign,
+            effective_actor_id,
+            required_item_id=required_item_id,
+        )
+        metadata: Dict[str, object] = {}
+        item_id = None
+        if isinstance(wrong_item, dict):
+            raw_item_id = wrong_item.get("item_id")
+            if isinstance(raw_item_id, str) and raw_item_id.strip():
+                item_id = raw_item_id.strip()
+            wrong_item_label = wrong_item.get("label")
+            if isinstance(wrong_item_label, str) and wrong_item_label.strip():
+                metadata["item_label"] = wrong_item_label.strip()
+        return CampaignMistakeSignalCreate(
+            category="wrong_item" if isinstance(wrong_item, dict) else "blocked_attempt",
+            source_tool="move",
+            reason=reason,
+            target_id=to_area_id,
+            target_label=_mistake_target_label(campaign, to_area_id),
+            area_id=from_area_id if isinstance(from_area_id, str) and from_area_id.strip() else None,
+            item_id=item_id,
+            required_item_id=required_item_id,
+            metadata=metadata,
+        )
+    return CampaignMistakeSignalCreate(
+        category="invalid_interaction",
+        source_tool="move",
+        reason=reason,
+        target_id=to_area_id,
+        target_label=_mistake_target_label(campaign, to_area_id),
+        area_id=from_area_id if isinstance(from_area_id, str) and from_area_id.strip() else None,
+        metadata={"status": failed_call.status},
+    )
+
+
+def _recoverable_failure_signal_from_applied_action(
+    campaign: Campaign,
+    action: AppliedAction,
+    *,
+    effective_actor_id: str,
+) -> Optional[CampaignMistakeSignalCreate]:
+    if action.tool != "scene_action":
+        return None
+    result = action.result if isinstance(action.result, dict) else {}
+    if result.get("ok") is not False:
+        return None
+    error = result.get("error")
+    if not isinstance(error, dict):
+        return None
+    error_code = error.get("code")
+    if not isinstance(error_code, str) or not error_code.strip():
+        return None
+    category = _scene_action_failure_mistake_category(error_code)
+    if category is None:
+        return None
+    area_id, _, _ = _active_area_context(campaign, effective_actor_id)
+    target_id = _mistake_target_id_for_scene_action(action)
+    action_name = action.args.get("action")
+    normalized_action = (
+        action_name.strip().lower()
+        if isinstance(action_name, str) and action_name.strip()
+        else "scene_action"
+    )
+    metadata: Dict[str, object] = {"error_code": error_code.strip().lower()}
+    error_message = error.get("message")
+    if isinstance(error_message, str) and error_message.strip():
+        metadata["error_message"] = error_message.strip()
+    return CampaignMistakeSignalCreate(
+        category=category,
+        source_tool="scene_action",
+        reason=f"{normalized_action}:{error_code.strip().lower()}",
+        target_id=target_id,
+        target_label=_mistake_target_label(campaign, target_id),
+        area_id=area_id if isinstance(area_id, str) and area_id.strip() else None,
+        metadata=metadata,
+    )
+
+
+def _scene_action_failure_mistake_category(error_code: str) -> Optional[str]:
+    normalized = error_code.strip().lower()
+    if normalized in {"target_not_found", "invalid_args"}:
+        return "invalid_interaction"
+    if normalized in {
+        "carry_limit",
+        "locked",
+        "missing_item",
+        "not_allowed",
+        "not_reachable",
+    }:
+        return "blocked_attempt"
+    return None
+
+
+def _mistake_target_id_for_tool_call(
+    tool_name: str,
+    call: Optional[ToolCall],
+) -> Optional[str]:
+    if not isinstance(call, ToolCall):
+        return None
+    if tool_name == "move":
+        return _normalized_optional_string(call.args.get("to_area_id"))
+    return _normalized_optional_string(call.args.get("target_id"))
+
+
+def _mistake_target_id_for_scene_action(action: AppliedAction) -> Optional[str]:
+    return _normalized_optional_string(action.args.get("target_id"))
+
+
+def _mistake_target_label(campaign: Campaign, target_id: Optional[str]) -> Optional[str]:
+    if not isinstance(target_id, str) or not target_id.strip():
+        return None
+    normalized_target_id = target_id.strip()
+    area = campaign.map.areas.get(normalized_target_id)
+    if area is not None and isinstance(area.name, str) and area.name.strip():
+        return area.name.strip()
+    entity = campaign.entities.get(normalized_target_id)
+    if entity is not None and isinstance(entity.label, str) and entity.label.strip():
+        return entity.label.strip()
+    stack = campaign.items.get(normalized_target_id)
+    if stack is not None and isinstance(stack.label, str) and stack.label.strip():
+        return stack.label.strip()
+    return _humanize_identifier(normalized_target_id)
+
+
+def _normalized_optional_string(value: object) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
 
 
 def _default_starter_map() -> MapData:
@@ -2022,6 +2483,9 @@ def _build_system_prompt(
     guidance: Optional[Dict[str, object]] = None,
     selected_item: Optional[Dict[str, object]] = None,
     selected_scene_target: Optional[Dict[str, object]] = None,
+    fact_context: Optional[Dict[str, object]] = None,
+    npc_memory: Optional[Dict[str, object]] = None,
+    consequence_context: Optional[Dict[str, object]] = None,
 ) -> str:
     positions, _, _, hp, character_states = _derive_character_state_maps(campaign)
     actors_payload, adopted_profiles_by_actor = _build_actor_prompt_payloads(campaign)
@@ -2113,6 +2577,12 @@ def _build_system_prompt(
         payload["selected_item"] = dict(selected_item)
     if selected_scene_target:
         payload["selected_scene_target"] = dict(selected_scene_target)
+    if fact_context:
+        payload["fact_context"] = dict(fact_context)
+    if npc_memory:
+        payload["npc_memory"] = dict(npc_memory)
+    if consequence_context:
+        payload["consequences"] = dict(consequence_context)
     context_json = json.dumps(payload, ensure_ascii=False)
     try:
         return render_prompt(
@@ -2141,6 +2611,9 @@ def _build_turn_debug_payload(
     selected_item: Optional[Dict[str, object]] = None,
     selected_item_resolution: Optional[SelectedStackResolution] = None,
     selected_scene_target: Optional[Dict[str, object]] = None,
+    fact_context: Optional[Dict[str, object]] = None,
+    npc_memory: Optional[Dict[str, object]] = None,
+    consequence_context: Optional[Dict[str, object]] = None,
 ) -> Dict[str, object]:
     _, adopted_profiles_by_actor = _build_actor_prompt_payloads(campaign)
     encoded = json.dumps(
@@ -2255,6 +2728,12 @@ def _build_turn_debug_payload(
     )
     if selected_scene_target_debug is not None:
         payload["selected_scene_target"] = selected_scene_target_debug
+    if isinstance(fact_context, dict):
+        payload["fact_context"] = dict(fact_context)
+    if isinstance(npc_memory, dict):
+        payload["npc_memory"] = dict(npc_memory)
+    if isinstance(consequence_context, dict):
+        payload["consequence_context"] = dict(consequence_context)
     return payload
 
 
@@ -2474,6 +2953,8 @@ def _build_success_response(
     effective_actor_id: str,
     guidance: Optional[Dict[str, object]] = None,
     user_input: Optional[str] = None,
+    consequence_context: Optional[Dict[str, object]] = None,
+    triggered_consequence_ids: Optional[List[str]] = None,
     debug_payload: Optional[Dict[str, object]] = None,
 ) -> Dict[str, object]:
     if hasattr(entry.state_summary, "model_dump"):
@@ -2514,6 +2995,11 @@ def _build_success_response(
         response,
         user_input=user_input,
         guidance=guidance,
+    )
+    _apply_consequence_narrative_fallback(
+        response,
+        consequence_context=consequence_context,
+        triggered_consequence_ids=triggered_consequence_ids,
     )
     if debug_payload:
         response["debug"] = dict(debug_payload)
@@ -2838,6 +3324,44 @@ def _apply_guidance_narrative_fallback(
     response["narrative_text"] = f"{suggestions[0]} {suggestions[1]}"
 
 
+def _apply_consequence_narrative_fallback(
+    response: Dict[str, object],
+    *,
+    consequence_context: Optional[Dict[str, object]],
+    triggered_consequence_ids: Optional[List[str]],
+) -> None:
+    if not isinstance(response, dict):
+        return
+    if not isinstance(consequence_context, dict):
+        return
+    triggered = set(triggered_consequence_ids or [])
+    if not triggered:
+        return
+    items = consequence_context.get("items")
+    if not isinstance(items, list):
+        return
+    hint = ""
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        consequence_id = item.get("consequence_id")
+        if not isinstance(consequence_id, str) or consequence_id not in triggered:
+            continue
+        narrative_hint = item.get("narrative_hint")
+        if isinstance(narrative_hint, str) and narrative_hint.strip():
+            hint = narrative_hint.strip()
+            break
+    if not hint:
+        return
+    current = response.get("narrative_text")
+    if not isinstance(current, str) or not current.strip():
+        response["narrative_text"] = hint
+        return
+    if hint.lower() in current.lower():
+        return
+    response["narrative_text"] = f"{current.strip()} {hint}"
+
+
 def _build_failure_response(
     conflict_report: ConflictReport,
     campaign: Campaign,
@@ -2876,6 +3400,8 @@ def _build_failure_response(
     state_summary.active_actor_inventory_stacks = _active_actor_inventory_stacks(
         campaign, effective_actor_id
     )
+    state_summary.mistakes = build_mistake_state_summary(campaign)
+    state_summary.consequences = build_consequence_state_summary(campaign)
     response = {
         "effective_actor_id": effective_actor_id,
         "narrative_text": "",
@@ -2946,6 +3472,57 @@ def _resolve_selected_item_context(
         if isinstance(description, str) and description.strip():
             selected_item["description"] = description.strip()
     return selected_item
+
+
+def _selected_item_fact_id(
+    selected_item: Optional[Dict[str, object]],
+    selected_scene_target: Optional[Dict[str, object]],
+) -> Optional[str]:
+    if isinstance(selected_item, dict):
+        item_id = selected_item.get("id")
+        if isinstance(item_id, str) and item_id.strip():
+            return item_id.strip()
+    if not isinstance(selected_scene_target, dict):
+        return None
+    target_kind = selected_scene_target.get("kind")
+    if not isinstance(target_kind, str) or target_kind.strip() != "item":
+        return None
+    item_id = selected_scene_target.get("item_id")
+    if isinstance(item_id, str) and item_id.strip():
+        return item_id.strip()
+    return None
+
+
+def _selected_scene_target_fact_id(
+    selected_scene_target: Optional[Dict[str, object]],
+) -> Optional[str]:
+    if not isinstance(selected_scene_target, dict):
+        return None
+    target_kind = selected_scene_target.get("kind")
+    if not isinstance(target_kind, str) or target_kind.strip() == "item":
+        return None
+    target_id = selected_scene_target.get("id")
+    if isinstance(target_id, str) and target_id.strip():
+        return target_id.strip()
+    return None
+
+
+def _selected_npc_memory_target(
+    selected_scene_target: Optional[Dict[str, object]],
+) -> Optional[Dict[str, str]]:
+    if not isinstance(selected_scene_target, dict):
+        return None
+    target_kind = selected_scene_target.get("kind")
+    if not isinstance(target_kind, str) or target_kind.strip() != "npc":
+        return None
+    target_id = selected_scene_target.get("id")
+    if not isinstance(target_id, str) or not target_id.strip():
+        return None
+    payload = {"id": target_id.strip()}
+    label = selected_scene_target.get("label")
+    if isinstance(label, str) and label.strip():
+        payload["label"] = label.strip()
+    return payload
 
 
 def _resolve_selected_scene_target_context(

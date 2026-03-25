@@ -29,6 +29,8 @@
 - `docs/01_specs/character_baseline.md`
 - `docs/01_specs/character_access_boundary.md`
 - `docs/01_specs/character_fact_v1.md`
+- `docs/01_specs/generated_fact_foundation.md`
+- `docs/01_specs/npc_memory_minimal.md`
 - `docs/01_specs/schemas/character_fact.v1.schema.json`
 - `docs/01_specs/prompts/character_fact_generate_v1.md`
 
