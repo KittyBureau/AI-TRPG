@@ -4,7 +4,14 @@ This is a static, framework-free UI for sending raw JSON requests to the FastAPI
 
 ## Run (static)
 
-1. Start the backend (default: `http://127.0.0.1:8000`).
+1. Start the backend from the repo root (default: `http://127.0.0.1:8000`).
+
+Example:
+
+```bash
+python scripts/run_backend.py
+```
+
 2. Serve this folder with any static server.
 
 Example using Python:
@@ -18,6 +25,7 @@ Then open `http://127.0.0.1:5173` and set **Base URL** to `http://127.0.0.1:8000
 The map view page reads the same base URL from local storage.
 
 If the backend reports `passphrase_required`, Play/Debug now show a readiness prompt and ask you to run `python -m backend.tools.unlock_keyring` before sending turns.
+If you have not created local credentials yet, run `python -m backend.tools.setup_keyring` from the repo root first.
 
 Main entry points:
 - `http://127.0.0.1:5173/play.html` (play mode, panel architecture)

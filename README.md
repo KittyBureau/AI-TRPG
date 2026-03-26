@@ -6,21 +6,117 @@ Minimal backend + frontend prototype for AI-assisted TRPG flow.
 
 - Project version: `1.0`
 
-## Start
+## Quick Start (Local)
 
-1. Create a virtual environment and install dependencies.
-2. Run the API:
+Commands below assume you are running from the repository root.
+
+Important:
+
+- Backend storage/config paths resolve from the current working directory as `storage/...`.
+- Use the repo root as the working directory for backend commands.
+- `python scripts/run_backend.py` enforces the repo-root path automatically.
+
+### Requirements
+
+- Python `3.10+`
+- Node is **not** required for the current frontend. It is plain static HTML/JS.
+
+### Install Dependencies
 
 ```bash
-uvicorn backend.api.main:app --reload
+python -m venv .venv
+pip install -r requirements.txt
 ```
 
-## LLM Configuration
+### Choose One Local Path
 
-1. Copy `storage/config/llm_config.example.json` to `storage/config/llm_config.json`.
-2. Edit `current_profile` and profile settings.
-3. On first `POST /api/v1/chat/turn`, the server prompts for API key and passphrase via stdin.
-4. Encrypted key is written to `storage/secrets/keyring.json` (AES-GCM via `cryptography`).
+#### A. Smoke Mode (no LLM credentials required)
+
+Use this first if you only want to verify the repo works locally.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/smoke_world_generate.ps1
+```
+
+Related deterministic smoke scripts:
+
+- `scripts/smoke_world_generate.ps1`
+- `scripts/smoke_full_gameplay.ps1`
+- `scripts/smoke_frontend_flow.ps1`
+
+These scripts patch in a local smoke LLM and run against temporary workspace storage.
+
+#### B. Real Local Run (LLM-backed)
+
+1. Initialize the local config/keyring entry for the active profile:
+
+```bash
+python -m backend.tools.setup_keyring
+```
+
+This will:
+
+- copy `storage/config/llm_config.example.json` to `storage/config/llm_config.json` if needed
+- prompt for the API key and keyring passphrase
+- create or populate `storage/secrets/keyring.json` for the active `api_key_ref`
+
+2. Review `storage/config/llm_config.json` if you need a different model, base URL, or profile.
+
+### Run Backend
+
+Preferred local launcher:
+
+```bash
+python scripts/run_backend.py
+```
+
+Optional host/port overrides:
+
+- `AI_TRPG_HOST`
+- `AI_TRPG_PORT`
+- `AI_TRPG_RELOAD`
+
+Default backend URL:
+
+- `http://127.0.0.1:8000`
+
+If runtime status reports `passphrase_required`, unlock the existing keyring for the running server:
+
+```bash
+python -m backend.tools.unlock_keyring
+```
+
+### Optional Frontend
+
+Serve the static frontend from the repo root:
+
+```bash
+cd frontend
+python -m http.server 5173
+```
+
+Then open:
+
+- `http://127.0.0.1:5173/play.html`
+- `http://127.0.0.1:5173/debug.html`
+
+Use backend base URL:
+
+- `http://127.0.0.1:8000`
+
+### Minimal Validation
+
+The smallest no-credential verification path is:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/smoke_world_generate.ps1
+```
+
+If you are doing a real local run, a quick manual check is:
+
+- start backend with `python scripts/run_backend.py`
+- open `http://127.0.0.1:8000/api/v1/docs`
+- check `GET /api/v1/runtime/status`
 
 ## Documentation Entry
 
