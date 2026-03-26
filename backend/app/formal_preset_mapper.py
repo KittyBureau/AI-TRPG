@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from backend.domain.formal_gameplay_model import Edge, FormalGameplayModel, Goal, Node
+from backend.domain.formal_gameplay_model import (
+    DependencyGroup,
+    Edge,
+    FormalGameplayModel,
+    GateClue,
+    Goal,
+    Node,
+)
 
 if TYPE_CHECKING:
     from backend.app.world_presets import CampaignWorldPreset
@@ -12,6 +19,14 @@ _WATCHTOWER_WORLD_ID = "test_watchtower_world"
 _MIDNIGHT_ARCHIVE_WORLD_ID = "midnight_archive_world"
 _MIDNIGHT_ARCHIVE_GOAL_TARGET_ID = "forged_file_shelf"
 _MIDNIGHT_ARCHIVE_SERVICE_GATE_ID = "midnight_archive_service_gate"
+_MIDNIGHT_ARCHIVE_SERVICE_DEPENDENCY_GROUP_ID = "dep_group:midnight_archive_service_gate"
+
+
+def list_supported_preset_world_ids() -> list[str]:
+    return [
+        _MIDNIGHT_ARCHIVE_WORLD_ID,
+        _WATCHTOWER_WORLD_ID,
+    ]
 
 
 def build_formal_model_from_preset(
@@ -99,7 +114,11 @@ def _build_midnight_archive_model(preset: "CampaignWorldPreset") -> FormalGamepl
     nodes.extend(
         [
             Node(id="returns_cart", type="clue_source"),
-            Node(id=_MIDNIGHT_ARCHIVE_SERVICE_GATE_ID, type="gate"),
+            Node(
+                id=_MIDNIGHT_ARCHIVE_SERVICE_GATE_ID,
+                type="gate",
+                dependency_group_id=_MIDNIGHT_ARCHIVE_SERVICE_DEPENDENCY_GROUP_ID,
+            ),
             Node(id="routing_slip", type="item_dependency"),
             Node(id=_MIDNIGHT_ARCHIVE_GOAL_TARGET_ID, type="goal"),
         ]
@@ -141,6 +160,21 @@ def _build_midnight_archive_model(preset: "CampaignWorldPreset") -> FormalGamepl
     return FormalGameplayModel(
         nodes=nodes,
         edges=edges,
+        dependency_groups=[
+            DependencyGroup(
+                id=_MIDNIGHT_ARCHIVE_SERVICE_DEPENDENCY_GROUP_ID,
+                mode="all_of",
+                node_ids=["routing_slip"],
+            )
+        ],
+        gate_clues=[
+            GateClue(
+                clue_id="returns_cart",
+                gate_id=_MIDNIGHT_ARCHIVE_SERVICE_GATE_ID,
+                supported_items=["routing_slip"],
+                clue_type="critical",
+            )
+        ],
         goals=[
             Goal(
                 id="goal:interact_entity:forged_file_shelf",

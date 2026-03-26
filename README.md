@@ -138,8 +138,11 @@ If you are doing a real local run, a quick manual check is:
 - `search` does not grant possession; actor ownership changes on `take`.
 - Gate checks still use `required_item_id` rules, but possession evidence comes from actor-owned stacks derived from `campaign.items`.
 - `inventory_add` still exists as a bounded legacy-only contract for source-entity-backed inventory gain; it is not the mainline gameplay path.
-- Formal Gameplay Model v0 is a read-only structural validation layer for generated scenarios and the current baseline presets.
-- It does not affect turn execution, tool execution, or runtime authority.
+- Formal Gameplay Model is currently a read-only structural validation and alignment layer:
+  - `dependency_groups` with `all_of` / `any_of`
+  - `multi_path_coverage` and `clue_support_coverage`
+  - gate/overall quality, authoring audit, preset alignment audit, and remediation backlog output
+- The formal layer is non-authoritative and does not affect runtime, turn execution, or tool execution.
 
 ## Current Item Docs
 

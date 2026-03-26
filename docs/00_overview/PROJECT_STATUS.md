@@ -101,6 +101,28 @@ Runtime system:
 - frontend recovery from not-ready backend
 - debug panel request/response inspection
 
+## 6A. Formal Gameplay Model & Alignment Layer
+
+- Formal Gameplay Model is currently read-only, non-authoritative, and isolated from runtime authority, turn execution, and tool execution.
+- Current implemented formal validation coverage includes:
+  - `dependency_groups` with `all_of` / `any_of`
+  - `multi_path_coverage`
+  - `clue_support_coverage`
+- Current implemented quality and audit outputs include:
+  - `gate_quality_statuses`
+  - `overall_quality_status`
+  - gate-level and overall authoring audit summaries
+- Current generator-side shaping outputs include:
+  - `gate_clue`
+  - `gate_clue_support_gap`
+- Current preset alignment baseline:
+  - `midnight_archive_world` is the aligned sample for the modern formal output shape
+  - `test_watchtower_world` remains the legacy baseline
+- Current preset-alignment planning outputs include:
+  - `alignment_level` (`legacy` / `partial` / `aligned`)
+  - `priority_hint` (`high` / `medium` / `low`)
+  - remediation backlog output with `gap_type`, `recommended_target`, and structured backlog summary
+
 ## 7. Known Constraints
 
 - keyring requires local unlock when credentials are not already available

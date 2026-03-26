@@ -160,16 +160,19 @@
     },
     {
       "id": "14",
-      "title": "Formal Gameplay Model v0",
+      "title": "Formal Gameplay Model & Alignment System",
       "paths": [
         "backend/domain/formal_gameplay_model.py",
         "backend/app/formal_mapper.py",
         "backend/app/formal_preset_mapper.py",
+        "backend/app/formal_preset_alignment_audit.py",
+        "backend/app/formal_preset_alignment_backlog.py",
         "backend/app/formal_validator.py",
         "backend/app/scenario_bridge.py",
         "backend/domain/scenario_bridge_models.py",
         "backend/app/world_presets.py",
         "backend/tests/test_formal_gameplay_v0.py",
+        "backend/tests/test_formal_gameplay_v1.py",
         "backend/tests/test_formal_preset_adapter.py",
         "docs/01_specs/formal_gameplay_model_v0.md"
       ]

@@ -17,7 +17,35 @@ def test_formal_validator_accepts_valid_generated_scenario() -> None:
 
     assert result.main_path_solvable is True
     assert result.issues == []
+    assert result.overall_quality_status == "good"
+    assert len(result.gate_quality_statuses) == 1
+    assert result.gate_quality_statuses[0].quality_status == "good"
+    assert len(result.gate_authoring_audits) == 1
+    assert result.gate_authoring_audits[0].gate_id == "gate_001"
+    assert result.gate_authoring_audits[0].quality_status == "good"
+    assert result.gate_authoring_audits[0].issue_categories == []
+    assert result.gate_authoring_audits[0].has_shaping_gap is False
+    assert result.overall_authoring_audit.overall_quality_status == "good"
+    assert result.overall_authoring_audit.gate_count_by_quality == {
+        "good": 1,
+        "weak": 0,
+        "failing": 0,
+    }
+    assert result.overall_authoring_audit.issue_count_by_category == {
+        "solvability_related": 0,
+        "path_coverage_related": 0,
+        "clue_support_related": 0,
+        "shaping_gap_related": 0,
+    }
+    assert result.overall_authoring_audit.gates_with_shaping_gaps == []
+    assert model.gate_clue_support_gaps == []
     assert all(node.type != "goal" for node in model.nodes)
+    gate_nodes = [node for node in model.nodes if node.type == "gate"]
+    assert len(gate_nodes) == 1
+    assert gate_nodes[0].dependency_group_id == "dep_group_gate_001"
+    assert len(model.dependency_groups) == 1
+    assert model.dependency_groups[0].mode == "all_of"
+    assert model.dependency_groups[0].node_ids == [scenario.roles.required_item_id]
 
 
 def test_formal_validator_marks_missing_item_source_as_unsolvable() -> None:
@@ -36,6 +64,9 @@ def test_formal_validator_marks_missing_item_source_as_unsolvable() -> None:
     result = validate_formal_model(broken)
 
     assert result.main_path_solvable is False
+    assert result.overall_quality_status == "failing"
+    assert len(result.gate_quality_statuses) == 1
+    assert result.gate_quality_statuses[0].quality_status == "failing"
     assert any(issue.code == "critical_item_unreachable" for issue in result.issues)
     assert any(issue.code == "critical_gate_unsatisfied" for issue in result.issues)
 

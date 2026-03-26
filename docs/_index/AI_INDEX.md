@@ -233,16 +233,20 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 **Scope**
 - `backend/api/routes/characters.py`, `backend/app/character_fact_api_service.py`, `backend/app/character_fact_generation.py`, `backend/domain/character_fact_schema.py`, `backend/infra/character_fact_store.py`, `backend/infra/file_repo.py`, `backend/scripts/generate_character_facts.py`, `backend/domain/character_access.py`, `backend/tests/test_character_fact_api.py`, `backend/tests/test_character_fact_generation.py`, `docs/01_specs/character_fact_v1.md`, `docs/01_specs/storage_layout.md`, `docs/01_specs/schemas/character_fact.v1.schema.json`, `docs/01_specs/prompts/character_fact_generate_v1.md`.
 
-## 14. Formal Gameplay Model v0
+## 14. Formal Gameplay Model & Alignment System
 **Rules**
-- Formal Gameplay Model v0 is a read-only design-time and validation-time layer only.
-- It currently covers generated scenarios plus the minimal preset adapter path for `test_watchtower_world` and `midnight_archive_world`.
+- Formal Gameplay Model is a read-only design-time and validation-time layer only.
+- It currently covers generated scenarios plus the preset adapter path for `test_watchtower_world` and `midnight_archive_world`.
 - Authoritative goal state lives in `Goal(...)`; goal nodes are optional and non-authoritative.
-- `dependency_groups` is schema-only and inactive in current validation logic.
+- `dependency_groups` is active in current validation logic and supports `all_of` and `any_of`.
+- Current formal validation includes structural solvability plus `multi_path_coverage` and `clue_support_coverage`.
+- Current quality/audit outputs include `gate_quality_statuses`, `overall_quality_status`, gate/overall authoring audit, preset alignment audit, and preset remediation backlog output.
+- Generator-side shaping annotations currently include `gate_clue` and `gate_clue_support_gap`.
 - Formal validation must not change turn execution, tool execution, inventory, or goal completion timing.
 **Checks**
 - Run `backend/tests/test_formal_gameplay_v0.py` for generator-path validation coverage.
-- Run `backend/tests/test_formal_preset_adapter.py` for preset-path mapping and validation coverage.
-- Keep `docs/01_specs/formal_gameplay_model_v0.md` aligned with current implementation truth, especially current Midnight Archive limitations.
+- Run `backend/tests/test_formal_gameplay_v1.py` for dependency-group, multi-path, clue-support, quality, and authoring-audit coverage.
+- Run `backend/tests/test_formal_preset_adapter.py` for preset-path mapping, alignment audit, and backlog coverage.
+- Keep `docs/01_specs/formal_gameplay_model_v0.md` aligned with current implementation truth, especially current Midnight Archive limitations and read-only boundaries.
 **Scope**
-- `backend/domain/formal_gameplay_model.py`, `backend/app/formal_mapper.py`, `backend/app/formal_preset_mapper.py`, `backend/app/formal_validator.py`, `backend/app/scenario_bridge.py`, `backend/domain/scenario_bridge_models.py`, `backend/app/world_presets.py`, `backend/tests/test_formal_gameplay_v0.py`, `backend/tests/test_formal_preset_adapter.py`, `docs/01_specs/formal_gameplay_model_v0.md`.
+- `backend/domain/formal_gameplay_model.py`, `backend/app/formal_mapper.py`, `backend/app/formal_preset_mapper.py`, `backend/app/formal_validator.py`, `backend/app/formal_preset_alignment_audit.py`, `backend/app/formal_preset_alignment_backlog.py`, `backend/app/scenario_bridge.py`, `backend/domain/scenario_bridge_models.py`, `backend/app/world_presets.py`, `backend/tests/test_formal_gameplay_v0.py`, `backend/tests/test_formal_gameplay_v1.py`, `backend/tests/test_formal_preset_adapter.py`, `docs/01_specs/formal_gameplay_model_v0.md`.

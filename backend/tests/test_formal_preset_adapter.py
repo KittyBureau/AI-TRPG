@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+from backend.app.formal_preset_alignment_audit import (
+    build_preset_alignment_audit_summary,
+)
+from backend.app.formal_preset_alignment_backlog import (
+    build_preset_alignment_backlog_summary,
+)
 from backend.app.formal_preset_mapper import build_formal_model_from_preset
 from backend.app.formal_validator import validate_formal_model
 from backend.app.turn_service import TurnService
@@ -51,6 +57,18 @@ def test_midnight_archive_preset_formal_mapping_builds_expected_structure() -> N
     assert node_types["routing_slip"] == "item_dependency"
     assert node_types["midnight_archive_service_gate"] == "gate"
     assert node_types["forged_file_shelf"] == "goal"
+    gate_nodes = [node for node in model.nodes if node.id == "midnight_archive_service_gate"]
+    assert len(gate_nodes) == 1
+    assert gate_nodes[0].dependency_group_id == "dep_group:midnight_archive_service_gate"
+    assert len(model.dependency_groups) == 1
+    assert model.dependency_groups[0].id == "dep_group:midnight_archive_service_gate"
+    assert model.dependency_groups[0].mode == "all_of"
+    assert model.dependency_groups[0].node_ids == ["routing_slip"]
+    assert len(model.gate_clues) == 1
+    assert model.gate_clues[0].clue_id == "returns_cart"
+    assert model.gate_clues[0].gate_id == "midnight_archive_service_gate"
+    assert model.gate_clues[0].supported_items == ["routing_slip"]
+    assert model.gate_clue_support_gaps == []
     assert model.goals[0].type == "interact_entity"
     assert model.goals[0].target_id == "forged_file_shelf"
 
@@ -65,6 +83,44 @@ def test_midnight_archive_preset_validation_is_solvable() -> None:
 
     assert result.main_path_solvable is True
     assert result.issues == []
+    assert result.overall_quality_status == "good"
+    assert len(result.gate_quality_statuses) == 1
+    assert result.gate_quality_statuses[0].gate_id == "midnight_archive_service_gate"
+    assert result.gate_quality_statuses[0].quality_status == "good"
+    assert len(result.gate_authoring_audits) == 1
+    assert result.gate_authoring_audits[0].gate_id == "midnight_archive_service_gate"
+    assert result.gate_authoring_audits[0].quality_status == "good"
+    assert result.gate_authoring_audits[0].issue_categories == []
+    assert result.gate_authoring_audits[0].issues == []
+    assert result.gate_authoring_audits[0].has_shaping_gap is False
+    assert result.overall_authoring_audit.overall_quality_status == "good"
+    assert result.overall_authoring_audit.gate_count_by_quality == {
+        "good": 1,
+        "weak": 0,
+        "failing": 0,
+    }
+    assert result.overall_authoring_audit.issue_count_by_category == {
+        "solvability_related": 0,
+        "path_coverage_related": 0,
+        "clue_support_related": 0,
+        "shaping_gap_related": 0,
+    }
+    assert result.overall_authoring_audit.gates_with_shaping_gaps == []
+
+
+def test_midnight_archive_preset_attaches_authoring_audit_on_formal_validation() -> None:
+    preset = build_campaign_world_preset(MIDNIGHT_ARCHIVE_WORLD_ID)
+    assert preset is not None
+    assert preset.formal_validation is not None
+
+    assert preset.formal_validation.main_path_solvable is True
+    assert preset.formal_validation.overall_quality_status == "good"
+    assert len(preset.formal_validation.gate_authoring_audits) == 1
+    assert preset.formal_validation.gate_authoring_audits[0].gate_id == (
+        "midnight_archive_service_gate"
+    )
+    assert preset.formal_validation.gate_authoring_audits[0].quality_status == "good"
+    assert preset.formal_validation.gate_authoring_audits[0].issue_categories == []
 
 
 def test_preset_formal_validation_attaches_without_changing_bootstrap_behavior(
@@ -87,3 +143,116 @@ def test_preset_formal_validation_attaches_without_changing_bootstrap_behavior(
     campaign = repo.get_campaign(campaign_id)
     assert campaign.actors["pc_001"].position == preset.start_area_id
     assert campaign.goal.text == preset.goal_text
+
+
+def test_preset_alignment_audit_summary_enumerates_supported_presets() -> None:
+    summary = build_preset_alignment_audit_summary()
+
+    assert summary.preset_count >= 2
+    assert summary.count_by_alignment_level == {
+        "legacy": 1,
+        "partial": 0,
+        "aligned": 1,
+    }
+    assert summary.count_by_priority == {
+        "high": 1,
+        "medium": 0,
+        "low": 1,
+    }
+    assert {item.preset_id for item in summary.preset_summaries} == {
+        MIDNIGHT_ARCHIVE_WORLD_ID,
+        TEST_WATCHTOWER_WORLD_ID,
+    }
+
+
+def test_preset_alignment_audit_marks_midnight_archive_as_aligned_sample() -> None:
+    summary = build_preset_alignment_audit_summary()
+    midnight_archive = next(
+        item
+        for item in summary.preset_summaries
+        if item.preset_id == MIDNIGHT_ARCHIVE_WORLD_ID
+    )
+
+    assert midnight_archive.alignment_level == "aligned"
+    assert midnight_archive.priority_hint == "low"
+    assert midnight_archive.has_dependency_groups is True
+    assert midnight_archive.has_clue_support_signal is True
+    assert midnight_archive.has_shaping_gap_signal is False
+    assert midnight_archive.has_authoring_audit is True
+    assert midnight_archive.overall_quality_status == "good"
+    assert "dependency_groups_present" in midnight_archive.key_findings
+    assert "clue_support_signals_present" in midnight_archive.key_findings
+
+
+def test_preset_alignment_audit_marks_watchtower_as_legacy_expression() -> None:
+    summary = build_preset_alignment_audit_summary()
+    watchtower = next(
+        item
+        for item in summary.preset_summaries
+        if item.preset_id == TEST_WATCHTOWER_WORLD_ID
+    )
+
+    assert watchtower.alignment_level == "legacy"
+    assert watchtower.priority_hint == "high"
+    assert watchtower.has_dependency_groups is False
+    assert watchtower.has_clue_support_signal is False
+    assert watchtower.has_shaping_gap_signal is False
+    assert watchtower.has_authoring_audit is True
+    assert watchtower.overall_quality_status == "good"
+    assert "dependency_groups_missing" in watchtower.key_findings
+    assert "clue_support_signals_missing" in watchtower.key_findings
+
+
+def test_preset_alignment_backlog_summary_enumerates_structured_items() -> None:
+    summary = build_preset_alignment_backlog_summary()
+
+    assert summary.preset_count >= 2
+    assert summary.total_backlog_items >= 2
+    assert summary.count_by_gap_type == {
+        "missing_dependency_group_alignment": 1,
+        "missing_gate_clue_alignment": 1,
+        "missing_authoring_audit_visibility": 0,
+        "shaping_gap_unexposed": 0,
+    }
+    assert summary.count_by_target == {
+        "adapter_only": 1,
+        "formal_annotation": 1,
+        "future_optional": 0,
+    }
+    assert [plan.preset_id for plan in summary.preset_plans] == [
+        TEST_WATCHTOWER_WORLD_ID,
+        MIDNIGHT_ARCHIVE_WORLD_ID,
+    ]
+
+
+def test_preset_alignment_backlog_keeps_midnight_archive_as_low_priority_sample() -> None:
+    summary = build_preset_alignment_backlog_summary()
+    midnight_archive = next(
+        plan
+        for plan in summary.preset_plans
+        if plan.preset_id == MIDNIGHT_ARCHIVE_WORLD_ID
+    )
+
+    assert midnight_archive.alignment_level == "aligned"
+    assert midnight_archive.priority_hint == "low"
+    assert midnight_archive.items == []
+
+
+def test_preset_alignment_backlog_marks_watchtower_for_adapter_and_annotation_work() -> None:
+    summary = build_preset_alignment_backlog_summary()
+    watchtower = next(
+        plan
+        for plan in summary.preset_plans
+        if plan.preset_id == TEST_WATCHTOWER_WORLD_ID
+    )
+
+    assert watchtower.alignment_level == "legacy"
+    assert watchtower.priority_hint == "high"
+    assert [item.gap_type for item in watchtower.items] == [
+        "missing_dependency_group_alignment",
+        "missing_gate_clue_alignment",
+    ]
+    assert [item.recommended_target for item in watchtower.items] == [
+        "adapter_only",
+        "formal_annotation",
+    ]

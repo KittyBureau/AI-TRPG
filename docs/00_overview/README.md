@@ -36,6 +36,23 @@
 - `docs/01_specs/schemas/character_fact.v1.schema.json`
 - `docs/01_specs/prompts/character_fact_generate_v1.md`
 
+## Current Formal Layer
+
+- Formal Gameplay Model is currently a read-only, non-authoritative design-time and validation-time layer.
+- Current implemented coverage includes:
+  - `dependency_groups` with `all_of` / `any_of`
+  - `multi_path_coverage`
+  - `clue_support_coverage`
+  - gate/overall quality aggregation
+  - gate/overall authoring audit
+  - generator-side shaping via `gate_clue` and `gate_clue_support_gap`
+  - preset alignment audit via `alignment_level` and `priority_hint`
+  - remediation backlog output via `gap_type`, `recommended_target`, and backlog summary
+- Current preset alignment samples are:
+  - `midnight_archive_world` as the aligned sample
+  - `test_watchtower_world` as the legacy baseline
+- These outputs do not affect runtime authority, turn execution, or tool execution.
+
 ## Runtime Guides
 
 - `frontend/README_frontend.md` - Static frontend local serving and backend base URL notes.

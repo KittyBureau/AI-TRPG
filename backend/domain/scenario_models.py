@@ -8,6 +8,7 @@ ScenarioTemplateId = Literal["key_gate_scenario"]
 ScenarioLayoutType = Literal["linear", "branch"]
 ScenarioDifficulty = Literal["easy", "standard"]
 ScenarioGoalType = Literal["enter_area"]
+ScenarioDependencyMode = Literal["all_of", "any_of"]
 ScenarioAreaKind = Literal["start", "clue", "gate", "target", "transit"]
 ScenarioEntityKind = Literal["hint_source", "clue_source", "gate"]
 ScenarioItemKind = Literal["required_item"]
@@ -74,11 +75,18 @@ class ScenarioGateRule(BaseModel):
     to_area_id: str
     required_item_id: str
     gate_entity_id: str
+    dependency_group_id: str = ""
 
 
 class ScenarioGoalRule(BaseModel):
     type: ScenarioGoalType = "enter_area"
     target_area_id: str
+
+
+class ScenarioDependencyGroup(BaseModel):
+    id: str
+    mode: ScenarioDependencyMode = "all_of"
+    node_ids: Tuple[str, ...] = ()
 
 
 class ScenarioArea(BaseModel):
@@ -133,6 +141,7 @@ class MaterializedScenario(BaseModel):
     topology: ScenarioTopology
     entities: Dict[str, ScenarioEntity] = Field(default_factory=dict)
     items: Dict[str, ScenarioItem] = Field(default_factory=dict)
+    dependency_groups: Dict[str, ScenarioDependencyGroup] = Field(default_factory=dict)
     gate_rule: ScenarioGateRule
     goal_rule: ScenarioGoalRule
 

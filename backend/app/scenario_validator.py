@@ -23,6 +23,7 @@ def validate_materialized_scenario(
     _validate_area_count(scenario)
     _validate_entities_and_items(scenario)
     _validate_goal_and_gate_rules(scenario)
+    _validate_dependency_groups(scenario)
     _validate_progression(scenario)
 
     return ScenarioValidationResult(
@@ -129,6 +130,25 @@ def _validate_goal_and_gate_rules(scenario: MaterializedScenario) -> None:
         raise ValueError("gate rule required item is missing or invalid")
     if gate_required_item.required_by_gate_entity_id != scenario.gate_rule.gate_entity_id:
         raise ValueError("gate rule required item is not tied to the gate rule gate entity")
+
+
+def _validate_dependency_groups(scenario: MaterializedScenario) -> None:
+    group_id = scenario.gate_rule.dependency_group_id
+    if not group_id:
+        return
+
+    group = scenario.dependency_groups.get(group_id)
+    if group is None:
+        raise ValueError("gate rule dependency group is missing")
+    if not group.node_ids:
+        raise ValueError("gate rule dependency group must not be empty")
+
+    for item_id in group.node_ids:
+        item = scenario.items.get(item_id)
+        if item is None or item.kind != "required_item":
+            raise ValueError("dependency group item is missing or invalid")
+        if item.required_by_gate_entity_id != scenario.gate_rule.gate_entity_id:
+            raise ValueError("dependency group item is not tied to the gate rule gate entity")
 
 
 def _validate_progression(scenario: MaterializedScenario) -> None:

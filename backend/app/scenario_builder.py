@@ -7,6 +7,7 @@ from backend.app.scenario_templates import (
     get_scenario_template,
 )
 from backend.domain.scenario_models import (
+    ScenarioDependencyGroup,
     MaterializedScenario,
     ScenarioArea,
     ScenarioEntity,
@@ -27,6 +28,7 @@ _HINT_SOURCE_ID = "hint_source_001"
 _CLUE_SOURCE_ID = "clue_source_001"
 _GATE_ENTITY_ID = "gate_001"
 _REQUIRED_ITEM_ID = "required_item_001"
+_DEPENDENCY_GROUP_ID = "dep_group_gate_001"
 
 
 def build_materialized_scenario(params: ScenarioParams) -> MaterializedScenario:
@@ -99,11 +101,19 @@ def build_materialized_scenario_from_template(
         ),
         entities=entities,
         items=items,
+        dependency_groups={
+            _DEPENDENCY_GROUP_ID: ScenarioDependencyGroup(
+                id=_DEPENDENCY_GROUP_ID,
+                mode="all_of",
+                node_ids=(roles.required_item_id,),
+            )
+        },
         gate_rule=ScenarioGateRule(
             from_area_id=roles.gate_area_id,
             to_area_id=roles.target_area_id,
             required_item_id=roles.required_item_id,
             gate_entity_id=roles.gate_entity_id,
+            dependency_group_id=_DEPENDENCY_GROUP_ID,
         ),
         goal_rule=ScenarioGoalRule(
             type="enter_area",
