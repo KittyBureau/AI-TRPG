@@ -1,5 +1,7 @@
 # Playable Scenario Generator v0
 
+Status: partially outdated design reference. This file remains useful as generator-design history, but current implementation truth for formal gameplay validation and preset coverage now lives in `docs/01_specs/formal_gameplay_model_v0.md`.
+
 Last updated: 2026-03-12
 
 ## 1. Alignment summary

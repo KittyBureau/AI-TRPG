@@ -1,5 +1,7 @@
 # Playable Scenario Kernel Audit + Handcrafted Preset
 
+Status: historical audit/design reference. Some scenario conclusions here, especially older Midnight Archive goal-shape assumptions, are superseded by current runtime behavior and `docs/01_specs/formal_gameplay_model_v0.md`.
+
 ## 1. Alignment Summary
 
 This note answers one question:

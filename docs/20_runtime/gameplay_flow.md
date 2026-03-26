@@ -24,15 +24,26 @@ Current item/gameplay note:
 
 Before starting the gameplay loop:
 
-1. Start the backend.
-2. Check `GET /api/v1/runtime/status`.
-3. If it returns `{"ready": false, "reason": "passphrase_required"}`, run:
+1. For a first real local run, if config/keyring files do not exist yet, run:
+
+```bash
+python -m backend.tools.setup_keyring
+```
+
+2. Start the backend from the repo root. Preferred local launcher:
+
+```bash
+python scripts/run_backend.py
+```
+
+3. Check `GET /api/v1/runtime/status`.
+4. If it returns `{"ready": false, "reason": "passphrase_required"}`, run:
 
 ```bash
 python -m backend.tools.unlock_keyring
 ```
 
-4. Wait for `GET /api/v1/runtime/status` to return `{"ready": true, "reason": "ready"}`.
+5. Wait for `GET /api/v1/runtime/status` to return `{"ready": true, "reason": "ready"}`.
 
 Notes:
 

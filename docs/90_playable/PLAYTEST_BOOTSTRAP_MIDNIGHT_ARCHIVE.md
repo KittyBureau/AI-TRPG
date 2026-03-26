@@ -1,13 +1,19 @@
 # Playtest Bootstrap: Midnight Archive
 
-Temporary guide. Local only. One scenario only.
+Status: scenario-specific manual bootstrap guide. For current local startup and first-run setup, use `README.md` and `frontend/README_frontend.md` first. This guide assumes the normal local bootstrap already works.
 
 ## 1. Quick Start (TL;DR)
 
 From repo root:
 
 ```powershell
-uvicorn backend.api.main:app --reload
+python scripts/run_backend.py
+```
+
+If this is the first real local run and config/keyring files are missing:
+
+```powershell
+python -m backend.tools.setup_keyring
 ```
 
 If runtime says `passphrase_required`:
@@ -32,16 +38,12 @@ $BASE = "http://127.0.0.1:8000"
 
 ## 2. Backend Startup
 
-Working directory:
-
-```powershell
-cd E:\202410\Repos\AI-TRPG
-```
+Run from the repository root so `storage/` resolves correctly.
 
 Start backend:
 
 ```powershell
-uvicorn backend.api.main:app --reload
+python scripts/run_backend.py
 ```
 
 Expected success signal:

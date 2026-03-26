@@ -36,19 +36,22 @@ Storage:
 
 Runtime system:
 
+- preferred local-first backend startup is `python scripts/run_backend.py` from repo root
+- first-time local credential/bootstrap helper is `python -m backend.tools.setup_keyring`
 - backend startup performs a non-interactive credential readiness probe
 - runtime readiness is exposed through `/api/v1/runtime/status`
 - explicit local unlock is handled by `python -m backend.tools.unlock_keyring`
 
 ## 2. Stable Runtime Flow
 
-1. Start backend.
-2. Check `GET /api/v1/runtime/status`.
-3. If `ready=false` and `reason=passphrase_required`, run `python -m backend.tools.unlock_keyring`.
-4. CLI posts passphrase to `POST /api/v1/runtime/unlock`.
-5. Runtime status becomes `ready=true`.
-6. Frontend detects readiness and recovers campaign/session state.
-7. `POST /api/v1/chat/turn` executes the current actor turn.
+1. If this is the first real local run and config/keyring files are missing, run `python -m backend.tools.setup_keyring`.
+2. Start backend with `python scripts/run_backend.py` from repo root.
+3. Check `GET /api/v1/runtime/status`.
+4. If `ready=false` and `reason=passphrase_required`, run `python -m backend.tools.unlock_keyring`.
+5. CLI posts passphrase to `POST /api/v1/runtime/unlock`.
+6. Runtime status becomes `ready=true`.
+7. Frontend detects readiness and recovers campaign/session state.
+8. `POST /api/v1/chat/turn` executes the current actor turn.
 
 ## 3. Frontend Structure
 

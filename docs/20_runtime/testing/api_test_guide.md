@@ -9,13 +9,18 @@ This is the single authoritative API test guide.
 1. Start backend:
 
 ```bash
-uvicorn backend.api.main:app --reload
+python scripts/run_backend.py
 ```
 
 2. Optional real LLM setup:
 
-- copy `storage/config/llm_config.example.json` -> `storage/config/llm_config.json`
-- configure profile
+- for a first real local run, initialize config + keyring with:
+
+```bash
+python -m backend.tools.setup_keyring
+```
+
+- if needed, then review `storage/config/llm_config.json` and adjust the active profile
 - backend startup performs a non-interactive credential precheck
 - if `GET /api/v1/runtime/status` returns `{"ready": false, "reason": "passphrase_required"}`, run:
 
@@ -26,6 +31,7 @@ python -m backend.tools.unlock_keyring
 - `POST /api/v1/runtime/unlock` is reserved for the local unlock command; the frontend does not collect passphrases
 - `GET /api/v1/runtime/status` returns `{"ready": true|false, "reason": "..."}` for frontend/readiness checks
 - backend startup no longer blocks on `getpass()`; unlock happens only through the explicit local CLI
+- run backend commands from the repository root so `storage/` resolves correctly
 
 3. Base URL:
 

@@ -109,6 +109,8 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - Character library persists at `storage/characters_library/<character_id>.json`.
 - Worlds persist at `storage/worlds/<world_id>/world.json`; v1 API may lazily create a deterministic stub world on first read.
 - LLM config lives at `storage/config/llm_config.json`; keyring at `storage/secrets/keyring.json` with no env fallback.
+- Preferred local-first backend startup is `python scripts/run_backend.py` from the repo root because storage/config/secrets resolve under repo-root `storage/`.
+- First-time local credential bootstrap may use `python -m backend.tools.setup_keyring`; unlock of an existing keyring remains `python -m backend.tools.unlock_keyring`.
 - Backend startup runs a non-interactive LLM credential precheck only; passphrase entry happens via `python -m backend.tools.unlock_keyring`.
 - Storage fields match `docs/01_specs/storage_layout.md`.
 - Portable items persist under `campaign.json.items`; inventory-only campaign seeds are unsupported.
@@ -117,7 +119,7 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - Run the API test guide to verify files are written with expected shapes.
 - Inspect storage files after changes to models or persistence logic.
 **Scope**
-- `backend/infra/file_repo.py`, `backend/services/llm_config.py`, `backend/services/keyring.py`, `storage/**`, `docs/01_specs/storage_layout.md`.
+- `backend/infra/file_repo.py`, `backend/services/llm_config.py`, `backend/services/keyring.py`, `backend/tools/setup_keyring.py`, `backend/tools/unlock_keyring.py`, `scripts/run_backend.py`, `storage/**`, `README.md`, `frontend/README_frontend.md`, `docs/01_specs/storage_layout.md`.
 
 ## 7. Map Data Integrity & Generation
 **Rules**
@@ -191,6 +193,7 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 
 ## 12. Documentation Authority & Sync Obligations
 **Rules**
+- Local-first bootstrap docs live in `README.md` and `frontend/README_frontend.md`; keep these aligned with repo-root storage behavior, smoke-vs-real-run guidance, and runtime readiness flows.
 - Authoritative docs: `docs/00_overview/**`, `docs/01_specs/**`, `docs/20_runtime/**`, `docs/30_resources/**`, `docs/90_playable/**`.
 - Minimal sync baseline note: `docs/01_specs/DOC_SYNC_BASELINE.md`.
 - Current architecture/status overview for Playable v1 lives in `docs/00_overview/PROJECT_STATUS.md`.
@@ -211,7 +214,7 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - When changing gameplay flow UI controls or turn templates, run a manual chain check: create campaign -> world_generate -> map_generate -> actor_spawn -> move -> inventory_add -> chat/turn.
 - At stage closure, if the lightweight ChatGPT reference set changed materially, refresh the Drive package with `scripts/sync_chatgpt_docs.ps1`.
 **Scope**
-- `backend/**`, `frontend/**`, `docs/00_overview/**`, `docs/01_specs/**`, `docs/20_runtime/**`, `docs/30_resources/**`, `docs/90_playable/**`, `docs/99_human_only/alignment_reports/**`, `docs/01_specs/TODO_DOCS_ALIGNMENT.md`.
+- `README.md`, `frontend/README_frontend.md`, `backend/**`, `frontend/**`, `docs/00_overview/**`, `docs/01_specs/**`, `docs/20_runtime/**`, `docs/30_resources/**`, `docs/90_playable/**`, `docs/99_human_only/alignment_reports/**`, `docs/01_specs/TODO_DOCS_ALIGNMENT.md`.
 
 ## 13. CharacterFact Generation & Persistence
 **Rules**

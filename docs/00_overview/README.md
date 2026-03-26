@@ -2,6 +2,7 @@
 
 ## Entry Points
 
+- `README.md` - Local quick start and first-run bootstrap.
 - `docs/00_overview/README.md` - Primary docs entry.
 - `docs/00_overview/DOCS_PATH_MAPPING.md` - One-time migration mapping and rollback map.
 - `docs/_index/AI_INDEX.md` - Task constraints and verification checkpoints.
@@ -31,11 +32,13 @@
 - `docs/01_specs/character_fact_v1.md`
 - `docs/01_specs/generated_fact_foundation.md`
 - `docs/01_specs/npc_memory_minimal.md`
+- `docs/01_specs/formal_gameplay_model_v0.md`
 - `docs/01_specs/schemas/character_fact.v1.schema.json`
 - `docs/01_specs/prompts/character_fact_generate_v1.md`
 
 ## Runtime Guides
 
+- `frontend/README_frontend.md` - Static frontend local serving and backend base URL notes.
 - `docs/20_runtime/item_runtime_model.md` - Stack-first item authority, reveal/take flow, gate check shape, and bounded legacy `inventory_add`.
 - `docs/20_runtime/gameplay_flow.md` - End-to-end gameplay flow and UI/API chain.
 - `docs/20_runtime/api_v1_route_migration.md` - `/api/v1` route migration note.

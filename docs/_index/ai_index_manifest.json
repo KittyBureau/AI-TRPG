@@ -62,7 +62,12 @@
         "backend/infra/file_repo.py",
         "backend/services/llm_config.py",
         "backend/services/keyring.py",
+        "backend/tools/setup_keyring.py",
+        "backend/tools/unlock_keyring.py",
+        "scripts/run_backend.py",
         "storage/**",
+        "README.md",
+        "frontend/README_frontend.md",
         "docs/01_specs/storage_layout.md"
       ]
     },
@@ -120,6 +125,8 @@
       "id": "12",
       "title": "Documentation Authority & Sync Obligations",
       "paths": [
+        "README.md",
+        "frontend/README_frontend.md",
         "backend/**",
         "frontend/**",
         "docs/00_overview/**",
@@ -202,6 +209,8 @@
     }
   ],
   "sources_of_truth": [
+    "README.md",
+    "frontend/README_frontend.md",
     "docs/01_specs/architecture.md",
     "docs/01_specs/storage_layout.md",
     "docs/01_specs/settings.md",
