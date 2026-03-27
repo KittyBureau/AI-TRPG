@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Literal, Tuple
+from typing import Any, Dict, Literal, Tuple
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
@@ -150,3 +150,10 @@ class ScenarioValidationResult(BaseModel):
     ok: bool = True
     template_id: ScenarioTemplateId
     checked_area_count: int
+    issues: Tuple["ScenarioValidationIssue", ...] = ()
+
+
+class ScenarioValidationIssue(BaseModel):
+    code: str
+    message: str
+    refs: Dict[str, Any] = Field(default_factory=dict)

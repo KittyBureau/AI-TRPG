@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, computed_field
 from backend.domain.consequence_models import CampaignConsequenceState
 from backend.domain.fact_models import CampaignFact
 from backend.domain.mistake_models import CampaignMistakeState
+from backend.domain.scenario_bootstrap_models import ScenarioBootstrapFragment
 
 
 class MapArea(BaseModel):
@@ -159,6 +160,34 @@ class ActorState(BaseModel):
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
+HostilityTargetScope = Literal["entity"]
+HostilityCategory = Literal["verbal_aggression", "assaultive_intent"]
+HostilityOutcomeType = Literal["interaction_locked", "progression_locked"]
+
+
+class CampaignHostilityTarget(BaseModel):
+    target_id: str
+    scope_kind: HostilityTargetScope = "entity"
+    score: int = 0
+    threshold: int = 2
+    interaction_locked: bool = False
+    last_category: Optional[HostilityCategory] = None
+    triggered_outcome_ids: List[str] = Field(default_factory=list)
+
+
+class CampaignHostilityOutcome(BaseModel):
+    outcome_id: str
+    type: HostilityOutcomeType
+    target_id: str
+    scope_kind: HostilityTargetScope = "entity"
+    active: bool = True
+
+
+class CampaignHostilityState(BaseModel):
+    targets: Dict[str, CampaignHostilityTarget] = Field(default_factory=dict)
+    outcomes: Dict[str, CampaignHostilityOutcome] = Field(default_factory=dict)
+
+
 class Campaign(BaseModel):
     id: str
     selected: Selected
@@ -182,6 +211,7 @@ class Campaign(BaseModel):
     facts: Dict[str, CampaignFact] = Field(default_factory=dict)
     mistakes: CampaignMistakeState = Field(default_factory=CampaignMistakeState)
     consequences: CampaignConsequenceState = Field(default_factory=CampaignConsequenceState)
+    hostility: CampaignHostilityState = Field(default_factory=CampaignHostilityState)
     items: Dict[str, RuntimeItemStack] = Field(default_factory=dict)
     entities: Dict[str, Entity] = Field(default_factory=dict)
     positions: Dict[str, str] = Field(default_factory=dict)
@@ -189,6 +219,10 @@ class Campaign(BaseModel):
     character_states: Dict[str, str] = Field(default_factory=dict)
     goal: Goal
     milestone: Milestone
+    scenario_runtime_fragment: Optional[ScenarioBootstrapFragment] = Field(
+        default=None,
+        exclude=True,
+    )
     lifecycle: CampaignLifecycle = Field(default_factory=CampaignLifecycle)
     created_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
@@ -257,6 +291,7 @@ class StateSummary(BaseModel):
     active_actor_inventory_stacks: List[InventoryStackView] = Field(default_factory=list)
     mistakes: Dict[str, Any] = Field(default_factory=dict)
     consequences: Dict[str, Any] = Field(default_factory=dict)
+    hostility: Dict[str, Any] = Field(default_factory=dict)
 
 
 class TurnLogEntry(BaseModel):

@@ -39,14 +39,15 @@ TODOs across docs.
 - Status: v0 closed loop implemented and lightly stabilized for pause.
 - Scope:
   - `docs/90_playable/P2_PLAYABLE_SCENARIO_GENERATOR_V0.md` now records the watchtower extraction, `key_gate_scenario` template definition, parameter model, solvability rules, and minimal integration plan.
-  - repo now also contains an internal-only scenario chain plus a guarded runtime compatibility path for metadata-backed `key_gate_scenario` worlds
+  - repo now also contains an internal-only scenario chain plus a guarded runtime path for metadata-backed `key_gate_scenario` worlds
   - one built-in scenario-backed preset is now available for internal development and validation of the guarded preset/bootstrap flow
   - `/api/v1/worlds/generate` now persists only normalized scenario generator metadata for supported playable-scenario worlds; topology and runtime content are still rebuilt later during campaign bootstrap/runtime
   - `frontend/panels/world_panel.js` now exposes only the minimal scenario parameter surface; this must still not be described as advanced scenario editing or a broader content system
   - world list and campaign world selection now expose only lightweight scenario readability fields (`scenario-backed`, template label, area count, difficulty)
 - Recommendation:
   - Keep the design doc aligned to the current code seams in `backend/app/world_presets.py`, `backend/app/turn_service.py`, and `backend/app/tool_executor.py`.
-  - Treat the `tool_executor.py` scenario move/goal fallback as a v0 compatibility bridge only, not as a general future expansion point.
+  - Keep documenting scenario-generated worlds as metadata-backed resources at the world layer, but treat `Campaign.scenario_runtime_fragment` as the post-bootstrap execution-time authority for scenario gate/goal checks.
+  - Do not reintroduce `tool_executor.py` scenario move/goal fallback as a future expansion path.
   - Keep describing API-generated scenario worlds as metadata-backed resources, not persisted materialized worlds.
   - Treat Scenario Generator v0 as stabilized around the single `key_gate_scenario` path; future work should branch deliberately instead of continuing silent scope growth.
 - Evidence:
@@ -56,3 +57,14 @@ TODOs across docs.
   - `backend/app/turn_service.py`
   - `backend/app/tool_executor.py`
   - `frontend/panels/world_panel.js`
+
+## Docs governance carry-over (2026-03-26)
+- Status: pending cleanup after the temporary working-board phase.
+- Scope:
+  - `docs/90_playable/` still contains historical round/TODO references that should remain reference-only and not look like current execution boards.
+  - `docs/01_specs/item_system_v2.md` still needs one cleanup pass to remove or relabel legacy references that treat `frontend/app.js` as a primary current surface.
+  - decide whether `docs/01_specs/formal_gameplay_model_v0.md` should keep its current filename or be renamed later while preserving current authority.
+  - decide whether the lightweight Drive-sync whitelist should include the current formal gameplay spec.
+- Recommendation:
+  - keep current entry docs authoritative first
+  - treat these as cleanup follow-ups rather than blockers on the now-synced runtime/formal status pages

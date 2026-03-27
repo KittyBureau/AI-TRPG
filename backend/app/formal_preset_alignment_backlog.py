@@ -47,6 +47,7 @@ def build_preset_alignment_backlog_summary() -> PresetAlignmentBacklogSummary:
         "missing_gate_clue_alignment": 0,
         "missing_authoring_audit_visibility": 0,
         "shaping_gap_unexposed": 0,
+        "limited_preset_coverage_alignment": 0,
     }
     count_by_target = {
         "adapter_only": 0,
@@ -98,6 +99,15 @@ def _build_backlog_items_for_preset(
                 rationale="formal preset output is not yet producing stable authoring audit visibility.",
             )
         )
+    if not preset_summary.has_full_area_coverage:
+        items.append(
+            _backlog_item(
+                preset_summary,
+                gap_type="limited_preset_coverage_alignment",
+                recommended_target="future_optional",
+                rationale="current formal preset output covers only a structurally useful sample, not the full preset area graph.",
+            )
+        )
     if _has_unexposed_shaping_gap(preset_summary):
         items.append(
             _backlog_item(
@@ -115,11 +125,7 @@ def _has_unexposed_shaping_gap(preset_summary: PresetAlignmentAuditItem) -> bool
         return False
     if preset_summary.overall_quality_status != "weak":
         return False
-    return any(
-        finding.startswith("overall_quality:weak")
-        or finding == "clue_support_signals_missing"
-        for finding in preset_summary.key_findings
-    )
+    return "clue_support_related" in preset_summary.issue_categories
 
 
 def _backlog_item(

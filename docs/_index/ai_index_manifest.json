@@ -176,6 +176,26 @@
         "backend/tests/test_formal_preset_adapter.py",
         "docs/01_specs/formal_gameplay_model_v0.md"
       ]
+    },
+    {
+      "id": "15",
+      "title": "Scenario Gameplay Validation & Runtime Consequences",
+      "paths": [
+        "backend/app/scenario_builder.py",
+        "backend/app/scenario_validator.py",
+        "backend/app/campaign_hostility_service.py",
+        "backend/app/tool_executor.py",
+        "backend/app/turn_service.py",
+        "backend/domain/models.py",
+        "backend/tests/test_scenario_builder.py",
+        "backend/tests/test_scenario_templates.py",
+        "backend/tests/test_turn_hostility_thresholds.py",
+        "backend/tests/test_turn_progression_coupling.py",
+        "backend/tests/test_turn_response_contract_api.py",
+        "README.md",
+        "docs/00_overview/README.md",
+        "docs/00_overview/PROJECT_STATUS.md"
+      ]
     }
   ],
   "triggers": [

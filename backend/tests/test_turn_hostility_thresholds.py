@@ -1,0 +1,243 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Dict
+
+import pytest
+
+import backend.app.turn_service as turn_service_module
+from backend.app.turn_service import TurnService
+from backend.domain.models import (
+    ActorState,
+    Campaign,
+    Entity,
+    EntityLocation,
+    Goal,
+    MapArea,
+    MapData,
+    Milestone,
+    Selected,
+    SettingsSnapshot,
+)
+from backend.infra.file_repo import FileRepo
+
+
+class _HostilityLLM:
+    def generate(
+        self,
+        system_prompt: str,
+        user_input: str,
+        debug_append: Any,
+    ) -> Dict[str, Any]:
+        token = user_input.strip()
+        params: Dict[str, Any]
+        if token == "TALK_THREAT":
+            params = {"tone": "threatening"}
+        else:
+            params = {"tone": "calm"}
+        return {
+            "assistant_text": "",
+            "dialog_type": "scene_description",
+            "tool_calls": [
+                {
+                    "id": f"call_{token.lower()}",
+                    "tool": "scene_action",
+                    "args": {
+                        "actor_id": "pc_001",
+                        "action": "talk",
+                        "target_id": "guard_01",
+                        "params": params,
+                    },
+                }
+            ],
+        }
+
+
+def _make_service(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[TurnService, FileRepo]:
+    monkeypatch.setattr(turn_service_module, "LLMClient", _HostilityLLM)
+    repo = FileRepo(tmp_path / "storage")
+    return TurnService(repo), repo
+
+
+def _create_campaign(repo: FileRepo, campaign_id: str) -> None:
+    repo.create_campaign(
+        Campaign(
+            id=campaign_id,
+            selected=Selected(
+                world_id="world_001",
+                map_id="map_001",
+                party_character_ids=["pc_001"],
+                active_actor_id="pc_001",
+            ),
+            settings_snapshot=SettingsSnapshot(),
+            goal=Goal(text="Keep the conversation open.", status="active"),
+            milestone=Milestone(current="intro", last_advanced_turn=0),
+            map=MapData(
+                areas={
+                    "area_001": MapArea(
+                        id="area_001",
+                        name="Checkpoint",
+                        description="A guarded checkpoint.",
+                        reachable_area_ids=[],
+                    )
+                },
+                connections=[],
+            ),
+            actors={
+                "pc_001": ActorState(
+                    position="area_001",
+                    hp=10,
+                    character_state="alive",
+                    inventory={},
+                    meta={},
+                )
+            },
+            entities={
+                "guard_01": Entity(
+                    id="guard_01",
+                    kind="npc",
+                    label="Wary Guard",
+                    tags=["guard"],
+                    loc=EntityLocation(type="area", id="area_001"),
+                    verbs=["inspect", "talk"],
+                    state={},
+                    props={},
+                )
+            },
+        )
+    )
+
+
+def test_turn_service_persists_hostility_and_structured_lockout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    _create_campaign(repo, "camp_hostility_turns")
+
+    calm = service.submit_turn("camp_hostility_turns", "TALK_CALM")
+    assert calm["applied_actions"][0]["tool"] == "scene_action"
+    assert calm["applied_actions"][0]["result"]["ok"] is True
+    assert "hostility" not in calm["applied_actions"][0]["result"]
+    assert calm["narrative_text"] == "You talk to Wary Guard."
+    assert calm["state_summary"]["hostility"] == {
+        "target_count": 0,
+        "outcome_count": 0,
+        "targets": [],
+        "outcomes": [],
+    }
+
+    first_threat = service.submit_turn("camp_hostility_turns", "TALK_THREAT")
+    assert first_threat["applied_actions"][0]["result"]["ok"] is True
+    assert first_threat["applied_actions"][0]["result"]["hostility"] == {
+        "target_id": "guard_01",
+        "scope_kind": "entity",
+        "score": 1,
+        "threshold": 2,
+        "interaction_locked": False,
+        "last_category": "verbal_aggression",
+        "triggered_outcome_ids": [],
+        "delta": 1,
+    }
+    assert first_threat["state_summary"]["hostility"] == {
+        "target_count": 1,
+        "outcome_count": 0,
+        "targets": [
+            {
+                "target_id": "guard_01",
+                "scope_kind": "entity",
+                "score": 1,
+                "threshold": 2,
+                "interaction_locked": False,
+                "last_category": "verbal_aggression",
+                "triggered_outcome_ids": [],
+            }
+        ],
+        "outcomes": [],
+    }
+
+    second_threat = service.submit_turn("camp_hostility_turns", "TALK_THREAT")
+    assert second_threat["applied_actions"][0]["result"]["ok"] is False
+    assert second_threat["applied_actions"][0]["result"]["error"] == {
+        "code": "interaction_locked_triggered",
+        "message": "hostility threshold reached: guard_01",
+    }
+    assert second_threat["narrative_text"] == (
+        "Wary Guard refuses to continue interacting with you."
+    )
+    assert second_threat["state_summary"]["hostility"] == {
+        "target_count": 1,
+        "outcome_count": 1,
+        "targets": [
+            {
+                "target_id": "guard_01",
+                "scope_kind": "entity",
+                "score": 2,
+                "threshold": 2,
+                "interaction_locked": True,
+                "last_category": "verbal_aggression",
+                "triggered_outcome_ids": ["hostility_guard_01_interaction_locked"],
+            }
+        ],
+        "outcomes": [
+            {
+                "outcome_id": "hostility_guard_01_interaction_locked",
+                "type": "interaction_locked",
+                "target_id": "guard_01",
+                "scope_kind": "entity",
+                "active": True,
+            }
+        ],
+    }
+
+    reloaded = repo.get_campaign("camp_hostility_turns")
+    assert reloaded is not None
+    assert reloaded.hostility.targets["guard_01"].score == 2
+    assert reloaded.hostility.targets["guard_01"].interaction_locked is True
+    assert reloaded.hostility.targets["guard_01"].triggered_outcome_ids == [
+        "hostility_guard_01_interaction_locked"
+    ]
+    assert list(reloaded.hostility.outcomes.keys()) == [
+        "hostility_guard_01_interaction_locked"
+    ]
+    assert reloaded.entities["guard_01"].state["interaction_locked"] is True
+    assert reloaded.entities["guard_01"].state["blocked_verbs"] == ["talk"]
+
+    after_lock = service.submit_turn("camp_hostility_turns", "TALK_CALM")
+    assert after_lock["applied_actions"][0]["result"]["ok"] is False
+    assert after_lock["applied_actions"][0]["result"]["error"] == {
+        "code": "interaction_locked",
+        "message": "interaction locked: guard_01",
+    }
+    assert after_lock["applied_actions"][0]["result"]["hostility"] == {
+        "target_id": "guard_01",
+        "scope_kind": "entity",
+        "score": 2,
+        "threshold": 2,
+        "interaction_locked": True,
+        "last_category": "verbal_aggression",
+        "triggered_outcome_ids": ["hostility_guard_01_interaction_locked"],
+        "triggered_outcomes": [
+            {
+                "outcome_id": "hostility_guard_01_interaction_locked",
+                "type": "interaction_locked",
+                "target_id": "guard_01",
+                "scope_kind": "entity",
+                "active": True,
+            }
+        ],
+    }
+    assert after_lock["narrative_text"] == (
+        "Wary Guard refuses to continue interacting with you."
+    )
+    assert after_lock["state_summary"]["hostility"]["outcome_count"] == 1
+
+    reloaded_again = repo.get_campaign("camp_hostility_turns")
+    assert reloaded_again is not None
+    assert reloaded_again.hostility.targets["guard_01"].score == 2
+    assert list(reloaded_again.hostility.outcomes.keys()) == [
+        "hostility_guard_01_interaction_locked"
+    ]

@@ -5,6 +5,10 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from backend.app.actor_service import spawn_actor
+from backend.app.campaign_hostility_service import (
+    build_target_hostility_snapshot,
+    record_hostility_scene_action,
+)
 from backend.app.character_facade_factory import create_runtime_character_facade
 from backend.app.item_operations import (
     can_actor_use_stack,
@@ -38,16 +42,12 @@ from backend.app.item_runtime import (
     resolve_selected_stack_resolution,
     validate_and_sync_campaign_items,
 )
-from backend.app.scenario_runtime_mapper import (
-    is_scenario_world_goal_area,
-    required_item_for_scenario_world_move,
-)
+from backend.app.scenario_runtime_mapper import is_scenario_generator_world
 from backend.app.world_presets import (
     MIDNIGHT_ARCHIVE_PAYOFF_ENTITY_ID,
     MIDNIGHT_ARCHIVE_WORLD_ID,
-    build_world_preset,
-    is_goal_area,
-    required_item_for_move,
+    is_goal_area as is_preset_goal_area,
+    required_item_for_move as required_item_for_preset_move,
 )
 from backend.app.world_service import generate_world
 from backend.domain.character_access import (
@@ -283,20 +283,16 @@ def _apply_move(
         return None, "invalid_args"
     if not _is_connected(campaign, from_area_id, to_area_id):
         return None, "invalid_args"
-    world = repo.get_world(campaign.selected.world_id) if repo is not None else None
-    if world is None:
-        world = build_world_preset(campaign.selected.world_id)
-    required_item_id = required_item_for_move(
-        campaign.selected.world_id, from_area_id, to_area_id
+    fragment = campaign.scenario_runtime_fragment
+    if fragment is None and repo is not None:
+        world = repo.get_world(campaign.selected.world_id)
+        if world is not None and is_scenario_generator_world(world):
+            return None, "scenario_runtime_authority_missing"
+    required_item_id = _required_item_for_transition_from_campaign(
+        campaign,
+        from_area_id=from_area_id,
+        to_area_id=to_area_id,
     )
-    # V0 compatibility path: only consult scenario metadata if the hand-authored
-    # preset lookup did not already define the gate requirement.
-    if required_item_id is None and world is not None:
-        required_item_id = required_item_for_scenario_world_move(
-            world,
-            from_area_id,
-            to_area_id,
-        )
     if required_item_id is not None:
         quantity = get_actor_item_quantity_from_items_only(
             campaign, actor_id, required_item_id
@@ -312,9 +308,7 @@ def _apply_move(
             character_state=actor_state.character_state,
         ),
     )
-    reached_goal_area = is_goal_area(campaign.selected.world_id, to_area_id)
-    if not reached_goal_area and world is not None:
-        reached_goal_area = is_scenario_world_goal_area(world, to_area_id)
+    reached_goal_area = _is_campaign_goal_area(campaign, to_area_id=to_area_id)
     if reached_goal_area:
         campaign.goal.status = "completed"
     return AppliedAction(
@@ -323,6 +317,40 @@ def _apply_move(
         result={"from_area_id": from_area_id, "to_area_id": to_area_id},
         timestamp=timestamp,
     ), None
+
+
+def _required_item_for_transition_from_campaign(
+    campaign: Campaign,
+    *,
+    from_area_id: str,
+    to_area_id: str,
+) -> Optional[str]:
+    fragment = campaign.scenario_runtime_fragment
+    if fragment is not None:
+        gate = fragment.gate
+        if gate.from_area_id == from_area_id and gate.to_area_id == to_area_id:
+            return gate.required_item_id
+        return None
+    return required_item_for_preset_move(
+        campaign.selected.world_id,
+        from_area_id,
+        to_area_id,
+    )
+
+
+def _is_campaign_goal_area(
+    campaign: Campaign,
+    *,
+    to_area_id: str,
+) -> bool:
+    fragment = campaign.scenario_runtime_fragment
+    if fragment is not None:
+        completion = fragment.completion
+        return (
+            completion.type == "enter_area"
+            and completion.target_area_id == to_area_id
+        )
+    return is_preset_goal_area(campaign.selected.world_id, to_area_id)
 
 
 def _apply_hp_delta(
@@ -756,6 +784,21 @@ def _apply_scene_action(
                             error_message=f"take requires search first: {target.id}",
                         ),
                     )
+            if target.state.get("interaction_locked") is True:
+                return _scene_action_applied(
+                    call,
+                    timestamp,
+                    _scene_action_result(
+                        ok=False,
+                        narrative=_interaction_locked_narrative(target),
+                        error_code="interaction_locked",
+                        error_message=f"interaction locked: {target.id}",
+                        hostility=build_target_hostility_snapshot(
+                            campaign,
+                            target_id=target.id,
+                        ),
+                    ),
+                )
             return _scene_action_applied(
                 call,
                 timestamp,
@@ -774,6 +817,32 @@ def _apply_scene_action(
     items_before = deepcopy(campaign.items)
     actors_before = deepcopy(campaign.actors)
     try:
+        hostility = (
+            record_hostility_scene_action(
+                campaign,
+                action=normalized_action,
+                target=target,
+                params=params,
+            )
+            if target is not None
+            else None
+        )
+        if hostility is not None and hostility.get("triggered_outcomes"):
+            return _scene_action_applied(
+                call,
+                timestamp,
+                _scene_action_result(
+                    ok=False,
+                    narrative=_interaction_locked_narrative(target),
+                    error_code="interaction_locked_triggered",
+                    error_message=f"hostility threshold reached: {target.id}",
+                    entity_patches=entity_patches,
+                    new_entities=new_entities,
+                    removed_entities=removed_entities,
+                    hostility=hostility,
+                ),
+            )
+
         if normalized_action == "inspect":
             label = target.label if target is not None else "the scene"
             hint_suffix = _scene_hint_suffix(target)
@@ -803,6 +872,7 @@ def _apply_scene_action(
                     entity_patches=entity_patches,
                     new_entities=new_entities,
                     removed_entities=removed_entities,
+                    hostility=hostility,
                 ),
             )
 
@@ -1538,6 +1608,7 @@ def _scene_action_result(
     removed_entities: Optional[List[Dict[str, Any]]] = None,
     error_code: Optional[str] = None,
     error_message: Optional[str] = None,
+    hostility: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     result: Dict[str, Any] = {
         "ok": ok,
@@ -1553,7 +1624,15 @@ def _scene_action_result(
             "code": error_code or "scene_action_failed",
             "message": error_message or "scene action failed",
         }
+    if hostility:
+        result["hostility"] = hostility
     return result
+
+
+def _interaction_locked_narrative(target: Entity) -> str:
+    if target.kind == "npc":
+        return f"{target.label} refuses to continue interacting with you."
+    return f"You can no longer make progress with {target.label}."
 
 
 def _normalized_verbs(raw_verbs: object) -> List[str]:
@@ -1600,7 +1679,9 @@ def _is_scene_action_allowed(action: str, target: Entity) -> bool:
             return False
         return "inspect" not in blocked_verbs
     if action == "talk":
-        return target.kind == "npc" or "talk" in allowed_verbs
+        return "talk" not in blocked_verbs and (
+            target.kind == "npc" or "talk" in allowed_verbs
+        )
     return action in allowed_verbs
 
 

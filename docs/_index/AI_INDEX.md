@@ -22,7 +22,7 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - `/api/v1/chat/turn` stable top-level response keys are `effective_actor_id`, `narrative_text`, `dialog_type`, `tool_calls`, `applied_actions`, `tool_feedback`, `conflict_report`, and `state_summary`.
 - `/api/v1/chat/turn` omits top-level `debug` when trace is off; when trace is on, `debug.resources` is present and uses array categories.
 - `/api/v1/chat/turn` keeps `tool_calls` / `applied_actions` as arrays; `tool_feedback` and `conflict_report` may be `null` depending on turn outcome.
-- `/api/v1/chat/turn.state_summary` keeps stable v1 keys: `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, `inventories`, `inventory_stack_ids`, `inventory_stacks`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, `active_actor_inventory`, `active_actor_inventory_stack_ids`, `active_actor_inventory_stacks`. Stack payloads are primary; aggregate inventory fields are derived compatibility snapshots.
+- `/api/v1/chat/turn.state_summary` keeps stable v1 keys: `active_actor_id`, `positions`, `positions_parent`, `positions_child`, `hp`, `character_states`, `inventories`, `inventory_stack_ids`, `inventory_stacks`, `objective`, `active_area_id`, `active_area_name`, `active_area_description`, `active_actor_inventory`, `active_actor_inventory_stack_ids`, `active_actor_inventory_stacks`, `mistakes`, `consequences`, and `hostility`. Stack payloads are primary; aggregate inventory fields are derived compatibility snapshots.
 - `GET /api/v1/campaign/get` returns the authoritative selected/actors/map/status snapshot for a valid campaign; `actors` exposes read-only actor runtime snapshot fields needed by Play refresh, including derived compatibility `inventory`, `inventory_stack_ids` exposes the stack-id companion view, `inventory_stacks` is the primary frontend inventory contract, `map.areas` exposes current reachability state, `status` carries lifecycle + milestone data from the same campaign snapshot, missing campaigns return `404`, and invalid persisted campaign payloads return `500` with a stable error detail.
 - `GET /api/v1/map/view` returns area context plus `entities_in_area` built from current `campaign.entities` with an additive map-only projection of area-root item stacks from `campaign.items`, filtered to the actor's current area, with each entry's current `state`.
 - `/api/v1/chat/turn` actor context resolution uses `execution.actor_id` first, then top-level `actor_id`, then `campaign.selected.active_actor_id`; response includes `effective_actor_id`.
@@ -112,6 +112,8 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - Preferred local-first backend startup is `python scripts/run_backend.py` from the repo root because storage/config/secrets resolve under repo-root `storage/`.
 - First-time local credential bootstrap may use `python -m backend.tools.setup_keyring`; unlock of an existing keyring remains `python -m backend.tools.unlock_keyring`.
 - Backend startup runs a non-interactive LLM credential precheck only; passphrase entry happens via `python -m backend.tools.unlock_keyring`.
+- Scenario-generated campaigns persist internal `scenario_runtime_fragment` authority for runtime gate/goal checks; scenario execution must not fall back to world metadata recovery logic.
+- Campaign runtime state now also persists structured hostility/progression consequences under `campaign.hostility`; threshold-triggered outcomes must not exist only in narrative text.
 - Storage fields match `docs/01_specs/storage_layout.md`.
 - Portable items persist under `campaign.json.items`; inventory-only campaign seeds are unsupported.
 - `docs/00_overview/PROJECT_STATUS.md` summarizes the current stable runtime/frontend/storage shape for Playable v1 handoff.
@@ -195,6 +197,7 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 **Rules**
 - Local-first bootstrap docs live in `README.md` and `frontend/README_frontend.md`; keep these aligned with repo-root storage behavior, smoke-vs-real-run guidance, and runtime readiness flows.
 - Authoritative docs: `docs/00_overview/**`, `docs/01_specs/**`, `docs/20_runtime/**`, `docs/30_resources/**`, `docs/90_playable/**`.
+- Current active backlog lives in `docs/90_playable/PLAYABLE_V1_TODO.md`; completed baseline/closure status belongs in `docs/00_overview/PROJECT_STATUS.md`.
 - Minimal sync baseline note: `docs/01_specs/DOC_SYNC_BASELINE.md`.
 - Current architecture/status overview for Playable v1 lives in `docs/00_overview/PROJECT_STATUS.md`.
 - Transitional exception: `docs/02_guides/testing/playable_v1_manual_test.md` remains as a stable manual-test entry path.
@@ -242,6 +245,11 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - Current formal validation includes structural solvability plus `multi_path_coverage` and `clue_support_coverage`.
 - Current quality/audit outputs include `gate_quality_statuses`, `overall_quality_status`, gate/overall authoring audit, preset alignment audit, and preset remediation backlog output.
 - Generator-side shaping annotations currently include `gate_clue` and `gate_clue_support_gap`.
+- Current preset semantics are intentionally narrow:
+  - `midnight_archive_world` is the current `partial` single-route sample
+  - `test_watchtower_world` remains the `legacy` baseline
+  - trusted `aligned` state now also requires full mapped preset-area coverage for the current adapter scope
+- Current preset remediation backlog output also includes `limited_preset_coverage_alignment` for route-limited samples that expose modern signals but not full preset coverage.
 - Formal validation must not change turn execution, tool execution, inventory, or goal completion timing.
 **Checks**
 - Run `backend/tests/test_formal_gameplay_v0.py` for generator-path validation coverage.
@@ -250,3 +258,23 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - Keep `docs/01_specs/formal_gameplay_model_v0.md` aligned with current implementation truth, especially current Midnight Archive limitations and read-only boundaries.
 **Scope**
 - `backend/domain/formal_gameplay_model.py`, `backend/app/formal_mapper.py`, `backend/app/formal_preset_mapper.py`, `backend/app/formal_validator.py`, `backend/app/formal_preset_alignment_audit.py`, `backend/app/formal_preset_alignment_backlog.py`, `backend/app/scenario_bridge.py`, `backend/domain/scenario_bridge_models.py`, `backend/app/world_presets.py`, `backend/tests/test_formal_gameplay_v0.py`, `backend/tests/test_formal_gameplay_v1.py`, `backend/tests/test_formal_preset_adapter.py`, `docs/01_specs/formal_gameplay_model_v0.md`.
+
+## 15. Scenario Gameplay Validation & Runtime Consequences
+**Rules**
+- Scenario generation uses the existing `backend/app/scenario_builder.py -> backend/app/scenario_validator.py` chain for gameplay validation; invalid generated scenarios must fail before bootstrap/runtime.
+- Current generation-time gameplay validation covers:
+  - reachable completion path
+  - satisfiable gate dependency placement
+  - obvious dead-end rejection
+  - critical clue existence, reachability before the dependency point, and valid clue/item/entity binding
+- Current runtime consequence loop remains system-controlled and stateful:
+  - per-entity hostility accumulates from structured hostile `scene_action` inputs
+  - threshold crossing triggers `interaction_locked`
+  - locking the critical reveal source in the current key-gate scenario can trigger `progression_locked`, fail the goal, and end the campaign lifecycle
+- These checks/outcomes must not rely on LLM narrative inference, fallback recovery, or a second runtime authority model.
+**Checks**
+- Run `backend/tests/test_scenario_builder.py` and `backend/tests/test_scenario_templates.py` for generation-time validation coverage.
+- Run `backend/tests/test_turn_hostility_thresholds.py`, `backend/tests/test_turn_progression_coupling.py`, and `backend/tests/test_turn_response_contract_api.py` for runtime hostility/progression coverage.
+- Keep `README.md`, `docs/00_overview/README.md`, and `docs/00_overview/PROJECT_STATUS.md` aligned with the current runtime authority and gameplay validation boundaries.
+**Scope**
+- `backend/app/scenario_builder.py`, `backend/app/scenario_validator.py`, `backend/app/campaign_hostility_service.py`, `backend/app/tool_executor.py`, `backend/app/turn_service.py`, `backend/domain/models.py`, `backend/tests/test_scenario_builder.py`, `backend/tests/test_scenario_templates.py`, `backend/tests/test_turn_hostility_thresholds.py`, `backend/tests/test_turn_progression_coupling.py`, `backend/tests/test_turn_response_contract_api.py`, `README.md`, `docs/00_overview/README.md`, `docs/00_overview/PROJECT_STATUS.md`.

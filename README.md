@@ -122,6 +122,7 @@ If you are doing a real local run, a quick manual check is:
 
 - Main docs index: `docs/00_overview/README.md`
 - AI task index: `docs/_index/AI_INDEX.md`
+- Active backlog: `docs/90_playable/PLAYABLE_V1_TODO.md`
 
 ## Documentation Workflow
 
@@ -138,10 +139,21 @@ If you are doing a real local run, a quick manual check is:
 - `search` does not grant possession; actor ownership changes on `take`.
 - Gate checks still use `required_item_id` rules, but possession evidence comes from actor-owned stacks derived from `campaign.items`.
 - `inventory_add` still exists as a bounded legacy-only contract for source-entity-backed inventory gain; it is not the mainline gameplay path.
+- Scenario-generated campaigns now close runtime gate/goal authority onto `Campaign.scenario_runtime_fragment`.
+- Scenario execution no longer relies on scenario-world shim or fallback logic after campaign bootstrap.
+- Scenario runtime contract is now regression-covered across multiple topology variants, with explicit failure when required authority fragment data is missing or corrupt.
+- Current gameplay validation/runtime consequence loop now has four stable layers:
+  - generation-time path validation for reachable completion, satisfiable gate dependency, and obvious dead-end rejection
+  - generation-time clue validation for critical clue existence, pre-dependency reachability, and binding integrity
+  - runtime per-entity hostility accumulation with threshold-triggered `interaction_locked`
+  - runtime progression re-check that can trigger `progression_locked` and end the campaign lifecycle when a critical reveal source is locked before the key item is obtained
 - Formal Gameplay Model is currently a read-only structural validation and alignment layer:
   - `dependency_groups` with `all_of` / `any_of`
   - `multi_path_coverage` and `clue_support_coverage`
   - gate/overall quality, authoring audit, preset alignment audit, and remediation backlog output
+- Current preset alignment semantics are intentionally narrow:
+  - `midnight_archive_world` is the current `partial` single-route alignment sample
+  - `test_watchtower_world` remains the `legacy` baseline
 - The formal layer is non-authoritative and does not affect runtime, turn execution, or tool execution.
 
 ## Current Item Docs

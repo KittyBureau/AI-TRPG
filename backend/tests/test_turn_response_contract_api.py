@@ -249,6 +249,7 @@ def _assert_state_summary_contract(summary: Dict[str, Any]) -> None:
         "active_actor_inventory_stacks",
         "mistakes",
         "consequences",
+        "hostility",
     ):
         assert key in summary
 
@@ -287,6 +288,12 @@ def test_chat_turn_narrative_response_contract_and_turn_log_shape(
         "last_turn_index": 0,
         "types": [],
         "tones": [],
+    }
+    assert payload["state_summary"]["hostility"] == {
+        "target_count": 0,
+        "outcome_count": 0,
+        "targets": [],
+        "outcomes": [],
     }
 
     turn_log_path = (
@@ -331,6 +338,12 @@ def test_chat_turn_narrative_response_contract_and_turn_log_shape(
         "last_turn_index": 0,
         "types": [],
         "tones": [],
+    }
+    assert row["state_summary"]["hostility"] == {
+        "target_count": 0,
+        "outcome_count": 0,
+        "targets": [],
+        "outcomes": [],
     }
 
 
@@ -385,6 +398,12 @@ def test_chat_turn_tool_response_contract_keeps_applied_actions_and_tool_feedbac
         "last_turn_index": 0,
         "types": [],
         "tones": [],
+    }
+    assert payload["state_summary"]["hostility"] == {
+        "target_count": 0,
+        "outcome_count": 0,
+        "targets": [],
+        "outcomes": [],
     }
     assert payload["state_summary"]["inventory_stacks"] == {
         "pc_001": [

@@ -166,7 +166,7 @@ Current formal expression does not yet include:
 
 ### 6.2 Midnight Archive
 
-Midnight Archive is the current preset alignment sample.
+Midnight Archive is the current partial preset alignment sample.
 
 Current implementation models one critical formal route only:
 
@@ -181,6 +181,8 @@ Current formal expression includes:
 - stable quality and authoring-audit output
 
 Current implementation does not model full alternative-route coverage for the preset.
+
+Because current formal coverage is intentionally limited to the service route, `midnight_archive_world` is currently expected to remain `partial`, not `aligned`.
 
 ## 7. Alignment Audit and Backlog Output
 
@@ -202,11 +204,17 @@ Current remediation backlog output includes:
   - `missing_gate_clue_alignment`
   - `missing_authoring_audit_visibility`
   - `shaping_gap_unexposed`
+  - `limited_preset_coverage_alignment`
 - `recommended_target`
   - `adapter_only`
   - `formal_annotation`
   - `future_optional`
 - structured backlog summary counts and per-preset plans
+
+Current audit semantics are intentionally conservative:
+
+- `aligned` means the preset is stably connected to the modern formal/audit output shape and also has full mapped preset-area coverage for the current adapter scope.
+- `partial` includes route-limited or sample-only preset mappings that already expose modern formal/audit signals but do not yet cover the full preset structure.
 
 These outputs are planning and review views only. They do not change formal validity or runtime behavior.
 
@@ -232,6 +240,12 @@ Current attachment points:
 - preset path: attached as `formal_validation` on `CampaignWorldPreset` during preset bootstrap preparation
 
 These attachments exist for inspection and validation only.
+
+Related current gameplay validation boundary:
+
+- generation-time static path and clue validation now run in the scenario builder/validator chain, but they are not part of the formal model
+- runtime hostility and `progression_locked` outcomes also live outside the formal model
+- none of these runtime-facing systems make the formal layer authoritative
 
 ## 9. Known Limitations
 

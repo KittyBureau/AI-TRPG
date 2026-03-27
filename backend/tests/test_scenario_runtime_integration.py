@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
+from collections import deque
 from pathlib import Path
 from typing import Any, Dict
+
+import pytest
 
 from backend.app.turn_service import TurnService
 from backend.app.world_presets import (
@@ -22,6 +26,73 @@ class _ScenarioRuntimeLLM:
         debug_append: Any,
     ) -> Dict[str, Any]:
         token = user_input.strip()
+        if token.startswith("TALK:"):
+            target_id = token.split(":", 1)[1].strip()
+            return {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": f"call_talk_{target_id}",
+                        "tool": "scene_action",
+                        "args": {
+                            "actor_id": "pc_001",
+                            "action": "talk",
+                            "target_id": target_id,
+                            "params": {},
+                        },
+                    }
+                ],
+            }
+        if token.startswith("MOVE:"):
+            to_area_id = token.split(":", 1)[1].strip()
+            return {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": f"call_move_{to_area_id}",
+                        "tool": "move",
+                        "args": {"actor_id": "pc_001", "to_area_id": to_area_id},
+                    }
+                ],
+            }
+        if token.startswith("SEARCH:"):
+            target_id = token.split(":", 1)[1].strip()
+            return {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": f"call_search_{target_id}",
+                        "tool": "scene_action",
+                        "args": {
+                            "actor_id": "pc_001",
+                            "action": "search",
+                            "target_id": target_id,
+                            "params": {},
+                        },
+                    }
+                ],
+            }
+        if token.startswith("TAKE:"):
+            target_id = token.split(":", 1)[1].strip()
+            return {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": f"call_take_{target_id}",
+                        "tool": "scene_action",
+                        "args": {
+                            "actor_id": "pc_001",
+                            "action": "take",
+                            "target_id": target_id,
+                            "params": {},
+                        },
+                    }
+                ],
+            }
         if token == "TALK_HINT":
             return {
                 "assistant_text": "",
@@ -123,7 +194,7 @@ def _save_scenario_world(
     area_count: int,
     layout_type: str,
     difficulty: str,
-) -> None:
+    ) -> None:
     repo.save_world(
         World(
             world_id=world_id,
@@ -150,6 +221,108 @@ def _save_scenario_world(
             updated_at=stable_world_timestamp(world_id),
         )
     )
+
+
+def _shortest_path_area_ids(
+    service: TurnService,
+    campaign_id: str,
+    *,
+    start_area_id: str,
+    target_area_id: str,
+) -> list[str]:
+    campaign = service.repo.get_campaign(campaign_id)
+    if start_area_id == target_area_id:
+        return [start_area_id]
+    queue = deque([[start_area_id]])
+    visited = {start_area_id}
+    while queue:
+        path = queue.popleft()
+        current = path[-1]
+        for neighbor in sorted(campaign.map.areas[current].reachable_area_ids):
+            if neighbor in visited:
+                continue
+            next_path = [*path, neighbor]
+            if neighbor == target_area_id:
+                return next_path
+            visited.add(neighbor)
+            queue.append(next_path)
+    raise AssertionError(f"no path from {start_area_id} to {target_area_id}")
+
+
+def _move_actor_to_area(
+    service: TurnService,
+    campaign_id: str,
+    *,
+    target_area_id: str,
+) -> Dict[str, Any]:
+    campaign = service.repo.get_campaign(campaign_id)
+    start_area_id = campaign.actors["pc_001"].position
+    assert isinstance(start_area_id, str) and start_area_id
+    path = _shortest_path_area_ids(
+        service,
+        campaign_id,
+        start_area_id=start_area_id,
+        target_area_id=target_area_id,
+    )
+    response: Dict[str, Any] = {}
+    for next_area_id in path[1:]:
+        response = service.submit_turn(campaign_id, f"MOVE:{next_area_id}")
+        assert response["applied_actions"][0]["tool"] == "move"
+        assert response["state_summary"]["active_area_id"] == next_area_id
+    return response
+
+
+def _run_contract_playthrough(
+    service: TurnService,
+    campaign_id: str,
+    *,
+    visit_branch_first: bool = False,
+) -> None:
+    campaign = service.repo.get_campaign(campaign_id)
+    fragment = campaign.scenario_runtime_fragment
+    assert fragment is not None
+
+    if visit_branch_first:
+        branch_area_ids = [
+            area_id
+            for area_id in campaign.map.areas
+            if "branch" in area_id
+        ]
+        assert branch_area_ids
+        _move_actor_to_area(service, campaign_id, target_area_id=branch_area_ids[0])
+        _move_actor_to_area(service, campaign_id, target_area_id=fragment.start_area_id)
+
+    _move_actor_to_area(service, campaign_id, target_area_id=fragment.gate.from_area_id)
+    blocked = service.submit_turn(campaign_id, f"MOVE:{fragment.gate.to_area_id}")
+    assert blocked["applied_actions"] == []
+    assert blocked["tool_feedback"]["failed_calls"][0]["reason"] == "missing_required_item"
+
+    _move_actor_to_area(service, campaign_id, target_area_id=fragment.clue_area_id)
+    search = service.submit_turn(
+        campaign_id,
+        f"SEARCH:{fragment.searchable_clue_source.interactable_id}",
+    )
+    assert search["applied_actions"][0]["tool"] == "scene_action"
+    assert fragment.revealed_item.item_id in search["narrative_text"]
+
+    take = service.submit_turn(
+        campaign_id,
+        f"TAKE:{_SCENARIO_KEY_STACK_ID}",
+    )
+    assert take["applied_actions"][0]["tool"] == "scene_action"
+    assert take["state_summary"]["active_actor_inventory"] == {
+        fragment.revealed_item.item_id: 1
+    }
+
+    _move_actor_to_area(service, campaign_id, target_area_id=fragment.gate.from_area_id)
+    entered = service.submit_turn(campaign_id, f"MOVE:{fragment.gate.to_area_id}")
+    assert entered["applied_actions"][0]["tool"] == "move"
+    assert entered["state_summary"]["active_area_id"] == fragment.gate.to_area_id
+
+    completed = service.repo.get_campaign(campaign_id)
+    assert completed.goal.status == "completed"
+    assert completed.lifecycle.ended is True
+    assert completed.lifecycle.reason == "goal_achieved"
 
 
 def _save_non_supported_metadata_world(
@@ -209,6 +382,9 @@ def test_scenario_metadata_world_bootstraps_playable_campaign(tmp_path: Path) ->
     assert "area_gate" in campaign.map.areas
     assert "area_target" in campaign.map.areas
     assert campaign.goal.text == "Find the required item and enter the target area."
+    assert campaign.scenario_runtime_fragment is not None
+    assert campaign.scenario_runtime_fragment.gate.required_item_id == "required_item_001"
+    assert campaign.scenario_runtime_fragment.completion.target_area_id == "area_target"
     assert campaign.entities["clue_source_001"].kind == "container"
     assert campaign.entities["clue_source_001"].state["search_loot_stack_id"] == _SCENARIO_KEY_STACK_ID
     assert campaign.entities["clue_source_001"].state["search_loot_definition_id"] == "required_item_001"
@@ -234,6 +410,9 @@ def test_scenario_metadata_world_is_playable_through_real_runtime_path(tmp_path:
         party_character_ids=["pc_001"],
         active_actor_id="pc_001",
     )
+    campaign = repo.get_campaign(campaign_id)
+    assert campaign.scenario_runtime_fragment is not None
+    repo.world_path("scenario_world_smoke").unlink()
 
     talk = service.submit_turn(campaign_id, "TALK_HINT")
     assert talk["applied_actions"][0]["tool"] == "scene_action"
@@ -286,6 +465,112 @@ def test_scenario_metadata_world_is_playable_through_real_runtime_path(tmp_path:
     assert campaign.goal.status == "completed"
     assert campaign.lifecycle.ended is True
     assert campaign.lifecycle.reason == "goal_achieved"
+
+
+@pytest.mark.parametrize(
+    ("world_id", "area_count", "layout_type", "difficulty", "visit_branch_first"),
+    [
+        ("scenario_world_cover_linear_easy", 4, "linear", "easy", False),
+        ("scenario_world_cover_gate_transit", 5, "linear", "easy", False),
+        ("scenario_world_cover_clue_transit", 5, "linear", "standard", False),
+        ("scenario_world_cover_branch", 5, "branch", "easy", True),
+    ],
+)
+def test_scenario_runtime_contract_covers_multiple_topology_variants(
+    tmp_path: Path,
+    world_id: str,
+    area_count: int,
+    layout_type: str,
+    difficulty: str,
+    visit_branch_first: bool,
+) -> None:
+    repo = FileRepo(tmp_path / "storage")
+    _save_scenario_world(
+        repo,
+        world_id=world_id,
+        area_count=area_count,
+        layout_type=layout_type,
+        difficulty=difficulty,
+    )
+    service = TurnService(repo)
+    service.llm = _ScenarioRuntimeLLM()
+
+    campaign_id = service.create_campaign(
+        world_id=world_id,
+        map_id="map_generated",
+        party_character_ids=["pc_001"],
+        active_actor_id="pc_001",
+    )
+    campaign = repo.get_campaign(campaign_id)
+    assert campaign.scenario_runtime_fragment is not None
+    assert campaign.scenario_runtime_fragment.gate.required_item_id == "required_item_001"
+    assert campaign.scenario_runtime_fragment.completion.target_area_id == "area_target"
+
+    repo.world_path(world_id).unlink()
+
+    _run_contract_playthrough(
+        service,
+        campaign_id,
+        visit_branch_first=visit_branch_first,
+    )
+
+
+def test_scenario_metadata_world_fails_explicitly_when_runtime_authority_is_missing(
+    tmp_path: Path,
+) -> None:
+    repo = FileRepo(tmp_path / "storage")
+    _save_scenario_world(
+        repo,
+        world_id="scenario_world_missing_fragment",
+        area_count=4,
+        layout_type="linear",
+        difficulty="easy",
+    )
+    service = TurnService(repo)
+    service.llm = _ScenarioRuntimeLLM()
+
+    campaign_id = service.create_campaign(
+        world_id="scenario_world_missing_fragment",
+        map_id="map_generated",
+        party_character_ids=["pc_001"],
+        active_actor_id="pc_001",
+    )
+    campaign = repo.get_campaign(campaign_id)
+    campaign.scenario_runtime_fragment = None
+    repo.save_campaign(campaign)
+
+    failed = service.submit_turn(campaign_id, "MOVE_TO_CLUE")
+
+    assert failed["applied_actions"] == []
+    assert failed["tool_feedback"]["failed_calls"][0]["reason"] == "scenario_runtime_authority_missing"
+
+
+def test_scenario_metadata_world_with_corrupted_runtime_fragment_fails_on_load(
+    tmp_path: Path,
+) -> None:
+    repo = FileRepo(tmp_path / "storage")
+    _save_scenario_world(
+        repo,
+        world_id="scenario_world_corrupted_fragment",
+        area_count=4,
+        layout_type="linear",
+        difficulty="easy",
+    )
+    service = TurnService(repo)
+
+    campaign_id = service.create_campaign(
+        world_id="scenario_world_corrupted_fragment",
+        map_id="map_generated",
+        party_character_ids=["pc_001"],
+        active_actor_id="pc_001",
+    )
+    campaign_path = repo.campaigns_root / campaign_id / "campaign.json"
+    payload = json.loads(campaign_path.read_text(encoding="utf-8"))
+    del payload["scenario_runtime_fragment"]["gate"]["required_item_id"]
+    campaign_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    with pytest.raises(Exception, match="required_item_id"):
+        repo.get_campaign(campaign_id)
 
 
 def test_identical_generator_params_produce_stable_runtime_bootstrap_behavior(
@@ -358,7 +643,7 @@ def test_identical_generator_params_produce_stable_runtime_bootstrap_behavior(
     assert entities_a == entities_b
 
 
-def test_guarded_bootstrap_branch_only_activates_for_supported_scenario_metadata(
+def test_scenario_metadata_world_requires_supported_runtime_bootstrap(
     tmp_path: Path,
 ) -> None:
     repo = FileRepo(tmp_path / "storage")
@@ -376,19 +661,16 @@ def test_guarded_bootstrap_branch_only_activates_for_supported_scenario_metadata
     )
     service = TurnService(repo)
 
-    campaign_id = service.create_campaign(
-        world_id="world_not_supported",
-        map_id="map_generated",
-        party_character_ids=["pc_001"],
-        active_actor_id="pc_001",
-    )
-    campaign = repo.get_campaign(campaign_id)
-
-    assert campaign.actors["pc_001"].position == "area_001"
-    assert "npc_guide_01" in campaign.entities
-    assert [stack.definition_id for stack in campaign.items.values()] == ["crate_01"]
-    assert "area_target" not in campaign.map.areas
-    assert campaign.goal.text == "Define the main objective"
+    with pytest.raises(
+        ValueError,
+        match="scenario runtime bootstrap unavailable for world: world_not_supported",
+    ):
+        service.create_campaign(
+            world_id="world_not_supported",
+            map_id="map_generated",
+            party_character_ids=["pc_001"],
+            active_actor_id="pc_001",
+        )
 
 
 def test_non_scenario_world_still_uses_existing_bootstrap_path_unchanged(

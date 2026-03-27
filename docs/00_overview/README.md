@@ -49,9 +49,22 @@
   - preset alignment audit via `alignment_level` and `priority_hint`
   - remediation backlog output via `gap_type`, `recommended_target`, and backlog summary
 - Current preset alignment samples are:
-  - `midnight_archive_world` as the aligned sample
+  - `midnight_archive_world` as the current `partial` single-route sample
   - `test_watchtower_world` as the legacy baseline
 - These outputs do not affect runtime authority, turn execution, or tool execution.
+
+## Current Scenario Runtime Closure
+
+- Scenario-generated campaigns now persist `Campaign.scenario_runtime_fragment` as the only runtime gate/goal authority.
+- Scenario execution no longer depends on scenario compatibility shim/fallback paths after bootstrap.
+- Current regression coverage locks this contract across multiple topology variants plus explicit missing/corrupt fragment failures.
+
+## Current Gameplay Validation Layer
+
+- Scenario generation now fails early when the current key-gate contract has no reachable completion path, no satisfiable gate dependency path, or an obvious dead-end layout.
+- Generation also fails when the critical clue path is missing, placed after the dependency point, or structurally bound to the wrong source/item/area.
+- Runtime now persists per-entity hostility and triggers `interaction_locked` at threshold instead of leaving high-conflict turns as narrative-only responses.
+- If the locked interaction is the critical reveal source for the current scenario path, runtime performs a minimal progression re-check and triggers `progression_locked`, ending the campaign lifecycle.
 
 ## Runtime Guides
 
@@ -73,7 +86,7 @@
 
 ## Playable Planning
 
-- `docs/90_playable/PLAYABLE_V1_TODO.md` - Playable v1 development mainline TODO.
+- `docs/90_playable/PLAYABLE_V1_TODO.md` - Active playable backlog only.
 - `docs/90_playable/ITEM_REFACTOR_CLOSURE_TODO.md` - Final closure status for the completed stack-first item refactor line.
 
 ## Compatibility Paths (Temporary)

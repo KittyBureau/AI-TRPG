@@ -6,7 +6,10 @@ import pytest
 
 from backend.app.scenario_builder import build_materialized_scenario
 from backend.app.scenario_templates import normalize_scenario_params
-from backend.app.scenario_validator import validate_materialized_scenario
+from backend.app.scenario_validator import (
+    ScenarioValidationError,
+    validate_materialized_scenario,
+)
 
 
 def _dump(model: object) -> object:
@@ -44,6 +47,24 @@ def _is_reachable_without_gate(scenario: object) -> bool:
             visited.add(neighbor)
             queue.append(neighbor)
     return False
+
+
+def _replace_area_connections(
+    scenario: object,
+    *,
+    connections: dict[str, tuple[str, ...]],
+):
+    updated_areas = {
+        area_id: area.model_copy(
+            update={"connected_area_ids": connections.get(area_id, area.connected_area_ids)}
+        )
+        for area_id, area in scenario.topology.areas.items()
+    }
+    return scenario.model_copy(
+        update={
+            "topology": scenario.topology.model_copy(update={"areas": updated_areas})
+        }
+    )
 
 
 def test_builder_materializes_key_gate_scenario_successfully() -> None:
@@ -184,6 +205,33 @@ def test_validator_accepts_valid_generated_scenario() -> None:
     assert result.ok is True
     assert result.template_id == "key_gate_scenario"
     assert result.checked_area_count == 7
+    assert result.issues == ()
+
+
+def test_validator_accepts_second_valid_topology_variant() -> None:
+    scenario = build_materialized_scenario(
+        normalize_scenario_params(
+            {"area_count": 5, "layout_type": "linear", "difficulty": "standard"}
+        )
+    )
+
+    result = validate_materialized_scenario(scenario)
+
+    assert result.ok is True
+    assert result.template_id == "key_gate_scenario"
+    assert result.checked_area_count == 5
+    assert result.issues == ()
+
+
+def test_clue_validation_accepts_branch_variant_with_reachable_clue_support() -> None:
+    scenario = build_materialized_scenario(
+        normalize_scenario_params({"area_count": 6, "layout_type": "branch"})
+    )
+
+    result = validate_materialized_scenario(scenario)
+
+    assert result.ok is True
+    assert result.issues == ()
 
 
 def test_validator_rejects_deliberately_broken_scenario_fixture() -> None:
@@ -239,6 +287,132 @@ def test_validator_uses_gate_rule_required_item_id_as_gate_truth() -> None:
         match="gate rule required item is not tied to the gate rule gate entity",
     ):
         validate_materialized_scenario(broken)
+
+
+def test_static_validation_rejects_gate_dependency_placed_behind_gate() -> None:
+    scenario = build_materialized_scenario(
+        normalize_scenario_params({"area_count": 4, "layout_type": "linear"})
+    )
+    broken = _replace_area_connections(
+        scenario,
+        connections={
+            "area_start": ("area_gate",),
+            "area_clue": ("area_target",),
+            "area_gate": ("area_start", "area_target"),
+            "area_target": ("area_gate", "area_clue"),
+        },
+    )
+
+    with pytest.raises(ScenarioValidationError) as exc_info:
+        validate_materialized_scenario(broken)
+
+    issue_codes = {issue.code for issue in exc_info.value.result.issues}
+    assert "static_gate_dependency_unsatisfied" in issue_codes
+    assert any(
+        issue.code == "static_dead_end_detected"
+        and issue.refs.get("reason") == "clue_area_unreachable_before_gate"
+        for issue in exc_info.value.result.issues
+    )
+    assert any(
+        issue.code == "critical_clue_support_unreachable"
+        and issue.refs.get("clue_source_id") == scenario.roles.clue_source_id
+        for issue in exc_info.value.result.issues
+    )
+
+
+def test_static_validation_rejects_unreachable_completion_target() -> None:
+    scenario = build_materialized_scenario(
+        normalize_scenario_params({"area_count": 4, "layout_type": "linear"})
+    )
+    broken = _replace_area_connections(
+        scenario,
+        connections={
+            "area_start": ("area_clue",),
+            "area_clue": ("area_start", "area_gate"),
+            "area_gate": ("area_clue",),
+            "area_target": (),
+        },
+    )
+
+    with pytest.raises(ScenarioValidationError) as exc_info:
+        validate_materialized_scenario(broken)
+
+    assert any(
+        issue.code == "static_completion_path_missing"
+        and issue.refs.get("target_area_id") == scenario.roles.target_area_id
+        for issue in exc_info.value.result.issues
+    )
+
+
+def test_static_validation_rejects_obvious_dead_end_configuration() -> None:
+    scenario = build_materialized_scenario(
+        normalize_scenario_params({"area_count": 4, "layout_type": "linear"})
+    )
+    broken = _replace_area_connections(
+        scenario,
+        connections={
+            "area_start": ("area_clue",),
+            "area_clue": ("area_start",),
+            "area_gate": ("area_target",),
+            "area_target": ("area_gate",),
+        },
+    )
+
+    with pytest.raises(ScenarioValidationError) as exc_info:
+        validate_materialized_scenario(broken)
+
+    assert any(
+        issue.code == "static_dead_end_detected"
+        and issue.refs.get("reason") == "gate_area_unreachable_before_gate"
+        for issue in exc_info.value.result.issues
+    )
+
+
+def test_clue_validation_rejects_missing_critical_clue_source() -> None:
+    scenario = build_materialized_scenario(normalize_scenario_params({}))
+    broken = scenario.model_copy(
+        update={
+            "entities": {
+                entity_id: entity
+                for entity_id, entity in scenario.entities.items()
+                if entity_id != scenario.roles.clue_source_id
+            }
+        }
+    )
+
+    with pytest.raises(ScenarioValidationError) as exc_info:
+        validate_materialized_scenario(broken)
+
+    assert any(
+        issue.code == "critical_clue_support_missing"
+        and issue.refs.get("clue_source_id") == scenario.roles.clue_source_id
+        and issue.refs.get("item_id") == scenario.roles.revealed_item_id
+        for issue in exc_info.value.result.issues
+    )
+
+
+def test_clue_validation_rejects_broken_clue_source_binding() -> None:
+    scenario = build_materialized_scenario(normalize_scenario_params({}))
+    broken = scenario.model_copy(
+        update={
+            "entities": {
+                **scenario.entities,
+                scenario.roles.clue_source_id: scenario.entities[
+                    scenario.roles.clue_source_id
+                ].model_copy(update={"reveals_item_id": "wrong_item_001"}),
+            }
+        }
+    )
+
+    with pytest.raises(ScenarioValidationError) as exc_info:
+        validate_materialized_scenario(broken)
+
+    assert any(
+        issue.code == "critical_clue_binding_invalid"
+        and issue.refs.get("clue_source_id") == scenario.roles.clue_source_id
+        and issue.refs.get("item_id") == scenario.roles.revealed_item_id
+        for issue in exc_info.value.result.issues
+    )
 
 
 def test_target_is_not_reachable_without_crossing_gate() -> None:

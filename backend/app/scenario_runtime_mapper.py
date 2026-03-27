@@ -28,11 +28,15 @@ class ScenarioRuntimeBootstrapPayload:
 def build_runtime_bootstrap_from_world(
     world: World,
 ) -> Optional[ScenarioRuntimeBootstrapPayload]:
-    # V0 compatibility bridge: only metadata-backed key_gate_scenario worlds
-    # are mapped into the existing runtime bootstrap shape here.
     fragment = build_scenario_bootstrap_fragment_for_world(world)
     if fragment is None:
         return None
+    return build_runtime_bootstrap_from_fragment(fragment)
+
+
+def build_runtime_bootstrap_from_fragment(
+    fragment: ScenarioBootstrapFragment,
+) -> ScenarioRuntimeBootstrapPayload:
     return ScenarioRuntimeBootstrapPayload(
         start_area_id=fragment.start_area_id,
         goal_text="Find the required item and enter the target area.",
@@ -54,30 +58,7 @@ def build_scenario_bootstrap_fragment_for_world(
     return build_scenario_bootstrap_fragment(bridge)
 
 
-def required_item_for_scenario_world_move(
-    world: World,
-    from_area_id: str,
-    to_area_id: str,
-) -> Optional[str]:
-    # V0 compatibility fallback for move gating. Preset worlds remain primary.
-    fragment = build_scenario_bootstrap_fragment_for_world(world)
-    if fragment is None:
-        return None
-    gate = fragment.gate
-    if gate.from_area_id == from_area_id and gate.to_area_id == to_area_id:
-        return gate.required_item_id
-    return None
-
-
-def is_scenario_world_goal_area(world: World, area_id: str) -> bool:
-    # V0 compatibility fallback for enter-target completion. Preset worlds remain primary.
-    fragment = build_scenario_bootstrap_fragment_for_world(world)
-    if fragment is None:
-        return False
-    return fragment.completion.type == "enter_area" and fragment.completion.target_area_id == area_id
-
-
-def _is_supported_scenario_world(world: World) -> bool:
+def is_scenario_generator_world(world: World) -> bool:
     generator = world.generator
     if not generator.id.strip():
         return False
@@ -85,9 +66,13 @@ def _is_supported_scenario_world(world: World) -> bool:
         return False
     if not isinstance(generator.params, dict):
         return False
-    mode = generator.params.get("mode")
-    template_id = generator.params.get("template_id")
-    return mode == SCENARIO_MODE and template_id == "key_gate_scenario"
+    return generator.params.get("mode") == SCENARIO_MODE
+
+
+def _is_supported_scenario_world(world: World) -> bool:
+    if not is_scenario_generator_world(world):
+        return False
+    return world.generator.params.get("template_id") == "key_gate_scenario"
 
 
 def _build_map_data(fragment: ScenarioBootstrapFragment) -> MapData:

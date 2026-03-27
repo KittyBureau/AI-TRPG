@@ -116,12 +116,32 @@ Runtime system:
   - `gate_clue`
   - `gate_clue_support_gap`
 - Current preset alignment baseline:
-  - `midnight_archive_world` is the aligned sample for the modern formal output shape
+  - `midnight_archive_world` is the current `partial` single-route sample for the modern formal output shape
   - `test_watchtower_world` remains the legacy baseline
 - Current preset-alignment planning outputs include:
   - `alignment_level` (`legacy` / `partial` / `aligned`)
   - `priority_hint` (`high` / `medium` / `low`)
   - remediation backlog output with `gap_type`, `recommended_target`, and structured backlog summary
+- Current `aligned` semantics are intentionally tighter than the first preset-audit pass:
+  - modern signal presence alone is not enough
+  - route-limited samples such as `midnight_archive_world` remain `partial`
+  - full mapped preset-area coverage is now part of the trusted `aligned` signal
+
+## 6B. Scenario Runtime Closure
+
+- Scenario-generated campaigns now persist `Campaign.scenario_runtime_fragment` as the execution-time gate/goal authority.
+- Scenario path execution no longer relies on scenario-world shim/fallback logic in the runtime tool path.
+- Current runtime contract coverage is no longer a single happy-path sample:
+  - multiple topology variants are regression-covered
+  - missing authority fragment data fails explicitly
+  - corrupt required fragment fields fail explicitly
+
+## 6C. Gameplay Validation Layer
+
+- Generation-time static path validation now rejects key-gate scenarios that have no reachable completion path, unsatisfied gate dependency placement, or obvious dead-end topology.
+- Generation-time clue validation now rejects scenarios where the critical clue support is missing, only reachable after the dependency point, or structurally bound to the wrong source/item/area.
+- Runtime now persists per-entity hostility; repeated hostile interaction crosses a threshold and triggers structured `interaction_locked` instead of relying on narrative-only escalation.
+- When `interaction_locked` cuts off the critical reveal source before the required item is obtained, runtime performs a minimal progression re-check, triggers `progression_locked`, marks the goal failed, and ends the campaign lifecycle.
 
 ## 7. Known Constraints
 
@@ -135,6 +155,7 @@ Runtime system:
 - primary next track: `P2-11A Context Builder Infrastructure`
   - introduce the context-builder seam before `_build_system_prompt()`
   - keep authoritative runtime state outside the builder
+- next gameplay-facing follow-up after the current non-combat consequence loop: minimal combat entry from the now-structured hostility/progression baseline
 - scenario generator v0 is already stabilized enough to serve as a regression/content baseline rather than the next primary implementation track
 - limited world content and entity expansion in support of the scenario generator
 - UI improvements beyond the current panel MVP

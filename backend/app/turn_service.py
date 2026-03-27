@@ -22,6 +22,7 @@ from backend.app.campaign_fact_service import (
     prune_campaign_facts,
     record_npc_memory_fact,
 )
+from backend.app.campaign_hostility_service import build_hostility_state_summary
 from backend.app.campaign_mistake_service import (
     build_mistake_debug_context,
     build_mistake_state_summary,
@@ -44,8 +45,10 @@ from backend.app.item_runtime import (
     normalize_campaign_items,
     resolve_selected_stack_resolution,
 )
-from backend.app.scenario_runtime_mapper import build_runtime_bootstrap_from_world
-from backend.app.scenario_runtime_mapper import required_item_for_scenario_world_move
+from backend.app.scenario_runtime_mapper import (
+    build_runtime_bootstrap_from_world,
+    is_scenario_generator_world,
+)
 from backend.app.scene_entities import build_area_local_entity_views
 from backend.app.tool_executor import execute_tool_calls
 from backend.app.world_presets import (
@@ -528,6 +531,7 @@ class TurnService:
             actors=actors,
             items=bootstrap["items"],
             entities=bootstrap["entities"],
+            scenario_runtime_fragment=bootstrap.get("scenario_runtime_fragment"),
         )
         normalize_map(campaign.map)
         normalize_campaign_items(campaign)
@@ -936,6 +940,7 @@ class TurnService:
                 entry.state_summary.consequences = build_consequence_state_summary(
                     campaign
                 )
+                entry.state_summary.hostility = build_hostility_state_summary(campaign)
                 self.repo.append_turn_log(campaign_id, entry)
                 return _build_success_response(
                     entry,
@@ -1330,9 +1335,6 @@ def _build_campaign_bootstrap(
     if world is None:
         world = build_world_preset(world_id)
     if world is not None:
-        # Guarded v0 path: only supported scenario-generator metadata-backed
-        # worlds, including the built-in dev preset, go through the
-        # internal scenario chain here.
         scenario_bootstrap = build_runtime_bootstrap_from_world(world)
         if scenario_bootstrap is not None:
             return {
@@ -1341,7 +1343,13 @@ def _build_campaign_bootstrap(
                 "map": scenario_bootstrap.map_data,
                 "items": scenario_bootstrap.items,
                 "entities": scenario_bootstrap.entities,
+                "scenario_runtime_fragment": scenario_bootstrap.fragment,
             }
+        if is_scenario_generator_world(world):
+            raise ValueError(
+                "scenario runtime bootstrap unavailable for world: "
+                f"{world.world_id}"
+            )
     preset = build_campaign_world_preset(world_id)
     if preset is not None:
         return {
@@ -1350,6 +1358,7 @@ def _build_campaign_bootstrap(
             "map": preset.map_data,
             "items": preset.items,
             "entities": preset.entities,
+            "scenario_runtime_fragment": None,
         }
     return {
         "start_area_id": "area_001",
@@ -1357,6 +1366,7 @@ def _build_campaign_bootstrap(
         "map": _default_starter_map(),
         "items": _starter_items(),
         "entities": _starter_entities(),
+        "scenario_runtime_fragment": None,
     }
 
 
@@ -1527,6 +1537,7 @@ def _state_summary_dict(
         "active_actor_inventory_stacks": [
             stack_view.model_dump() for stack_view in active_actor_inventory_stacks
         ],
+        "hostility": build_hostility_state_summary(campaign),
     }
 
 
@@ -1638,15 +1649,15 @@ def _required_item_for_transition(
     to_area_id: str,
     world: Optional[object],
 ) -> Optional[str]:
+    fragment = campaign.scenario_runtime_fragment
+    if fragment is not None:
+        gate = fragment.gate
+        if gate.from_area_id == from_area_id and gate.to_area_id == to_area_id:
+            return gate.required_item_id
+        return None
     required_item_id = required_item_for_move(
         campaign.selected.world_id, from_area_id, to_area_id
     )
-    if required_item_id is None and world is not None:
-        required_item_id = required_item_for_scenario_world_move(
-            world,
-            from_area_id,
-            to_area_id,
-        )
     if not isinstance(required_item_id, str):
         return None
     normalized = required_item_id.strip()
@@ -3402,6 +3413,7 @@ def _build_failure_response(
     )
     state_summary.mistakes = build_mistake_state_summary(campaign)
     state_summary.consequences = build_consequence_state_summary(campaign)
+    state_summary.hostility = build_hostility_state_summary(campaign)
     response = {
         "effective_actor_id": effective_actor_id,
         "narrative_text": "",

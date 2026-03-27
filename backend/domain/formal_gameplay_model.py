@@ -31,6 +31,7 @@ GapType = Literal[
     "missing_gate_clue_alignment",
     "missing_authoring_audit_visibility",
     "shaping_gap_unexposed",
+    "limited_preset_coverage_alignment",
 ]
 RemediationTarget = Literal["adapter_only", "formal_annotation", "future_optional"]
 ValidationSeverity = Literal["error", "warning"]
@@ -119,6 +120,8 @@ class PresetAlignmentAuditItem(BaseModel):
     has_clue_support_signal: bool = False
     has_shaping_gap_signal: bool = False
     has_authoring_audit: bool = False
+    has_full_area_coverage: bool = False
+    issue_categories: List[IssueCategory] = Field(default_factory=list)
     overall_quality_status: QualityStatus = "good"
 
 

@@ -105,7 +105,7 @@ def test_key_gate_scenario_template_declares_required_structural_roles() -> None
         "hint_source",
         "clue_area",
         "clue_source",
-        "granted_item",
+        "revealed_item",
         "gate_area",
         "gate_entity",
         "required_item",

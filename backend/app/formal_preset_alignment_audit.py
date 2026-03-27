@@ -27,12 +27,23 @@ def build_preset_alignment_audit_summary() -> PresetAlignmentAuditSummary:
         has_clue_support_signal = bool(formal_model.gate_clues)
         has_shaping_gap_signal = bool(formal_model.gate_clue_support_gaps)
         has_authoring_audit = bool(validation.gate_authoring_audits)
+        formal_area_ids = {
+            node.id for node in formal_model.nodes if node.type == "area"
+        }
+        preset_area_ids = set(preset.map_data.areas.keys())
+        has_full_area_coverage = formal_area_ids == preset_area_ids
+        issue_categories = sorted(
+            category
+            for category, count in validation.overall_authoring_audit.issue_count_by_category.items()
+            if count > 0
+        )
 
         alignment_level = _derive_alignment_level(
             has_dependency_groups=has_dependency_groups,
             has_clue_support_signal=has_clue_support_signal,
             has_shaping_gap_signal=has_shaping_gap_signal,
             has_authoring_audit=has_authoring_audit,
+            has_full_area_coverage=has_full_area_coverage,
         )
         priority_hint = _derive_priority_hint(alignment_level)
         key_findings = _build_key_findings(
@@ -41,6 +52,7 @@ def build_preset_alignment_audit_summary() -> PresetAlignmentAuditSummary:
             has_clue_support_signal=has_clue_support_signal,
             has_shaping_gap_signal=has_shaping_gap_signal,
             has_authoring_audit=has_authoring_audit,
+            has_full_area_coverage=has_full_area_coverage,
             overall_quality_status=validation.overall_quality_status,
         )
 
@@ -54,6 +66,8 @@ def build_preset_alignment_audit_summary() -> PresetAlignmentAuditSummary:
                 has_clue_support_signal=has_clue_support_signal,
                 has_shaping_gap_signal=has_shaping_gap_signal,
                 has_authoring_audit=has_authoring_audit,
+                has_full_area_coverage=has_full_area_coverage,
+                issue_categories=issue_categories,
                 overall_quality_status=validation.overall_quality_status,
             )
         )
@@ -79,10 +93,12 @@ def _derive_alignment_level(
     has_clue_support_signal: bool,
     has_shaping_gap_signal: bool,
     has_authoring_audit: bool,
+    has_full_area_coverage: bool,
 ) -> str:
     if (
         has_dependency_groups
         and has_authoring_audit
+        and has_full_area_coverage
         and (has_clue_support_signal or has_shaping_gap_signal)
     ):
         return "aligned"
@@ -110,6 +126,7 @@ def _build_key_findings(
     has_clue_support_signal: bool,
     has_shaping_gap_signal: bool,
     has_authoring_audit: bool,
+    has_full_area_coverage: bool,
     overall_quality_status: str,
 ) -> list[str]:
     findings: list[str] = [f"alignment_level:{alignment_level}"]
@@ -127,6 +144,11 @@ def _build_key_findings(
         "authoring_audit_available"
         if has_authoring_audit
         else "authoring_audit_missing"
+    )
+    findings.append(
+        "area_coverage_full"
+        if has_full_area_coverage
+        else "area_coverage_partial"
     )
     if has_shaping_gap_signal:
         findings.append("shaping_gap_signals_present")

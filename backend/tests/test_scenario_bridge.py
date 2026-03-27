@@ -6,6 +6,7 @@ import backend.app.scenario_bridge as scenario_bridge_module
 from backend.app.scenario_bridge import build_scenario_runtime_bridge
 from backend.app.scenario_builder import build_materialized_scenario
 from backend.app.scenario_templates import normalize_scenario_params
+from backend.app.scenario_validator import ScenarioValidationError
 
 
 def _dump(model: object) -> object:
@@ -107,8 +108,14 @@ def test_bridge_rejects_deliberately_broken_materialized_scenario() -> None:
         }
     )
 
-    with pytest.raises(ValueError, match="clue source"):
+    with pytest.raises(ScenarioValidationError) as exc_info:
         build_scenario_runtime_bridge(broken)
+
+    assert any(
+        issue.code == "critical_clue_support_missing"
+        and issue.refs.get("clue_source_id") == scenario.roles.clue_source_id
+        for issue in exc_info.value.result.issues
+    )
 
 
 def test_bridge_gate_required_item_is_sourced_from_gate_rule() -> None:

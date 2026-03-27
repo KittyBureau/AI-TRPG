@@ -6,6 +6,7 @@ from backend.app.scenario_templates import (
     KEY_GATE_SCENARIO_TEMPLATE_ID,
     get_scenario_template,
 )
+from backend.app.scenario_validator import validate_materialized_scenario
 from backend.domain.scenario_models import (
     ScenarioDependencyGroup,
     MaterializedScenario,
@@ -88,7 +89,7 @@ def build_materialized_scenario_from_template(
         )
     }
 
-    return MaterializedScenario(
+    scenario = MaterializedScenario(
         template_id=template.template_id,
         template_version=template.template_version,
         params=params,
@@ -120,6 +121,8 @@ def build_materialized_scenario_from_template(
             target_area_id=roles.target_area_id,
         ),
     )
+    validate_materialized_scenario(scenario)
+    return scenario
 
 
 def _build_transit_plan(params: ScenarioParams) -> tuple[list[str], list[str]]:

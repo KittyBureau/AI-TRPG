@@ -547,6 +547,10 @@ class FileRepo:
         normalize_map(campaign.map)
         normalize_campaign_items(campaign)
         data = _model_to_dict(campaign)
+        if campaign.scenario_runtime_fragment is not None:
+            data["scenario_runtime_fragment"] = _model_to_dict(
+                campaign.scenario_runtime_fragment
+            )
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     def get_campaign(self, campaign_id: str) -> Campaign:

@@ -6,9 +6,14 @@ from backend.app.formal_preset_alignment_audit import (
 from backend.app.formal_preset_alignment_backlog import (
     build_preset_alignment_backlog_summary,
 )
+import backend.app.formal_preset_alignment_backlog as preset_backlog_module
 from backend.app.formal_preset_mapper import build_formal_model_from_preset
 from backend.app.formal_validator import validate_formal_model
 from backend.app.turn_service import TurnService
+from backend.domain.formal_gameplay_model import (
+    PresetAlignmentAuditItem,
+    PresetAlignmentAuditSummary,
+)
 from backend.app.world_presets import (
     MIDNIGHT_ARCHIVE_WORLD_ID,
     TEST_WATCHTOWER_WORLD_ID,
@@ -151,13 +156,13 @@ def test_preset_alignment_audit_summary_enumerates_supported_presets() -> None:
     assert summary.preset_count >= 2
     assert summary.count_by_alignment_level == {
         "legacy": 1,
-        "partial": 0,
-        "aligned": 1,
+        "partial": 1,
+        "aligned": 0,
     }
     assert summary.count_by_priority == {
         "high": 1,
-        "medium": 0,
-        "low": 1,
+        "medium": 1,
+        "low": 0,
     }
     assert {item.preset_id for item in summary.preset_summaries} == {
         MIDNIGHT_ARCHIVE_WORLD_ID,
@@ -165,7 +170,7 @@ def test_preset_alignment_audit_summary_enumerates_supported_presets() -> None:
     }
 
 
-def test_preset_alignment_audit_marks_midnight_archive_as_aligned_sample() -> None:
+def test_preset_alignment_audit_marks_midnight_archive_as_partial_sample() -> None:
     summary = build_preset_alignment_audit_summary()
     midnight_archive = next(
         item
@@ -173,15 +178,18 @@ def test_preset_alignment_audit_marks_midnight_archive_as_aligned_sample() -> No
         if item.preset_id == MIDNIGHT_ARCHIVE_WORLD_ID
     )
 
-    assert midnight_archive.alignment_level == "aligned"
-    assert midnight_archive.priority_hint == "low"
+    assert midnight_archive.alignment_level == "partial"
+    assert midnight_archive.priority_hint == "medium"
     assert midnight_archive.has_dependency_groups is True
     assert midnight_archive.has_clue_support_signal is True
     assert midnight_archive.has_shaping_gap_signal is False
     assert midnight_archive.has_authoring_audit is True
+    assert midnight_archive.has_full_area_coverage is False
+    assert midnight_archive.issue_categories == []
     assert midnight_archive.overall_quality_status == "good"
     assert "dependency_groups_present" in midnight_archive.key_findings
     assert "clue_support_signals_present" in midnight_archive.key_findings
+    assert "area_coverage_partial" in midnight_archive.key_findings
 
 
 def test_preset_alignment_audit_marks_watchtower_as_legacy_expression() -> None:
@@ -198,26 +206,30 @@ def test_preset_alignment_audit_marks_watchtower_as_legacy_expression() -> None:
     assert watchtower.has_clue_support_signal is False
     assert watchtower.has_shaping_gap_signal is False
     assert watchtower.has_authoring_audit is True
+    assert watchtower.has_full_area_coverage is True
+    assert watchtower.issue_categories == []
     assert watchtower.overall_quality_status == "good"
     assert "dependency_groups_missing" in watchtower.key_findings
     assert "clue_support_signals_missing" in watchtower.key_findings
+    assert "area_coverage_full" in watchtower.key_findings
 
 
 def test_preset_alignment_backlog_summary_enumerates_structured_items() -> None:
     summary = build_preset_alignment_backlog_summary()
 
     assert summary.preset_count >= 2
-    assert summary.total_backlog_items >= 2
+    assert summary.total_backlog_items >= 3
     assert summary.count_by_gap_type == {
         "missing_dependency_group_alignment": 1,
         "missing_gate_clue_alignment": 1,
         "missing_authoring_audit_visibility": 0,
         "shaping_gap_unexposed": 0,
+        "limited_preset_coverage_alignment": 1,
     }
     assert summary.count_by_target == {
         "adapter_only": 1,
         "formal_annotation": 1,
-        "future_optional": 0,
+        "future_optional": 1,
     }
     assert [plan.preset_id for plan in summary.preset_plans] == [
         TEST_WATCHTOWER_WORLD_ID,
@@ -225,7 +237,7 @@ def test_preset_alignment_backlog_summary_enumerates_structured_items() -> None:
     ]
 
 
-def test_preset_alignment_backlog_keeps_midnight_archive_as_low_priority_sample() -> None:
+def test_preset_alignment_backlog_marks_midnight_archive_as_partial_future_work() -> None:
     summary = build_preset_alignment_backlog_summary()
     midnight_archive = next(
         plan
@@ -233,9 +245,14 @@ def test_preset_alignment_backlog_keeps_midnight_archive_as_low_priority_sample(
         if plan.preset_id == MIDNIGHT_ARCHIVE_WORLD_ID
     )
 
-    assert midnight_archive.alignment_level == "aligned"
-    assert midnight_archive.priority_hint == "low"
-    assert midnight_archive.items == []
+    assert midnight_archive.alignment_level == "partial"
+    assert midnight_archive.priority_hint == "medium"
+    assert [item.gap_type for item in midnight_archive.items] == [
+        "limited_preset_coverage_alignment"
+    ]
+    assert [item.recommended_target for item in midnight_archive.items] == [
+        "future_optional"
+    ]
 
 
 def test_preset_alignment_backlog_marks_watchtower_for_adapter_and_annotation_work() -> None:
@@ -256,3 +273,95 @@ def test_preset_alignment_backlog_marks_watchtower_for_adapter_and_annotation_wo
         "adapter_only",
         "formal_annotation",
     ]
+
+
+def test_preset_alignment_backlog_exposes_missing_authoring_audit_visibility(
+    monkeypatch,
+) -> None:
+    synthetic_summary = PresetAlignmentAuditSummary(
+        preset_count=1,
+        count_by_alignment_level={"legacy": 0, "partial": 1, "aligned": 0},
+        count_by_priority={"high": 0, "medium": 1, "low": 0},
+        preset_summaries=[
+            PresetAlignmentAuditItem(
+                preset_id="preset_missing_audit",
+                alignment_level="partial",
+                priority_hint="medium",
+                key_findings=[
+                    "alignment_level:partial",
+                    "dependency_groups_present",
+                    "clue_support_signals_present",
+                    "authoring_audit_missing",
+                    "area_coverage_full",
+                    "overall_quality:good",
+                ],
+                has_dependency_groups=True,
+                has_clue_support_signal=True,
+                has_shaping_gap_signal=False,
+                has_authoring_audit=False,
+                has_full_area_coverage=True,
+                issue_categories=[],
+                overall_quality_status="good",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        preset_backlog_module,
+        "build_preset_alignment_audit_summary",
+        lambda: synthetic_summary,
+    )
+
+    summary = build_preset_alignment_backlog_summary()
+
+    assert summary.total_backlog_items == 1
+    assert summary.count_by_gap_type["missing_authoring_audit_visibility"] == 1
+    assert summary.items[0].gap_type == "missing_authoring_audit_visibility"
+    assert summary.items[0].recommended_target == "adapter_only"
+
+
+def test_preset_alignment_backlog_only_exposes_shaping_gap_unexposed_for_clue_support_issues(
+    monkeypatch,
+) -> None:
+    synthetic_summary = PresetAlignmentAuditSummary(
+        preset_count=2,
+        count_by_alignment_level={"legacy": 0, "partial": 2, "aligned": 0},
+        count_by_priority={"high": 0, "medium": 2, "low": 0},
+        preset_summaries=[
+            PresetAlignmentAuditItem(
+                preset_id="preset_path_weak_only",
+                alignment_level="partial",
+                priority_hint="medium",
+                key_findings=["overall_quality:weak"],
+                has_dependency_groups=True,
+                has_clue_support_signal=True,
+                has_shaping_gap_signal=False,
+                has_authoring_audit=True,
+                has_full_area_coverage=True,
+                issue_categories=["path_coverage_related"],
+                overall_quality_status="weak",
+            ),
+            PresetAlignmentAuditItem(
+                preset_id="preset_clue_weak_only",
+                alignment_level="partial",
+                priority_hint="medium",
+                key_findings=["overall_quality:weak"],
+                has_dependency_groups=True,
+                has_clue_support_signal=True,
+                has_shaping_gap_signal=False,
+                has_authoring_audit=True,
+                has_full_area_coverage=True,
+                issue_categories=["clue_support_related"],
+                overall_quality_status="weak",
+            ),
+        ],
+    )
+    monkeypatch.setattr(
+        preset_backlog_module,
+        "build_preset_alignment_audit_summary",
+        lambda: synthetic_summary,
+    )
+
+    summary = build_preset_alignment_backlog_summary()
+    gap_items = [item for item in summary.items if item.gap_type == "shaping_gap_unexposed"]
+
+    assert [item.preset_id for item in gap_items] == ["preset_clue_weak_only"]
