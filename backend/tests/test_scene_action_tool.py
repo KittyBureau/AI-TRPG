@@ -413,6 +413,109 @@ def test_scene_action_talk_assaultive_intent_triggers_combat_resolution_once() -
     ]
 
 
+def test_scene_action_talk_assaultive_intent_can_disable_npc_via_props() -> None:
+    campaign = _base_campaign()
+    campaign.entities["guard_01"] = Entity(
+        id="guard_01",
+        kind="npc",
+        label="Wary Guard",
+        tags=["guard"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "talk"],
+        state={},
+        props={"combat_resolution": "npc_disabled"},
+    )
+
+    actions, feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [
+            ToolCall(
+                id="call_talk_disable_guard",
+                tool="scene_action",
+                args={
+                    "actor_id": "pc_001",
+                    "action": "talk",
+                    "target_id": "guard_01",
+                    "params": {"approach": "violent"},
+                },
+            )
+        ],
+    )
+
+    assert feedback is None
+    assert len(actions) == 1
+    result = actions[0].result
+    assert result["ok"] is False
+    assert result["error"] == {
+        "code": "combat_triggered",
+        "message": "combat triggered: guard_01",
+    }
+    assert result["hostility"] == {
+        "target_id": "guard_01",
+        "scope_kind": "entity",
+        "score": 2,
+        "threshold": 2,
+        "interaction_locked": True,
+        "last_category": "assaultive_intent",
+        "triggered_outcome_ids": ["hostility_guard_01_combat_resolved"],
+        "delta": 2,
+        "triggered_outcomes": [
+            {
+                "outcome_id": "hostility_guard_01_combat_resolved",
+                "type": "combat_resolved",
+                "target_id": "guard_01",
+                "scope_kind": "entity",
+                "active": True,
+                "resolution": "npc_disabled",
+            }
+        ],
+    }
+    assert campaign.entities["guard_01"].state["interaction_locked"] is True
+    assert campaign.entities["guard_01"].state["disabled"] is True
+    assert campaign.entities["guard_01"].state["combat_resolution"] == "npc_disabled"
+    assert sorted(campaign.entities["guard_01"].state["blocked_verbs"]) == [
+        "inspect",
+        "talk",
+    ]
+
+    after_actions, after_feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [
+            ToolCall(
+                id="call_inspect_disabled_guard",
+                tool="scene_action",
+                args={
+                    "actor_id": "pc_001",
+                    "action": "inspect",
+                    "target_id": "guard_01",
+                    "params": {},
+                },
+            )
+        ],
+    )
+
+    assert after_feedback is None
+    assert len(after_actions) == 1
+    after_result = after_actions[0].result
+    assert after_result["ok"] is False
+    assert after_result["error"] == {
+        "code": "interaction_locked",
+        "message": "interaction locked: guard_01",
+    }
+    assert after_result["hostility"]["triggered_outcomes"] == [
+        {
+            "outcome_id": "hostility_guard_01_combat_resolved",
+            "type": "combat_resolved",
+            "target_id": "guard_01",
+            "scope_kind": "entity",
+            "active": True,
+            "resolution": "npc_disabled",
+        }
+    ]
+
+
 def test_scene_action_open_locked_door_fails() -> None:
     campaign = _base_campaign()
     campaign.entities["door_locked"] = Entity(

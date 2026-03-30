@@ -113,6 +113,60 @@ def _create_campaign(repo: FileRepo, campaign_id: str) -> None:
     )
 
 
+def _create_campaign_with_guard_props(
+    repo: FileRepo,
+    campaign_id: str,
+    *,
+    guard_props: Dict[str, Any],
+) -> None:
+    repo.create_campaign(
+        Campaign(
+            id=campaign_id,
+            selected=Selected(
+                world_id="world_001",
+                map_id="map_001",
+                party_character_ids=["pc_001"],
+                active_actor_id="pc_001",
+            ),
+            settings_snapshot=SettingsSnapshot(),
+            goal=Goal(text="Keep the conversation open.", status="active"),
+            milestone=Milestone(current="intro", last_advanced_turn=0),
+            map=MapData(
+                areas={
+                    "area_001": MapArea(
+                        id="area_001",
+                        name="Checkpoint",
+                        description="A guarded checkpoint.",
+                        reachable_area_ids=[],
+                    )
+                },
+                connections=[],
+            ),
+            actors={
+                "pc_001": ActorState(
+                    position="area_001",
+                    hp=10,
+                    character_state="alive",
+                    inventory={},
+                    meta={},
+                )
+            },
+            entities={
+                "guard_01": Entity(
+                    id="guard_01",
+                    kind="npc",
+                    label="Wary Guard",
+                    tags=["guard"],
+                    loc=EntityLocation(type="area", id="area_001"),
+                    verbs=["inspect", "talk"],
+                    state={},
+                    props=dict(guard_props),
+                )
+            },
+        )
+    )
+
+
 def test_turn_service_persists_hostility_and_structured_lockout(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -334,4 +388,76 @@ def test_turn_service_assaultive_talk_triggers_combat_resolution_once(
     assert reloaded_again is not None
     assert list(reloaded_again.hostility.outcomes.keys()) == [
         "hostility_guard_01_combat_resolved"
+    ]
+
+
+def test_turn_service_assaultive_talk_can_persist_npc_disabled_resolution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    _create_campaign_with_guard_props(
+        repo,
+        "camp_hostility_combat_disabled",
+        guard_props={"combat_resolution": "npc_disabled"},
+    )
+
+    assault = service.submit_turn("camp_hostility_combat_disabled", "TALK_ASSAULT")
+    assert assault["applied_actions"][0]["result"]["ok"] is False
+    assert assault["applied_actions"][0]["result"]["error"] == {
+        "code": "combat_triggered",
+        "message": "combat triggered: guard_01",
+    }
+    assert assault["applied_actions"][0]["result"]["hostility"]["triggered_outcomes"] == [
+        {
+            "outcome_id": "hostility_guard_01_combat_resolved",
+            "type": "combat_resolved",
+            "target_id": "guard_01",
+            "scope_kind": "entity",
+            "active": True,
+            "resolution": "npc_disabled",
+        }
+    ]
+    assert assault["state_summary"]["hostility"]["outcomes"] == [
+        {
+            "outcome_id": "hostility_guard_01_combat_resolved",
+            "type": "combat_resolved",
+            "target_id": "guard_01",
+            "scope_kind": "entity",
+            "active": True,
+            "resolution": "npc_disabled",
+        }
+    ]
+
+    reloaded = repo.get_campaign("camp_hostility_combat_disabled")
+    assert reloaded is not None
+    assert reloaded.entities["guard_01"].state["interaction_locked"] is True
+    assert reloaded.entities["guard_01"].state["disabled"] is True
+    assert reloaded.entities["guard_01"].state["combat_resolution"] == "npc_disabled"
+    assert sorted(reloaded.entities["guard_01"].state["blocked_verbs"]) == [
+        "inspect",
+        "talk",
+    ]
+    assert reloaded.hostility.targets["guard_01"].triggered_outcome_ids == [
+        "hostility_guard_01_combat_resolved"
+    ]
+    assert list(reloaded.hostility.outcomes.keys()) == [
+        "hostility_guard_01_combat_resolved"
+    ]
+
+    after_lock = service.submit_turn("camp_hostility_combat_disabled", "TALK_CALM")
+    assert after_lock["applied_actions"][0]["result"]["ok"] is False
+    assert after_lock["applied_actions"][0]["result"]["error"] == {
+        "code": "interaction_locked",
+        "message": "interaction locked: guard_01",
+    }
+    assert after_lock["state_summary"]["hostility"]["outcomes"] == [
+        {
+            "outcome_id": "hostility_guard_01_combat_resolved",
+            "type": "combat_resolved",
+            "target_id": "guard_01",
+            "scope_kind": "entity",
+            "active": True,
+            "resolution": "npc_disabled",
+        }
     ]

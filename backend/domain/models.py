@@ -162,7 +162,7 @@ class ActorState(BaseModel):
 
 HostilityTargetScope = Literal["entity"]
 HostilityCategory = Literal["verbal_aggression", "assaultive_intent"]
-CombatResolutionType = Literal["player_repelled"]
+CombatResolutionType = Literal["player_repelled", "npc_disabled"]
 HostilityOutcomeType = Literal[
     "interaction_locked",
     "progression_locked",

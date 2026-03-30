@@ -1670,6 +1670,8 @@ def _combat_resolution_narrative(target: Entity, resolution: str) -> str:
     label = target.label or target.id
     if resolution == "player_repelled":
         return f"{label} repels your attack and shuts you out."
+    if resolution == "npc_disabled":
+        return f"You disable {label}; they can no longer resist or respond."
     return f"Violence erupts around {label}."
 
 

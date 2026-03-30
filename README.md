@@ -147,10 +147,11 @@ If you are doing a real local run, a quick manual check is:
   - generation-time clue validation for critical clue existence, pre-dependency reachability, and binding integrity
   - runtime per-entity hostility accumulation with threshold-triggered `interaction_locked`
   - runtime progression re-check that can trigger `progression_locked` and end the campaign lifecycle when a critical reveal source is locked before the key item is obtained
-  - runtime one-shot combat entry for assaultive NPC talk, which triggers structured `combat_resolved` with the current minimal resolution `player_repelled`, persists it under `Campaign.hostility`, and leaves later turns on the existing lockout path
+  - runtime one-shot combat entry for assaultive NPC talk, which triggers structured `combat_resolved`, persists it under `Campaign.hostility`, and now supports a minimal deterministic aftermath split: default `player_repelled` and opt-in `npc_disabled`
 - Current combat handling is still minimal:
   - it is not a multi-round combat system
-  - it does not include HP/damage resolution, skills/equipment logic, or multiple combat outcomes
+  - it does not include HP/damage resolution, skills/equipment logic, or a generalized combat outcome system
+  - `player_repelled` keeps the target on the existing talk lockout path, while `npc_disabled` additionally leaves the target structurally disabled for later turns
 - Formal Gameplay Model is currently a read-only structural validation and alignment layer:
   - `dependency_groups` with `all_of` / `any_of`
   - `multi_path_coverage` and `clue_support_coverage`

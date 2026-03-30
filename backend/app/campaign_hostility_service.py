@@ -178,6 +178,19 @@ def _lock_entity_interaction(target: Entity, *, blocked_action: str) -> None:
     target.state["blocked_verbs"] = blocked_verbs
 
 
+def _lock_entity_actions(target: Entity, *, blocked_actions: list[str]) -> None:
+    target.state["interaction_locked"] = True
+    blocked_verbs = [
+        verb
+        for verb in target.state.get("blocked_verbs", [])
+        if isinstance(verb, str) and verb.strip()
+    ]
+    for blocked_action in blocked_actions:
+        if blocked_action not in blocked_verbs:
+            blocked_verbs.append(blocked_action)
+    target.state["blocked_verbs"] = blocked_verbs
+
+
 def _maybe_trigger_progression_locked(
     campaign: Campaign,
     *,
@@ -235,9 +248,14 @@ def _maybe_trigger_combat_resolution(
     if target.kind != "npc" or action != "talk":
         return None
 
+    resolution = _resolve_combat_resolution(target)
     target_state.interaction_locked = True
-    _lock_entity_interaction(target, blocked_action=action)
-    target.state["combat_resolution"] = "player_repelled"
+    if resolution == "npc_disabled":
+        _lock_entity_actions(target, blocked_actions=["inspect", "talk"])
+        target.state["disabled"] = True
+    else:
+        _lock_entity_interaction(target, blocked_action=action)
+    target.state["combat_resolution"] = resolution
 
     outcome_id = f"hostility_{target.id}_combat_resolved"
     outcome = state.outcomes.get(outcome_id)
@@ -246,12 +264,21 @@ def _maybe_trigger_combat_resolution(
             outcome_id=outcome_id,
             type="combat_resolved",
             target_id=target.id,
-            resolution="player_repelled",
+            resolution=resolution,
         )
         state.outcomes[outcome_id] = outcome
+    else:
+        outcome.resolution = resolution
     if outcome_id not in target_state.triggered_outcome_ids:
         target_state.triggered_outcome_ids.append(outcome_id)
     return outcome
+
+
+def _resolve_combat_resolution(target: Entity) -> str:
+    configured = target.props.get("combat_resolution")
+    if configured == "npc_disabled":
+        return "npc_disabled"
+    return "player_repelled"
 
 
 def _required_item_still_available(campaign: Campaign, required_item_id: str) -> bool:

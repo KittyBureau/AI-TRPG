@@ -142,8 +142,9 @@ Runtime system:
 - Generation-time clue validation now rejects scenarios where the critical clue support is missing, only reachable after the dependency point, or structurally bound to the wrong source/item/area.
 - Runtime now persists per-entity hostility; repeated hostile interaction crosses a threshold and triggers structured `interaction_locked` instead of relying on narrative-only escalation.
 - When `interaction_locked` cuts off the critical reveal source before the required item is obtained, runtime performs a minimal progression re-check, triggers `progression_locked`, marks the goal failed, and ends the campaign lifecycle.
-- Runtime now also includes a minimal combat-entry hook: assaultive NPC `talk` triggers one-shot `combat_resolved`, persists the result under `Campaign.hostility`, and currently resolves to `player_repelled`.
-- This remains a bounded runtime consequence branch rather than a full combat system: no multi-round combat, no HP/damage loop, and no broader skills/equipment battle layer.
+- Runtime now also includes a minimal combat-entry hook: assaultive NPC `talk` triggers one-shot `combat_resolved`, persists the result under `Campaign.hostility`, and currently resolves to either default `player_repelled` or opt-in `npc_disabled`.
+- `player_repelled` preserves the existing talk lockout path; `npc_disabled` additionally marks the NPC disabled and blocks later `inspect`/`talk` interactions so the aftermath remains observable in runtime state.
+- This remains a bounded runtime consequence branch rather than a full combat system: no multi-round combat, no HP/damage loop, no broader skills/equipment battle layer, and no generalized combat state machine.
 
 ## 7. Known Constraints
 
@@ -157,7 +158,7 @@ Runtime system:
 - primary next track: `P2-11A Context Builder Infrastructure`
   - introduce the context-builder seam before `_build_system_prompt()`
   - keep authoritative runtime state outside the builder
-- next gameplay-facing follow-up after the current minimal combat entry: broaden deterministic conflict aftermath without replacing the current one-shot authority path
+- next gameplay-facing follow-up after the current minimal combat-entry aftermath split: broaden deterministic conflict consequences without replacing the current one-shot authority path
 - scenario generator v0 is already stabilized enough to serve as a regression/content baseline rather than the next primary implementation track
 - limited world content and entity expansion in support of the scenario generator
 - UI improvements beyond the current panel MVP
