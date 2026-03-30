@@ -828,14 +828,27 @@ def _apply_scene_action(
             else None
         )
         if hostility is not None and hostility.get("triggered_outcomes"):
+            combat_resolution = _combat_resolution_from_hostility(hostility)
             return _scene_action_applied(
                 call,
                 timestamp,
                 _scene_action_result(
                     ok=False,
-                    narrative=_interaction_locked_narrative(target),
-                    error_code="interaction_locked_triggered",
-                    error_message=f"hostility threshold reached: {target.id}",
+                    narrative=(
+                        _combat_resolution_narrative(target, combat_resolution)
+                        if combat_resolution is not None
+                        else _interaction_locked_narrative(target)
+                    ),
+                    error_code=(
+                        "combat_triggered"
+                        if combat_resolution is not None
+                        else "interaction_locked_triggered"
+                    ),
+                    error_message=(
+                        f"combat triggered: {target.id}"
+                        if combat_resolution is not None
+                        else f"hostility threshold reached: {target.id}"
+                    ),
                     entity_patches=entity_patches,
                     new_entities=new_entities,
                     removed_entities=removed_entities,
@@ -1633,6 +1646,31 @@ def _interaction_locked_narrative(target: Entity) -> str:
     if target.kind == "npc":
         return f"{target.label} refuses to continue interacting with you."
     return f"You can no longer make progress with {target.label}."
+
+
+def _combat_resolution_from_hostility(
+    hostility: Dict[str, object],
+) -> Optional[str]:
+    triggered_outcomes = hostility.get("triggered_outcomes")
+    if not isinstance(triggered_outcomes, list):
+        return None
+    for outcome in triggered_outcomes:
+        if not isinstance(outcome, dict):
+            continue
+        if outcome.get("type") != "combat_resolved":
+            continue
+        resolution = outcome.get("resolution")
+        if isinstance(resolution, str) and resolution.strip():
+            return resolution
+        return "player_repelled"
+    return None
+
+
+def _combat_resolution_narrative(target: Entity, resolution: str) -> str:
+    label = target.label or target.id
+    if resolution == "player_repelled":
+        return f"{label} repels your attack and shuts you out."
+    return f"Violence erupts around {label}."
 
 
 def _normalized_verbs(raw_verbs: object) -> List[str]:

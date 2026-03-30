@@ -162,7 +162,12 @@ class ActorState(BaseModel):
 
 HostilityTargetScope = Literal["entity"]
 HostilityCategory = Literal["verbal_aggression", "assaultive_intent"]
-HostilityOutcomeType = Literal["interaction_locked", "progression_locked"]
+CombatResolutionType = Literal["player_repelled"]
+HostilityOutcomeType = Literal[
+    "interaction_locked",
+    "progression_locked",
+    "combat_resolved",
+]
 
 
 class CampaignHostilityTarget(BaseModel):
@@ -181,6 +186,7 @@ class CampaignHostilityOutcome(BaseModel):
     target_id: str
     scope_kind: HostilityTargetScope = "entity"
     active: bool = True
+    resolution: Optional[CombatResolutionType] = None
 
 
 class CampaignHostilityState(BaseModel):

@@ -270,11 +270,12 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
 - Current runtime consequence loop remains system-controlled and stateful:
   - per-entity hostility accumulates from structured hostile `scene_action` inputs
   - threshold crossing triggers `interaction_locked`
+  - assaultive NPC `talk` can trigger one-shot `combat_resolved` with the current deterministic resolution `player_repelled`
   - locking the critical reveal source in the current key-gate scenario can trigger `progression_locked`, fail the goal, and end the campaign lifecycle
 - These checks/outcomes must not rely on LLM narrative inference, fallback recovery, or a second runtime authority model.
 **Checks**
 - Run `backend/tests/test_scenario_builder.py` and `backend/tests/test_scenario_templates.py` for generation-time validation coverage.
-- Run `backend/tests/test_turn_hostility_thresholds.py`, `backend/tests/test_turn_progression_coupling.py`, and `backend/tests/test_turn_response_contract_api.py` for runtime hostility/progression coverage.
+- Run `backend/tests/test_scene_action_tool.py`, `backend/tests/test_turn_hostility_thresholds.py`, `backend/tests/test_turn_progression_coupling.py`, and `backend/tests/test_turn_response_contract_api.py` for runtime hostility/progression/combat coverage.
 - Keep `README.md`, `docs/00_overview/README.md`, and `docs/00_overview/PROJECT_STATUS.md` aligned with the current runtime authority and gameplay validation boundaries.
 **Scope**
-- `backend/app/scenario_builder.py`, `backend/app/scenario_validator.py`, `backend/app/campaign_hostility_service.py`, `backend/app/tool_executor.py`, `backend/app/turn_service.py`, `backend/domain/models.py`, `backend/tests/test_scenario_builder.py`, `backend/tests/test_scenario_templates.py`, `backend/tests/test_turn_hostility_thresholds.py`, `backend/tests/test_turn_progression_coupling.py`, `backend/tests/test_turn_response_contract_api.py`, `README.md`, `docs/00_overview/README.md`, `docs/00_overview/PROJECT_STATUS.md`.
+- `backend/app/scenario_builder.py`, `backend/app/scenario_validator.py`, `backend/app/campaign_hostility_service.py`, `backend/app/tool_executor.py`, `backend/app/turn_service.py`, `backend/domain/models.py`, `backend/tests/test_scene_action_tool.py`, `backend/tests/test_scenario_builder.py`, `backend/tests/test_scenario_templates.py`, `backend/tests/test_turn_hostility_thresholds.py`, `backend/tests/test_turn_progression_coupling.py`, `backend/tests/test_turn_response_contract_api.py`, `README.md`, `docs/00_overview/README.md`, `docs/00_overview/PROJECT_STATUS.md`, `docs/20_runtime/gameplay_flow.md`.

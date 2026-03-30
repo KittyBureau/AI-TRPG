@@ -65,6 +65,8 @@
 - Generation also fails when the critical clue path is missing, placed after the dependency point, or structurally bound to the wrong source/item/area.
 - Runtime now persists per-entity hostility and triggers `interaction_locked` at threshold instead of leaving high-conflict turns as narrative-only responses.
 - If the locked interaction is the critical reveal source for the current scenario path, runtime performs a minimal progression re-check and triggers `progression_locked`, ending the campaign lifecycle.
+- Runtime also has a minimal combat-entry branch: assaultive NPC `talk` can trigger one-shot `combat_resolved` with the current deterministic resolution `player_repelled`, persist it under `Campaign.hostility`, and keep later turns on the existing lockout path.
+- This remains a bounded runtime hook, not a full combat system.
 
 ## Runtime Guides
 

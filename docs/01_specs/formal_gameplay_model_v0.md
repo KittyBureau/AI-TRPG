@@ -244,7 +244,7 @@ These attachments exist for inspection and validation only.
 Related current gameplay validation boundary:
 
 - generation-time static path and clue validation now run in the scenario builder/validator chain, but they are not part of the formal model
-- runtime hostility and `progression_locked` outcomes also live outside the formal model
+- runtime hostility, `progression_locked`, and minimal `combat_resolved` outcomes also live outside the formal model
 - none of these runtime-facing systems make the formal layer authoritative
 
 ## 9. Known Limitations

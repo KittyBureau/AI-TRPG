@@ -1,6 +1,6 @@
 # PLAYABLE v1 TODO (Active Backlog)
 
-Last updated: 2026-03-27
+Last updated: 2026-03-30
 
 ## Positioning
 
@@ -130,10 +130,3 @@ This file now keeps only real unfinished work.
 - Scope: `frontend/index.html`, `frontend/app.js`, `frontend/map.html`, `frontend/map.js`, `docs/20_runtime/frontend_entrypoints.md`, matching spec references.
 - Acceptance: current primary entry points stay explicit and legacy surfaces are clearly demoted or deliberately retained with accurate docs.
 - Tests: `frontend/tests/store_loop.test.mjs`, targeted manual entrypoint check.
-
-### P2-17 Combat entry from structured hostility/progression baseline
-- Status: `TODO`
-- Why: runtime now has non-combat hostility and progression-failure state, but still has no explicit combat entry path when conflict should escalate beyond lockout.
-- Scope: next gameplay-facing phase after the current non-combat consequence loop; should build on `Campaign.hostility`, `interaction_locked`, and `progression_locked` without replacing current authority.
-- Acceptance: one minimal combat entry contract exists without regressing the current non-combat failure loop.
-- Tests: future runtime integration coverage after the combat entry contract is defined.

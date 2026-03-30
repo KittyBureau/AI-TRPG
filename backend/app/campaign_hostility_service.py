@@ -64,6 +64,22 @@ def record_hostility_scene_action(
     target_state.last_category = category
 
     triggered_outcomes: list[CampaignHostilityOutcome] = []
+    combat_outcome = _maybe_trigger_combat_resolution(
+        campaign,
+        state=state,
+        target_state=target_state,
+        target=target,
+        action=action,
+        category=category,
+    )
+    if combat_outcome is not None:
+        triggered_outcomes.append(combat_outcome)
+        return _build_target_payload(
+            target_state,
+            triggered_outcomes=triggered_outcomes,
+            delta=delta,
+        )
+
     if (
         target_state.score >= target_state.threshold
         and not target_state.interaction_locked
@@ -102,13 +118,7 @@ def build_hostility_state_summary(campaign: Campaign) -> Dict[str, object]:
         for target_state in sorted(state.targets.values(), key=lambda item: item.target_id)
     ]
     outcomes = [
-        {
-            "outcome_id": outcome.outcome_id,
-            "type": outcome.type,
-            "target_id": outcome.target_id,
-            "scope_kind": outcome.scope_kind,
-            "active": outcome.active,
-        }
+        _serialize_outcome(outcome)
         for outcome in sorted(state.outcomes.values(), key=lambda item: item.outcome_id)
     ]
     return {
@@ -209,6 +219,41 @@ def _maybe_trigger_progression_locked(
     return outcome
 
 
+def _maybe_trigger_combat_resolution(
+    campaign: Campaign,
+    *,
+    state: CampaignHostilityState,
+    target_state: CampaignHostilityTarget,
+    target: Entity,
+    action: str,
+    category: str,
+) -> Optional[CampaignHostilityOutcome]:
+    if campaign.lifecycle.ended:
+        return None
+    if category != "assaultive_intent":
+        return None
+    if target.kind != "npc" or action != "talk":
+        return None
+
+    target_state.interaction_locked = True
+    _lock_entity_interaction(target, blocked_action=action)
+    target.state["combat_resolution"] = "player_repelled"
+
+    outcome_id = f"hostility_{target.id}_combat_resolved"
+    outcome = state.outcomes.get(outcome_id)
+    if outcome is None:
+        outcome = CampaignHostilityOutcome(
+            outcome_id=outcome_id,
+            type="combat_resolved",
+            target_id=target.id,
+            resolution="player_repelled",
+        )
+        state.outcomes[outcome_id] = outcome
+    if outcome_id not in target_state.triggered_outcome_ids:
+        target_state.triggered_outcome_ids.append(outcome_id)
+    return outcome
+
+
 def _required_item_still_available(campaign: Campaign, required_item_id: str) -> bool:
     return any(
         stack.definition_id == required_item_id for stack in campaign.items.values()
@@ -234,15 +279,22 @@ def _build_target_payload(
         payload["delta"] = delta
     if triggered_outcomes:
         payload["triggered_outcomes"] = [
-            {
-                "outcome_id": outcome.outcome_id,
-                "type": outcome.type,
-                "target_id": outcome.target_id,
-                "scope_kind": outcome.scope_kind,
-                "active": outcome.active,
-            }
+            _serialize_outcome(outcome)
             for outcome in triggered_outcomes
         ]
+    return payload
+
+
+def _serialize_outcome(outcome: CampaignHostilityOutcome) -> Dict[str, object]:
+    payload: Dict[str, object] = {
+        "outcome_id": outcome.outcome_id,
+        "type": outcome.type,
+        "target_id": outcome.target_id,
+        "scope_kind": outcome.scope_kind,
+        "active": outcome.active,
+    }
+    if outcome.resolution is not None:
+        payload["resolution"] = outcome.resolution
     return payload
 
 

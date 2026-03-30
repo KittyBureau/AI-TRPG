@@ -33,6 +33,8 @@ class _HostilityLLM:
         params: Dict[str, Any]
         if token == "TALK_THREAT":
             params = {"tone": "threatening"}
+        elif token == "TALK_ASSAULT":
+            params = {"approach": "violent"}
         else:
             params = {"tone": "calm"}
         return {
@@ -240,4 +242,96 @@ def test_turn_service_persists_hostility_and_structured_lockout(
     assert reloaded_again.hostility.targets["guard_01"].score == 2
     assert list(reloaded_again.hostility.outcomes.keys()) == [
         "hostility_guard_01_interaction_locked"
+    ]
+
+
+def test_turn_service_assaultive_talk_triggers_combat_resolution_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    _create_campaign(repo, "camp_hostility_combat")
+
+    calm = service.submit_turn("camp_hostility_combat", "TALK_CALM")
+    assert calm["applied_actions"][0]["result"]["ok"] is True
+    assert calm["state_summary"]["hostility"]["outcome_count"] == 0
+
+    assault = service.submit_turn("camp_hostility_combat", "TALK_ASSAULT")
+    assert assault["applied_actions"][0]["result"]["ok"] is False
+    assert assault["applied_actions"][0]["result"]["error"] == {
+        "code": "combat_triggered",
+        "message": "combat triggered: guard_01",
+    }
+    assert assault["applied_actions"][0]["result"]["hostility"] == {
+        "target_id": "guard_01",
+        "scope_kind": "entity",
+        "score": 2,
+        "threshold": 2,
+        "interaction_locked": True,
+        "last_category": "assaultive_intent",
+        "triggered_outcome_ids": ["hostility_guard_01_combat_resolved"],
+        "delta": 2,
+        "triggered_outcomes": [
+            {
+                "outcome_id": "hostility_guard_01_combat_resolved",
+                "type": "combat_resolved",
+                "target_id": "guard_01",
+                "scope_kind": "entity",
+                "active": True,
+                "resolution": "player_repelled",
+            }
+        ],
+    }
+    assert assault["state_summary"]["hostility"] == {
+        "target_count": 1,
+        "outcome_count": 1,
+        "targets": [
+            {
+                "target_id": "guard_01",
+                "scope_kind": "entity",
+                "score": 2,
+                "threshold": 2,
+                "interaction_locked": True,
+                "last_category": "assaultive_intent",
+                "triggered_outcome_ids": ["hostility_guard_01_combat_resolved"],
+            }
+        ],
+        "outcomes": [
+            {
+                "outcome_id": "hostility_guard_01_combat_resolved",
+                "type": "combat_resolved",
+                "target_id": "guard_01",
+                "scope_kind": "entity",
+                "active": True,
+                "resolution": "player_repelled",
+            }
+        ],
+    }
+
+    reloaded = repo.get_campaign("camp_hostility_combat")
+    assert reloaded is not None
+    assert reloaded.hostility.targets["guard_01"].score == 2
+    assert reloaded.hostility.targets["guard_01"].interaction_locked is True
+    assert reloaded.hostility.targets["guard_01"].triggered_outcome_ids == [
+        "hostility_guard_01_combat_resolved"
+    ]
+    assert list(reloaded.hostility.outcomes.keys()) == [
+        "hostility_guard_01_combat_resolved"
+    ]
+    assert reloaded.entities["guard_01"].state["interaction_locked"] is True
+    assert reloaded.entities["guard_01"].state["blocked_verbs"] == ["talk"]
+    assert reloaded.entities["guard_01"].state["combat_resolution"] == "player_repelled"
+
+    after_lock = service.submit_turn("camp_hostility_combat", "TALK_CALM")
+    assert after_lock["applied_actions"][0]["result"]["ok"] is False
+    assert after_lock["applied_actions"][0]["result"]["error"] == {
+        "code": "interaction_locked",
+        "message": "interaction locked: guard_01",
+    }
+    assert after_lock["state_summary"]["hostility"]["outcome_count"] == 1
+
+    reloaded_again = repo.get_campaign("camp_hostility_combat")
+    assert reloaded_again is not None
+    assert list(reloaded_again.hostility.outcomes.keys()) == [
+        "hostility_guard_01_combat_resolved"
     ]

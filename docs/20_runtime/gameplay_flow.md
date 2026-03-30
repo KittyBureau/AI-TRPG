@@ -19,6 +19,9 @@ Current item/gameplay note:
 
 - mainline portable-item flow is `scene_action search -> reveal/discover -> scene_action take`
 - `inventory_add` is still exposed, but only as a bounded legacy contract for source-entity-backed inventory gain
+- high-conflict NPC `scene_action talk` now has a minimal structured combat branch: assaultive intent triggers one-shot `combat_resolved` with the current deterministic resolution `player_repelled`
+- the combat result is exposed in the current turn payload and remains observable later through persisted hostility/lockout state
+- this is not a multi-round combat system
 
 ## Runtime readiness before gameplay
 
@@ -364,6 +367,7 @@ Current gameplay flow non-goals:
 - no long-term context system is implemented in the current runtime flow
 - recent turn log data is not a current prompt context source; it is only used for repeat-illegal suppression
 - `state_summary` is a response/log summary and is not a current prompt payload source
+- current combat handling is only the minimal assaultive-talk entry path; there is no full battle loop, HP/damage combat resolution, or skills/equipment combat layer
 
 ## Frontend lightweight regression script
 

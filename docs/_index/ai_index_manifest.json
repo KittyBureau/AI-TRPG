@@ -187,6 +187,7 @@
         "backend/app/tool_executor.py",
         "backend/app/turn_service.py",
         "backend/domain/models.py",
+        "backend/tests/test_scene_action_tool.py",
         "backend/tests/test_scenario_builder.py",
         "backend/tests/test_scenario_templates.py",
         "backend/tests/test_turn_hostility_thresholds.py",
@@ -194,7 +195,8 @@
         "backend/tests/test_turn_response_contract_api.py",
         "README.md",
         "docs/00_overview/README.md",
-        "docs/00_overview/PROJECT_STATUS.md"
+        "docs/00_overview/PROJECT_STATUS.md",
+        "docs/20_runtime/gameplay_flow.md"
       ]
     }
   ],

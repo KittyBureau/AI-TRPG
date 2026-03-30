@@ -142,11 +142,15 @@ If you are doing a real local run, a quick manual check is:
 - Scenario-generated campaigns now close runtime gate/goal authority onto `Campaign.scenario_runtime_fragment`.
 - Scenario execution no longer relies on scenario-world shim or fallback logic after campaign bootstrap.
 - Scenario runtime contract is now regression-covered across multiple topology variants, with explicit failure when required authority fragment data is missing or corrupt.
-- Current gameplay validation/runtime consequence loop now has four stable layers:
+- Current gameplay validation/runtime consequence loop now has five stable layers:
   - generation-time path validation for reachable completion, satisfiable gate dependency, and obvious dead-end rejection
   - generation-time clue validation for critical clue existence, pre-dependency reachability, and binding integrity
   - runtime per-entity hostility accumulation with threshold-triggered `interaction_locked`
   - runtime progression re-check that can trigger `progression_locked` and end the campaign lifecycle when a critical reveal source is locked before the key item is obtained
+  - runtime one-shot combat entry for assaultive NPC talk, which triggers structured `combat_resolved` with the current minimal resolution `player_repelled`, persists it under `Campaign.hostility`, and leaves later turns on the existing lockout path
+- Current combat handling is still minimal:
+  - it is not a multi-round combat system
+  - it does not include HP/damage resolution, skills/equipment logic, or multiple combat outcomes
 - Formal Gameplay Model is currently a read-only structural validation and alignment layer:
   - `dependency_groups` with `all_of` / `any_of`
   - `multi_path_coverage` and `clue_support_coverage`
