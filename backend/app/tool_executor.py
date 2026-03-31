@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from backend.app.actor_service import spawn_actor
 from backend.app.campaign_hostility_service import (
+    InvalidCombatAftermathHookError,
     build_target_hostility_snapshot,
     record_hostility_scene_action,
 )
@@ -816,6 +817,7 @@ def _apply_scene_action(
     entities_before = deepcopy(campaign.entities)
     items_before = deepcopy(campaign.items)
     actors_before = deepcopy(campaign.actors)
+    hostility_before = deepcopy(campaign.hostility)
     try:
         hostility = (
             record_hostility_scene_action(
@@ -1605,10 +1607,26 @@ def _apply_scene_action(
             )
 
         return None
+    except InvalidCombatAftermathHookError as exc:
+        campaign.entities = entities_before
+        campaign.items = items_before
+        campaign.actors = actors_before
+        campaign.hostility = hostility_before
+        return _scene_action_applied(
+            call,
+            timestamp,
+            _scene_action_result(
+                ok=False,
+                narrative=f"{target.label} has an invalid combat aftermath configuration." if target is not None else "That action has an invalid combat aftermath configuration.",
+                error_code="invalid_combat_aftermath_hook",
+                error_message=f"{exc.target_id}: {exc.reason}",
+            ),
+        )
     except Exception:
         campaign.entities = entities_before
         campaign.items = items_before
         campaign.actors = actors_before
+        campaign.hostility = hostility_before
         return _scene_action_applied(
             call,
             timestamp,

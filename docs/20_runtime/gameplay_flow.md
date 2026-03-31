@@ -21,7 +21,8 @@ Current item/gameplay note:
 - `inventory_add` is still exposed, but only as a bounded legacy contract for source-entity-backed inventory gain
 - high-conflict NPC `scene_action talk` now has a minimal structured combat branch: assaultive intent triggers one-shot `combat_resolved` with either default `player_repelled` or opt-in `npc_disabled`
 - the combat result is exposed in the current turn payload and remains observable later through persisted hostility state plus follow-on interaction blocking
-- selected `npc_disabled` aftermaths can also attach a minimal `combat_aftermath_hook` with `kind="search_loot"`, turning the NPC into a searchable aftermath source that feeds back into the existing `search -> reveal -> take` loop
+- the current recommended authoring shape for searchable aftermaths is `combat_aftermath_hook={"kind":"search_loot","item_id":"...","item_label":"..."}` on the target NPC
+- selected `npc_disabled` aftermaths can use that hook, turning the NPC into a searchable aftermath source that feeds back into the existing `search -> reveal -> take` loop
 - legacy `combat_reveal_item_id` / `combat_reveal_item_label` inputs still map into that same searchable-aftermath contract for compatibility
 - this is not a multi-round combat system
 

@@ -516,7 +516,7 @@ def test_scene_action_talk_assaultive_intent_can_disable_npc_via_props() -> None
     ]
 
 
-def test_scene_action_npc_disabled_can_open_search_reveal_path() -> None:
+def test_scene_action_npc_disabled_recommended_hook_can_open_search_reveal_path() -> None:
     campaign = _base_campaign()
     campaign.entities["guard_01"] = Entity(
         id="guard_01",
@@ -528,8 +528,11 @@ def test_scene_action_npc_disabled_can_open_search_reveal_path() -> None:
         state={},
         props={
             "combat_resolution": "npc_disabled",
-            "combat_reveal_item_id": "guard_pass",
-            "combat_reveal_item_label": "Guard Pass",
+            "combat_aftermath_hook": {
+                "kind": "search_loot",
+                "item_id": "guard_pass",
+                "item_label": "Guard Pass",
+            },
         },
     )
 
@@ -619,7 +622,7 @@ def test_scene_action_npc_disabled_can_open_search_reveal_path() -> None:
     assert campaign.actors["pc_001"].inventory == {"guard_pass": 1}
 
 
-def test_scene_action_npc_disabled_search_aftermath_hook_can_open_reveal_path() -> None:
+def test_scene_action_npc_disabled_legacy_fields_still_open_search_reveal_path() -> None:
     campaign = _base_campaign()
     campaign.entities["guard_01"] = Entity(
         id="guard_01",
@@ -631,11 +634,8 @@ def test_scene_action_npc_disabled_search_aftermath_hook_can_open_reveal_path() 
         state={},
         props={
             "combat_resolution": "npc_disabled",
-            "combat_aftermath_hook": {
-                "kind": "search_loot",
-                "item_id": "guard_badge",
-                "item_label": "Guard Badge",
-            },
+            "combat_reveal_item_id": "guard_badge",
+            "combat_reveal_item_label": "Guard Badge",
         },
     )
 
@@ -695,6 +695,52 @@ def test_scene_action_npc_disabled_search_aftermath_hook_can_open_reveal_path() 
     ]
     assert len(revealed_stacks) == 1
     assert revealed_stacks[0].label == "Guard Badge"
+
+
+def test_scene_action_invalid_combat_aftermath_hook_is_rejected_explicitly() -> None:
+    campaign = _base_campaign()
+    campaign.entities["guard_01"] = Entity(
+        id="guard_01",
+        kind="npc",
+        label="Checkpoint Guard",
+        tags=["guard"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "talk"],
+        state={},
+        props={
+            "combat_resolution": "npc_disabled",
+            "combat_aftermath_hook": {"kind": "search_loot"},
+        },
+    )
+
+    actions, feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [
+            ToolCall(
+                id="call_invalid_aftermath_hook",
+                tool="scene_action",
+                args={
+                    "actor_id": "pc_001",
+                    "action": "talk",
+                    "target_id": "guard_01",
+                    "params": {"approach": "violent"},
+                },
+            )
+        ],
+    )
+
+    assert feedback is None
+    assert len(actions) == 1
+    result = actions[0].result
+    assert result["ok"] is False
+    assert result["error"] == {
+        "code": "invalid_combat_aftermath_hook",
+        "message": "guard_01: missing item_id",
+    }
+    assert campaign.hostility.targets == {}
+    assert campaign.hostility.outcomes == {}
+    assert campaign.entities["guard_01"].state == {}
 
 
 def test_scene_action_open_locked_door_fails() -> None:

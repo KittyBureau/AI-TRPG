@@ -35,6 +35,13 @@ _ASSAULTIVE_INTENT_MARKERS = {
 }
 
 
+class InvalidCombatAftermathHookError(ValueError):
+    def __init__(self, *, target_id: str, reason: str) -> None:
+        self.target_id = target_id
+        self.reason = reason
+        super().__init__(f"invalid combat aftermath hook for {target_id}: {reason}")
+
+
 def record_hostility_scene_action(
     campaign: Campaign,
     *,
@@ -310,19 +317,28 @@ def _resolve_combat_aftermath_hook(target: Entity) -> Optional[Dict[str, str]]:
     if isinstance(configured, dict):
         kind = configured.get("kind")
         item_id = configured.get("item_id")
-        if kind == "search_loot" and isinstance(item_id, str) and item_id.strip():
-            normalized_item_id = item_id.strip()
-            item_label = configured.get("item_label")
-            normalized_label = (
-                item_label.strip()
-                if isinstance(item_label, str) and item_label.strip()
-                else normalized_item_id
+        if kind != "search_loot":
+            raise InvalidCombatAftermathHookError(
+                target_id=target.id,
+                reason="unsupported kind",
             )
-            return {
-                "kind": "search_loot",
-                "item_id": normalized_item_id,
-                "item_label": normalized_label,
-            }
+        if not isinstance(item_id, str) or not item_id.strip():
+            raise InvalidCombatAftermathHookError(
+                target_id=target.id,
+                reason="missing item_id",
+            )
+        normalized_item_id = item_id.strip()
+        item_label = configured.get("item_label")
+        normalized_label = (
+            item_label.strip()
+            if isinstance(item_label, str) and item_label.strip()
+            else normalized_item_id
+        )
+        return {
+            "kind": "search_loot",
+            "item_id": normalized_item_id,
+            "item_label": normalized_label,
+        }
 
     reveal_item_id = target.props.get("combat_reveal_item_id")
     if not isinstance(reveal_item_id, str) or not reveal_item_id.strip():

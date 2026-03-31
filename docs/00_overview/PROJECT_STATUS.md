@@ -144,7 +144,8 @@ Runtime system:
 - When `interaction_locked` cuts off the critical reveal source before the required item is obtained, runtime performs a minimal progression re-check, triggers `progression_locked`, marks the goal failed, and ends the campaign lifecycle.
 - Runtime now also includes a minimal combat-entry hook: assaultive NPC `talk` triggers one-shot `combat_resolved`, persists the result under `Campaign.hostility`, and currently resolves to either default `player_repelled` or opt-in `npc_disabled`.
 - `player_repelled` preserves the existing talk lockout path; `npc_disabled` additionally marks the NPC disabled and blocks later `inspect`/`talk` interactions so the aftermath remains observable in runtime state.
-- Selected `npc_disabled` aftermaths can now attach a minimal `combat_aftermath_hook` with `kind="search_loot"`, reusing the existing `scene_action search -> reveal -> take` structure as the first gameplay-level coupling above combat aftermath itself.
+- The current recommended authoring shape for searchable aftermaths is `combat_aftermath_hook={"kind":"search_loot","item_id":"...","item_label":"..."}` on the target NPC.
+- Selected `npc_disabled` aftermaths can use that hook, reusing the existing `scene_action search -> reveal -> take` structure as the first gameplay-level coupling above combat aftermath itself.
 - Legacy `combat_reveal_item_id` / `combat_reveal_item_label` inputs still normalize into that same searchable-aftermath contract for compatibility.
 - This remains a bounded runtime consequence branch rather than a full combat system: no multi-round combat, no HP/damage loop, no broader skills/equipment battle layer, and no generalized combat state machine.
 

@@ -480,7 +480,7 @@ def test_turn_service_assaultive_talk_can_persist_npc_disabled_resolution(
     ]
 
 
-def test_turn_service_npc_disabled_can_enable_later_search_route(
+def test_turn_service_npc_disabled_recommended_hook_can_enable_later_search_route(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -490,8 +490,11 @@ def test_turn_service_npc_disabled_can_enable_later_search_route(
         "camp_hostility_combat_search_after_disable",
         guard_props={
             "combat_resolution": "npc_disabled",
-            "combat_reveal_item_id": "guard_pass",
-            "combat_reveal_item_label": "Guard Pass",
+            "combat_aftermath_hook": {
+                "kind": "search_loot",
+                "item_id": "guard_pass",
+                "item_label": "Guard Pass",
+            },
         },
     )
 
@@ -532,7 +535,7 @@ def test_turn_service_npc_disabled_can_enable_later_search_route(
     )
 
 
-def test_turn_service_npc_disabled_search_aftermath_hook_can_enable_later_search_route(
+def test_turn_service_npc_disabled_legacy_fields_still_enable_later_search_route(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -542,11 +545,8 @@ def test_turn_service_npc_disabled_search_aftermath_hook_can_enable_later_search
         "camp_hostility_combat_search_after_hook",
         guard_props={
             "combat_resolution": "npc_disabled",
-            "combat_aftermath_hook": {
-                "kind": "search_loot",
-                "item_id": "guard_badge",
-                "item_label": "Guard Badge",
-            },
+            "combat_reveal_item_id": "guard_badge",
+            "combat_reveal_item_label": "Guard Badge",
         },
     )
 
@@ -585,3 +585,37 @@ def test_turn_service_npc_disabled_search_aftermath_hook_can_enable_later_search
         stack.definition_id == "guard_badge" and stack.parent_id == "area_001"
         for stack in reloaded.items.values()
     )
+
+
+def test_turn_service_invalid_combat_aftermath_hook_is_rejected_explicitly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    _create_campaign_with_guard_props(
+        repo,
+        "camp_hostility_combat_invalid_hook",
+        guard_props={
+            "combat_resolution": "npc_disabled",
+            "combat_aftermath_hook": {"kind": "search_loot"},
+        },
+    )
+
+    assault = service.submit_turn("camp_hostility_combat_invalid_hook", "TALK_ASSAULT")
+    assert assault["applied_actions"][0]["result"]["ok"] is False
+    assert assault["applied_actions"][0]["result"]["error"] == {
+        "code": "invalid_combat_aftermath_hook",
+        "message": "guard_01: missing item_id",
+    }
+    assert assault["state_summary"]["hostility"] == {
+        "target_count": 0,
+        "outcome_count": 0,
+        "targets": [],
+        "outcomes": [],
+    }
+
+    reloaded = repo.get_campaign("camp_hostility_combat_invalid_hook")
+    assert reloaded is not None
+    assert reloaded.hostility.targets == {}
+    assert reloaded.hostility.outcomes == {}
+    assert reloaded.entities["guard_01"].state == {}
