@@ -71,6 +71,7 @@
 - Selected `npc_disabled` aftermaths can use that hook so the result enters the existing `search`/reveal/take structure instead of remaining only a combat tag.
 - Legacy `combat_reveal_item_id` / `combat_reveal_item_label` authoring still maps into that same searchable-aftermath contract for compatibility.
 - `midnight_archive_world` now uses that contract on `janitor_npc` as the first real playable sample: disabling the janitor can expose a `routing_slip` source that still feeds into the normal service-route gate.
+- This runtime/gameplay validation line is now closed through Phase 10. The next planned step is limited multi-node aftermath validation inside `midnight_archive_world`, not broader combat-system expansion or new hook kinds.
 - This remains a bounded runtime hook, not a full combat system.
 
 ## Runtime Guides

@@ -150,6 +150,29 @@ Runtime system:
 - `midnight_archive_world` now carries the first real playable authoring sample of that hook on `janitor_npc`, where `npc_disabled` can expose a `routing_slip` source without replacing the existing tray/cart/service-route baseline.
 - This remains a bounded runtime consequence branch rather than a full combat system: no multi-round combat, no HP/damage loop, no broader skills/equipment battle layer, and no generalized combat state machine.
 
+## 6D. Phase Status
+
+- Phases 1-10 are now closed in the shipped runtime/gameplay validation line:
+  - static path validation
+  - clue support reachability validation
+  - hostility thresholds and non-combat outcomes
+  - progression coupling for locked critical sources
+  - minimal combat entry
+  - deterministic combat aftermath split
+  - aftermath-to-search gameplay coupling
+  - stabilized `combat_aftermath_hook`
+  - first real playable landing in `midnight_archive_world`
+
+## Phase 11 (TODO)
+
+- Validate `combat_aftermath_hook` reuse across multiple NPC aftermath nodes.
+- Add one second aftermath node inside `midnight_archive_world`.
+- Verify multiple aftermath routes can coexist without breaking baseline routes.
+- Keep the scope narrow:
+  - no new hook kinds
+  - no combat-system expansion
+  - no new progression/failure abstraction layer
+
 ## 7. Known Constraints
 
 - keyring requires local unlock when credentials are not already available

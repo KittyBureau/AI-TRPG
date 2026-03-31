@@ -1,6 +1,6 @@
 # PLAYABLE v1 TODO (Active Backlog)
 
-Last updated: 2026-03-30
+Last updated: 2026-03-31
 
 ## Positioning
 
@@ -130,3 +130,10 @@ This file now keeps only real unfinished work.
 - Scope: `frontend/index.html`, `frontend/app.js`, `frontend/map.html`, `frontend/map.js`, `docs/20_runtime/frontend_entrypoints.md`, matching spec references.
 - Acceptance: current primary entry points stay explicit and legacy surfaces are clearly demoted or deliberately retained with accurate docs.
 - Tests: `frontend/tests/store_loop.test.mjs`, targeted manual entrypoint check.
+
+### P2-17 Multi-node aftermath validation in midnight_archive
+- Status: `TODO`
+- Why: the shipped `combat_aftermath_hook` contract now has one real playable landing on `janitor_npc` in `midnight_archive_world`; the next narrow check is whether a second aftermath node can coexist without breaking the official route or service-route baseline.
+- Scope: `backend/app/world_presets.py`, `backend/tests/test_midnight_archive_world.py`, `backend/tests/test_scene_action_tool.py`, `backend/tests/test_turn_hostility_thresholds.py`, and the minimum supporting playable/runtime docs.
+- Acceptance: `midnight_archive_world` contains a second real aftermath node using the existing `combat_aftermath_hook`; multiple aftermath routes can coexist without conflicting with each other; baseline routes remain playable; no new hook kinds or broader combat-system expansion are introduced.
+- Tests: `backend/tests/test_midnight_archive_world.py`, `backend/tests/test_scene_action_tool.py`, `backend/tests/test_turn_hostility_thresholds.py`

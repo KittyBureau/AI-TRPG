@@ -156,6 +156,7 @@ If you are doing a real local run, a quick manual check is:
   - selected `npc_disabled` aftermaths can use that hook to turn the target into a searchable aftermath source under the existing `search -> reveal -> take` gameplay path
   - legacy `combat_reveal_item_id` / `combat_reveal_item_label` inputs still map into that same searchable-aftermath contract for compatibility, but they are no longer the preferred shape
   - `midnight_archive_world` now uses that contract on `janitor_npc`, so disabling the janitor can reveal a real `routing_slip` service-route source without changing the existing baseline routes
+  - this runtime/gameplay validation line is now closed through Phase 10; the next planned step is limited multi-node aftermath validation inside `midnight_archive_world`, not a broader combat-system expansion
 - Formal Gameplay Model is currently a read-only structural validation and alignment layer:
   - `dependency_groups` with `all_of` / `any_of`
   - `multi_path_coverage` and `clue_support_coverage`
