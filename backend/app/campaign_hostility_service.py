@@ -283,17 +283,12 @@ def _resolve_combat_resolution(target: Entity) -> str:
 
 
 def _apply_npc_disabled_search_aftermath(target: Entity) -> None:
-    reveal_item_id = target.props.get("combat_reveal_item_id")
-    if not isinstance(reveal_item_id, str) or not reveal_item_id.strip():
+    hook = _resolve_combat_aftermath_hook(target)
+    if hook is None or hook.get("kind") != "search_loot":
         return
 
-    normalized_item_id = reveal_item_id.strip()
-    reveal_item_label = target.props.get("combat_reveal_item_label")
-    normalized_label = (
-        reveal_item_label.strip()
-        if isinstance(reveal_item_label, str) and reveal_item_label.strip()
-        else normalized_item_id
-    )
+    normalized_item_id = hook["item_id"]
+    normalized_label = hook["item_label"]
 
     verbs = [
         verb
@@ -308,6 +303,43 @@ def _apply_npc_disabled_search_aftermath(target: Entity) -> None:
     target.state["search_loot_stackable"] = False
     if target.state.get("search_generated_loot") is not True:
         target.state["search_generated_loot"] = False
+
+
+def _resolve_combat_aftermath_hook(target: Entity) -> Optional[Dict[str, str]]:
+    configured = target.props.get("combat_aftermath_hook")
+    if isinstance(configured, dict):
+        kind = configured.get("kind")
+        item_id = configured.get("item_id")
+        if kind == "search_loot" and isinstance(item_id, str) and item_id.strip():
+            normalized_item_id = item_id.strip()
+            item_label = configured.get("item_label")
+            normalized_label = (
+                item_label.strip()
+                if isinstance(item_label, str) and item_label.strip()
+                else normalized_item_id
+            )
+            return {
+                "kind": "search_loot",
+                "item_id": normalized_item_id,
+                "item_label": normalized_label,
+            }
+
+    reveal_item_id = target.props.get("combat_reveal_item_id")
+    if not isinstance(reveal_item_id, str) or not reveal_item_id.strip():
+        return None
+
+    normalized_item_id = reveal_item_id.strip()
+    reveal_item_label = target.props.get("combat_reveal_item_label")
+    normalized_label = (
+        reveal_item_label.strip()
+        if isinstance(reveal_item_label, str) and reveal_item_label.strip()
+        else normalized_item_id
+    )
+    return {
+        "kind": "search_loot",
+        "item_id": normalized_item_id,
+        "item_label": normalized_label,
+    }
 
 
 def _required_item_still_available(campaign: Campaign, required_item_id: str) -> bool:

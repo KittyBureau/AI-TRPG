@@ -619,6 +619,84 @@ def test_scene_action_npc_disabled_can_open_search_reveal_path() -> None:
     assert campaign.actors["pc_001"].inventory == {"guard_pass": 1}
 
 
+def test_scene_action_npc_disabled_search_aftermath_hook_can_open_reveal_path() -> None:
+    campaign = _base_campaign()
+    campaign.entities["guard_01"] = Entity(
+        id="guard_01",
+        kind="npc",
+        label="Checkpoint Guard",
+        tags=["guard"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "talk"],
+        state={},
+        props={
+            "combat_resolution": "npc_disabled",
+            "combat_aftermath_hook": {
+                "kind": "search_loot",
+                "item_id": "guard_badge",
+                "item_label": "Guard Badge",
+            },
+        },
+    )
+
+    assault_actions, assault_feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [
+            ToolCall(
+                id="call_disable_guard_for_hook_loot",
+                tool="scene_action",
+                args={
+                    "actor_id": "pc_001",
+                    "action": "talk",
+                    "target_id": "guard_01",
+                    "params": {"approach": "violent"},
+                },
+            )
+        ],
+    )
+
+    assert assault_feedback is None
+    assert len(assault_actions) == 1
+    assault_result = assault_actions[0].result
+    assert assault_result["ok"] is False
+    assert assault_result["error"]["code"] == "combat_triggered"
+    assert "search" in campaign.entities["guard_01"].verbs
+    assert campaign.entities["guard_01"].state["search_loot_definition_id"] == "guard_badge"
+    assert campaign.entities["guard_01"].state["search_loot_label"] == "Guard Badge"
+
+    search_actions, search_feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [
+            ToolCall(
+                id="call_search_disabled_guard_hook",
+                tool="scene_action",
+                args={
+                    "actor_id": "pc_001",
+                    "action": "search",
+                    "target_id": "guard_01",
+                    "params": {},
+                },
+            )
+        ],
+    )
+
+    assert search_feedback is None
+    assert len(search_actions) == 1
+    search_result = search_actions[0].result
+    assert search_result["ok"] is True
+    assert search_result["narrative"] == "You search Checkpoint Guard and find Guard Badge."
+
+    revealed_stacks = [
+        stack
+        for stack in campaign.items.values()
+        if stack.definition_id == "guard_badge"
+    ]
+    assert len(revealed_stacks) == 1
+    assert revealed_stacks[0].label == "Guard Badge"
+
+
 def test_scene_action_open_locked_door_fails() -> None:
     campaign = _base_campaign()
     campaign.entities["door_locked"] = Entity(

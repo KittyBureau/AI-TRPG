@@ -21,7 +21,8 @@ Current item/gameplay note:
 - `inventory_add` is still exposed, but only as a bounded legacy contract for source-entity-backed inventory gain
 - high-conflict NPC `scene_action talk` now has a minimal structured combat branch: assaultive intent triggers one-shot `combat_resolved` with either default `player_repelled` or opt-in `npc_disabled`
 - the combat result is exposed in the current turn payload and remains observable later through persisted hostility state plus follow-on interaction blocking
-- selected `npc_disabled` aftermaths can also turn the NPC into a searchable item source, feeding back into the existing `search -> reveal -> take` loop
+- selected `npc_disabled` aftermaths can also attach a minimal `combat_aftermath_hook` with `kind="search_loot"`, turning the NPC into a searchable aftermath source that feeds back into the existing `search -> reveal -> take` loop
+- legacy `combat_reveal_item_id` / `combat_reveal_item_label` inputs still map into that same searchable-aftermath contract for compatibility
 - this is not a multi-round combat system
 
 ## Runtime readiness before gameplay
@@ -368,7 +369,7 @@ Current gameplay flow non-goals:
 - no long-term context system is implemented in the current runtime flow
 - recent turn log data is not a current prompt context source; it is only used for repeat-illegal suppression
 - `state_summary` is a response/log summary and is not a current prompt payload source
-- current combat handling is only the minimal assaultive-talk entry path with deterministic `player_repelled` / `npc_disabled` aftermaths plus a narrow searchable-aftermath hook; there is no full battle loop, HP/damage combat resolution, or skills/equipment combat layer
+- current combat handling is only the minimal assaultive-talk entry path with deterministic `player_repelled` / `npc_disabled` aftermaths plus a narrow searchable-aftermath hook (`combat_aftermath_hook` with `kind="search_loot"`); there is no full battle loop, HP/damage combat resolution, or skills/equipment combat layer
 
 ## Frontend lightweight regression script
 

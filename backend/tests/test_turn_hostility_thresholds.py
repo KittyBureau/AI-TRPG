@@ -530,3 +530,58 @@ def test_turn_service_npc_disabled_can_enable_later_search_route(
         stack.definition_id == "guard_pass" and stack.parent_id == "area_001"
         for stack in reloaded.items.values()
     )
+
+
+def test_turn_service_npc_disabled_search_aftermath_hook_can_enable_later_search_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    _create_campaign_with_guard_props(
+        repo,
+        "camp_hostility_combat_search_after_hook",
+        guard_props={
+            "combat_resolution": "npc_disabled",
+            "combat_aftermath_hook": {
+                "kind": "search_loot",
+                "item_id": "guard_badge",
+                "item_label": "Guard Badge",
+            },
+        },
+    )
+
+    assault = service.submit_turn(
+        "camp_hostility_combat_search_after_hook",
+        "TALK_ASSAULT",
+    )
+    assert assault["applied_actions"][0]["result"]["ok"] is False
+    assert assault["applied_actions"][0]["result"]["error"]["code"] == "combat_triggered"
+
+    search = service.submit_turn(
+        "camp_hostility_combat_search_after_hook",
+        "SEARCH_GUARD",
+    )
+    assert search["applied_actions"][0]["tool"] == "scene_action"
+    assert search["applied_actions"][0]["result"]["ok"] is True
+    assert search["applied_actions"][0]["result"]["narrative"] == (
+        "You search Wary Guard and find Guard Badge."
+    )
+    assert search["state_summary"]["hostility"]["outcomes"] == [
+        {
+            "outcome_id": "hostility_guard_01_combat_resolved",
+            "type": "combat_resolved",
+            "target_id": "guard_01",
+            "scope_kind": "entity",
+            "active": True,
+            "resolution": "npc_disabled",
+        }
+    ]
+
+    reloaded = repo.get_campaign("camp_hostility_combat_search_after_hook")
+    assert reloaded is not None
+    assert reloaded.entities["guard_01"].state["disabled"] is True
+    assert reloaded.entities["guard_01"].state["search_generated_loot"] is True
+    assert any(
+        stack.definition_id == "guard_badge" and stack.parent_id == "area_001"
+        for stack in reloaded.items.values()
+    )
