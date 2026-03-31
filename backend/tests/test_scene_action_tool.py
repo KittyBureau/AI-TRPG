@@ -516,6 +516,109 @@ def test_scene_action_talk_assaultive_intent_can_disable_npc_via_props() -> None
     ]
 
 
+def test_scene_action_npc_disabled_can_open_search_reveal_path() -> None:
+    campaign = _base_campaign()
+    campaign.entities["guard_01"] = Entity(
+        id="guard_01",
+        kind="npc",
+        label="Checkpoint Guard",
+        tags=["guard"],
+        loc=EntityLocation(type="area", id="area_001"),
+        verbs=["inspect", "talk"],
+        state={},
+        props={
+            "combat_resolution": "npc_disabled",
+            "combat_reveal_item_id": "guard_pass",
+            "combat_reveal_item_label": "Guard Pass",
+        },
+    )
+
+    assault_actions, assault_feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [
+            ToolCall(
+                id="call_disable_guard_for_loot",
+                tool="scene_action",
+                args={
+                    "actor_id": "pc_001",
+                    "action": "talk",
+                    "target_id": "guard_01",
+                    "params": {"approach": "violent"},
+                },
+            )
+        ],
+    )
+
+    assert assault_feedback is None
+    assert len(assault_actions) == 1
+    assault_result = assault_actions[0].result
+    assert assault_result["ok"] is False
+    assert assault_result["error"]["code"] == "combat_triggered"
+    assert "search" in campaign.entities["guard_01"].verbs
+    assert campaign.entities["guard_01"].state["search_loot_definition_id"] == "guard_pass"
+    assert campaign.entities["guard_01"].state["search_loot_label"] == "Guard Pass"
+
+    search_actions, search_feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [
+            ToolCall(
+                id="call_search_disabled_guard",
+                tool="scene_action",
+                args={
+                    "actor_id": "pc_001",
+                    "action": "search",
+                    "target_id": "guard_01",
+                    "params": {},
+                },
+            )
+        ],
+    )
+
+    assert search_feedback is None
+    assert len(search_actions) == 1
+    search_result = search_actions[0].result
+    assert search_result["ok"] is True
+    assert search_result["narrative"] == "You search Checkpoint Guard and find Guard Pass."
+    assert campaign.entities["guard_01"].state["search_generated_loot"] is True
+
+    revealed_stacks = [
+        stack
+        for stack in campaign.items.values()
+        if stack.definition_id == "guard_pass"
+    ]
+    assert len(revealed_stacks) == 1
+    revealed_stack = revealed_stacks[0]
+    assert revealed_stack.parent_type == "area"
+    assert revealed_stack.parent_id == "area_001"
+    assert revealed_stack.label == "Guard Pass"
+
+    take_actions, take_feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [
+            ToolCall(
+                id="call_take_guard_pass",
+                tool="scene_action",
+                args={
+                    "actor_id": "pc_001",
+                    "action": "take",
+                    "target_id": revealed_stack.stack_id,
+                    "params": {},
+                },
+            )
+        ],
+    )
+
+    assert take_feedback is None
+    assert len(take_actions) == 1
+    take_result = take_actions[0].result
+    assert take_result["ok"] is True
+    assert take_result["narrative"] == "You take Guard Pass."
+    assert campaign.actors["pc_001"].inventory == {"guard_pass": 1}
+
+
 def test_scene_action_open_locked_door_fails() -> None:
     campaign = _base_campaign()
     campaign.entities["door_locked"] = Entity(

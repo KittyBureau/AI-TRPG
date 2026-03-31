@@ -253,6 +253,7 @@ def _maybe_trigger_combat_resolution(
     if resolution == "npc_disabled":
         _lock_entity_actions(target, blocked_actions=["inspect", "talk"])
         target.state["disabled"] = True
+        _apply_npc_disabled_search_aftermath(target)
     else:
         _lock_entity_interaction(target, blocked_action=action)
     target.state["combat_resolution"] = resolution
@@ -279,6 +280,34 @@ def _resolve_combat_resolution(target: Entity) -> str:
     if configured == "npc_disabled":
         return "npc_disabled"
     return "player_repelled"
+
+
+def _apply_npc_disabled_search_aftermath(target: Entity) -> None:
+    reveal_item_id = target.props.get("combat_reveal_item_id")
+    if not isinstance(reveal_item_id, str) or not reveal_item_id.strip():
+        return
+
+    normalized_item_id = reveal_item_id.strip()
+    reveal_item_label = target.props.get("combat_reveal_item_label")
+    normalized_label = (
+        reveal_item_label.strip()
+        if isinstance(reveal_item_label, str) and reveal_item_label.strip()
+        else normalized_item_id
+    )
+
+    verbs = [
+        verb
+        for verb in target.verbs
+        if isinstance(verb, str) and verb.strip()
+    ]
+    if "search" not in verbs:
+        verbs.append("search")
+    target.verbs = verbs
+    target.state["search_loot_definition_id"] = normalized_item_id
+    target.state["search_loot_label"] = normalized_label
+    target.state["search_loot_stackable"] = False
+    if target.state.get("search_generated_loot") is not True:
+        target.state["search_generated_loot"] = False
 
 
 def _required_item_still_available(campaign: Campaign, required_item_id: str) -> bool:

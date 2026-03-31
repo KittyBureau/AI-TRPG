@@ -67,6 +67,7 @@
 - If the locked interaction is the critical reveal source for the current scenario path, runtime performs a minimal progression re-check and triggers `progression_locked`, ending the campaign lifecycle.
 - Runtime also has a minimal combat-entry branch: assaultive NPC `talk` can trigger one-shot `combat_resolved`, persist it under `Campaign.hostility`, and currently resolve to either default `player_repelled` or opt-in `npc_disabled`.
 - `player_repelled` keeps the target on the existing talk lockout path; `npc_disabled` additionally leaves the NPC structurally disabled and blocks later `inspect`/`talk` interactions.
+- Selected `npc_disabled` aftermaths can now expose a searchable item source, so the result enters the existing `search`/reveal/take structure instead of remaining only a combat tag.
 - This remains a bounded runtime hook, not a full combat system.
 
 ## Runtime Guides

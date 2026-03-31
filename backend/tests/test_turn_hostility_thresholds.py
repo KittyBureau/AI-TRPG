@@ -35,6 +35,23 @@ class _HostilityLLM:
             params = {"tone": "threatening"}
         elif token == "TALK_ASSAULT":
             params = {"approach": "violent"}
+        elif token == "SEARCH_GUARD":
+            return {
+                "assistant_text": "",
+                "dialog_type": "scene_description",
+                "tool_calls": [
+                    {
+                        "id": "call_search_guard",
+                        "tool": "scene_action",
+                        "args": {
+                            "actor_id": "pc_001",
+                            "action": "search",
+                            "target_id": "guard_01",
+                            "params": {},
+                        },
+                    }
+                ],
+            }
         else:
             params = {"tone": "calm"}
         return {
@@ -461,3 +478,55 @@ def test_turn_service_assaultive_talk_can_persist_npc_disabled_resolution(
             "resolution": "npc_disabled",
         }
     ]
+
+
+def test_turn_service_npc_disabled_can_enable_later_search_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, repo = _make_service(tmp_path, monkeypatch)
+    _create_campaign_with_guard_props(
+        repo,
+        "camp_hostility_combat_search_after_disable",
+        guard_props={
+            "combat_resolution": "npc_disabled",
+            "combat_reveal_item_id": "guard_pass",
+            "combat_reveal_item_label": "Guard Pass",
+        },
+    )
+
+    assault = service.submit_turn(
+        "camp_hostility_combat_search_after_disable",
+        "TALK_ASSAULT",
+    )
+    assert assault["applied_actions"][0]["result"]["ok"] is False
+    assert assault["applied_actions"][0]["result"]["error"]["code"] == "combat_triggered"
+
+    search = service.submit_turn(
+        "camp_hostility_combat_search_after_disable",
+        "SEARCH_GUARD",
+    )
+    assert search["applied_actions"][0]["tool"] == "scene_action"
+    assert search["applied_actions"][0]["result"]["ok"] is True
+    assert search["applied_actions"][0]["result"]["narrative"] == (
+        "You search Wary Guard and find Guard Pass."
+    )
+    assert search["state_summary"]["hostility"]["outcomes"] == [
+        {
+            "outcome_id": "hostility_guard_01_combat_resolved",
+            "type": "combat_resolved",
+            "target_id": "guard_01",
+            "scope_kind": "entity",
+            "active": True,
+            "resolution": "npc_disabled",
+        }
+    ]
+
+    reloaded = repo.get_campaign("camp_hostility_combat_search_after_disable")
+    assert reloaded is not None
+    assert reloaded.entities["guard_01"].state["disabled"] is True
+    assert reloaded.entities["guard_01"].state["search_generated_loot"] is True
+    assert any(
+        stack.definition_id == "guard_pass" and stack.parent_id == "area_001"
+        for stack in reloaded.items.values()
+    )

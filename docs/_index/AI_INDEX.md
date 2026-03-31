@@ -271,6 +271,7 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
   - per-entity hostility accumulates from structured hostile `scene_action` inputs
   - threshold crossing triggers `interaction_locked`
   - assaultive NPC `talk` can trigger one-shot `combat_resolved` with deterministic `player_repelled` or opt-in `npc_disabled` aftermaths
+  - selected `npc_disabled` aftermaths can expose a searchable item source and feed back into the existing `search -> reveal -> take` path
   - locking the critical reveal source in the current key-gate scenario can trigger `progression_locked`, fail the goal, and end the campaign lifecycle
 - These checks/outcomes must not rely on LLM narrative inference, fallback recovery, or a second runtime authority model.
 **Checks**

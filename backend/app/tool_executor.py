@@ -1112,6 +1112,24 @@ def _apply_scene_action(
                             removed_entities=removed_entities,
                         ),
                     )
+            if target.kind != "container" and _entity_has_pending_search_loot(
+                campaign, target
+            ):
+                before = _entity_to_dict(target)
+                spawned_stack = _create_entity_search_fallback_stack(campaign, target)
+                if spawned_stack is not None:
+                    _append_entity_patch(entity_patches, target, before)
+                    return _scene_action_applied(
+                        call,
+                        timestamp,
+                        _scene_action_result(
+                            ok=True,
+                            narrative=f"You search {target.label} and find {spawned_stack.label}.",
+                            entity_patches=entity_patches,
+                            new_entities=new_entities,
+                            removed_entities=removed_entities,
+                        ),
+                    )
             _maybe_complete_scene_goal(campaign, action=normalized_action, target=target)
             return _scene_action_applied(
                 call,

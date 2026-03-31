@@ -152,6 +152,7 @@ If you are doing a real local run, a quick manual check is:
   - it is not a multi-round combat system
   - it does not include HP/damage resolution, skills/equipment logic, or a generalized combat outcome system
   - `player_repelled` keeps the target on the existing talk lockout path, while `npc_disabled` additionally leaves the target structurally disabled for later turns
+  - selected `npc_disabled` aftermaths can now expose a searchable item source, reusing the existing `search -> reveal -> take` gameplay path instead of adding a separate combat-loot system
 - Formal Gameplay Model is currently a read-only structural validation and alignment layer:
   - `dependency_groups` with `all_of` / `any_of`
   - `multi_path_coverage` and `clue_support_coverage`
