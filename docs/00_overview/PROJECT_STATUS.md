@@ -147,6 +147,7 @@ Runtime system:
 - The current recommended authoring shape for searchable aftermaths is `combat_aftermath_hook={"kind":"search_loot","item_id":"...","item_label":"..."}` on the target NPC.
 - Selected `npc_disabled` aftermaths can use that hook, reusing the existing `scene_action search -> reveal -> take` structure as the first gameplay-level coupling above combat aftermath itself.
 - Legacy `combat_reveal_item_id` / `combat_reveal_item_label` inputs still normalize into that same searchable-aftermath contract for compatibility.
+- `midnight_archive_world` now carries the first real playable authoring sample of that hook on `janitor_npc`, where `npc_disabled` can expose a `routing_slip` source without replacing the existing tray/cart/service-route baseline.
 - This remains a bounded runtime consequence branch rather than a full combat system: no multi-round combat, no HP/damage loop, no broader skills/equipment battle layer, and no generalized combat state machine.
 
 ## 7. Known Constraints

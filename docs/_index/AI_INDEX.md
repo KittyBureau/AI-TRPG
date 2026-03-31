@@ -274,6 +274,7 @@ External Resources Roadmap -> `docs/30_resources/external_resources_and_trace.md
   - the current recommended authoring shape for searchable aftermaths is `combat_aftermath_hook={"kind":"search_loot","item_id":"...","item_label":"..."}` on the target NPC
   - selected `npc_disabled` aftermaths can use that hook and feed back into the existing `search -> reveal -> take` path
   - legacy `combat_reveal_item_id` / `combat_reveal_item_label` inputs still normalize into that same searchable-aftermath contract for compatibility
+  - `midnight_archive_world` now carries the first real playable sample of that hook on `janitor_npc`, where `npc_disabled` can expose a `routing_slip` source without replacing the existing service-route baseline
   - locking the critical reveal source in the current key-gate scenario can trigger `progression_locked`, fail the goal, and end the campaign lifecycle
 - These checks/outcomes must not rely on LLM narrative inference, fallback recovery, or a second runtime authority model.
 **Checks**

@@ -256,6 +256,16 @@ Expected:
 - player reaches the archive without `Archive Key`
 - player never needs `Clerk Office`
 
+Optional hostile variant:
+
+1. Reach `Storage Room`
+2. Trigger `npc_disabled` on `janitor_npc`
+3. Search the disabled janitor and recover `Routing Slip`
+4. Return to `Returns Annex`
+5. Enter `Restricted Archive`
+
+This is an additional playable path layered on top of the existing service-route baseline; it does not replace the normal `returns_cart` route.
+
 ### Path 3 - Chaotic Play
 
 Goal: see whether the scenario recovers when the player plays badly.

@@ -24,6 +24,7 @@ Current item/gameplay note:
 - the current recommended authoring shape for searchable aftermaths is `combat_aftermath_hook={"kind":"search_loot","item_id":"...","item_label":"..."}` on the target NPC
 - selected `npc_disabled` aftermaths can use that hook, turning the NPC into a searchable aftermath source that feeds back into the existing `search -> reveal -> take` loop
 - legacy `combat_reveal_item_id` / `combat_reveal_item_label` inputs still map into that same searchable-aftermath contract for compatibility
+- `midnight_archive_world` now uses this as a real playable path on `janitor_npc`: disabling the janitor can expose a `routing_slip` source that still feeds into the existing service-route bypass
 - this is not a multi-round combat system
 
 ## Runtime readiness before gameplay

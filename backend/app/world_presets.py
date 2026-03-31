@@ -372,7 +372,14 @@ def build_campaign_world_preset(world_id: str) -> Optional[CampaignWorldPreset]:
                     state={
                         "hint": "That archive door wants a key. The lift route is quieter if you know how records move."
                     },
-                    props={},
+                    props={
+                        "combat_resolution": "npc_disabled",
+                        "combat_aftermath_hook": {
+                            "kind": "search_loot",
+                            "item_id": MIDNIGHT_ARCHIVE_SERVICE_ROUTE_ITEM_ID,
+                            "item_label": "Routing Slip",
+                        },
+                    },
                 ),
                 "archive_door": Entity(
                     id="archive_door",

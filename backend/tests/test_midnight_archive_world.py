@@ -47,6 +47,14 @@ def test_create_campaign_bootstraps_midnight_archive_world(tmp_path) -> None:
     assert "janitor_npc" in campaign.entities
     assert campaign.entities["returns_cart"].kind == "container"
     assert campaign.entities["desk_safe"].kind == "container"
+    assert campaign.entities["janitor_npc"].props == {
+        "combat_resolution": "npc_disabled",
+        "combat_aftermath_hook": {
+            "kind": "search_loot",
+            "item_id": "routing_slip",
+            "item_label": "Routing Slip",
+        },
+    }
 
 
 def test_midnight_archive_official_route_requires_pass_then_key_then_final_interaction(
@@ -374,3 +382,158 @@ def test_midnight_archive_player_can_finish_without_entering_clerk_office(tmp_pa
     assert "clerk_office" in campaign.map.areas
     assert "desk_safe" in campaign.entities
     assert all(action.result for action in applied_actions)
+
+
+def test_midnight_archive_janitor_combat_aftermath_can_enable_service_route(tmp_path) -> None:
+    repo = FileRepo(tmp_path / "storage")
+    service = TurnService(repo)
+    campaign_id = service.create_campaign(
+        world_id=MIDNIGHT_ARCHIVE_WORLD_ID,
+        map_id="map_midnight_archive",
+        party_character_ids=["pc_001"],
+        active_actor_id="pc_001",
+    )
+    campaign = repo.get_campaign(campaign_id)
+
+    move_lobby = ToolCall(
+        id="call_move_lobby",
+        tool="move",
+        args={"actor_id": "pc_001", "to_area_id": "lobby"},
+    )
+    move_reading = ToolCall(
+        id="call_move_reading",
+        tool="move",
+        args={"actor_id": "pc_001", "to_area_id": "reading_room"},
+    )
+    move_annex = ToolCall(
+        id="call_move_annex",
+        tool="move",
+        args={"actor_id": "pc_001", "to_area_id": "returns_annex"},
+    )
+    move_storage = ToolCall(
+        id="call_move_storage",
+        tool="move",
+        args={"actor_id": "pc_001", "to_area_id": "storage_room"},
+    )
+    assault_janitor = ToolCall(
+        id="call_assault_janitor",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "talk",
+            "target_id": "janitor_npc",
+            "params": {"approach": "violent"},
+        },
+    )
+    search_janitor = ToolCall(
+        id="call_search_janitor",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "search",
+            "target_id": "janitor_npc",
+            "params": {},
+        },
+    )
+    move_back_annex = ToolCall(
+        id="call_move_back_annex",
+        tool="move",
+        args={"actor_id": "pc_001", "to_area_id": "returns_annex"},
+    )
+    move_archive = ToolCall(
+        id="call_move_archive",
+        tool="move",
+        args={"actor_id": "pc_001", "to_area_id": MIDNIGHT_ARCHIVE_TARGET_AREA_ID},
+    )
+    inspect_shelf = ToolCall(
+        id="call_inspect_shelf",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "inspect",
+            "target_id": MIDNIGHT_ARCHIVE_PAYOFF_ENTITY_ID,
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [move_lobby, move_reading, move_annex, move_storage, assault_janitor],
+    )
+
+    assert tool_feedback is None
+    assert [action.tool for action in applied_actions] == [
+        "move",
+        "move",
+        "move",
+        "move",
+        "scene_action",
+    ]
+    assault_result = applied_actions[-1].result
+    assert assault_result["ok"] is False
+    assert assault_result["error"] == {
+        "code": "combat_triggered",
+        "message": "combat triggered: janitor_npc",
+    }
+    assert assault_result["hostility"]["triggered_outcomes"] == [
+        {
+            "outcome_id": "hostility_janitor_npc_combat_resolved",
+            "type": "combat_resolved",
+            "target_id": "janitor_npc",
+            "scope_kind": "entity",
+            "active": True,
+            "resolution": "npc_disabled",
+        }
+    ]
+    assert campaign.entities["janitor_npc"].state["disabled"] is True
+    assert "search" in campaign.entities["janitor_npc"].verbs
+    assert campaign.entities["returns_cart"].state.get("search_generated_loot") is not True
+
+    applied_actions, tool_feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [search_janitor],
+    )
+
+    assert tool_feedback is None
+    assert [action.tool for action in applied_actions] == ["scene_action"]
+    assert applied_actions[0].result["ok"] is True
+    assert applied_actions[0].result["narrative"] == (
+        "You search Night Janitor and find Routing Slip."
+    )
+    generated_routing_slip = next(
+        stack
+        for stack in campaign.items.values()
+        if stack.definition_id == "routing_slip" and stack.parent_id == "storage_room"
+    )
+
+    take_routing = ToolCall(
+        id="call_take_janitor_routing",
+        tool="scene_action",
+        args={
+            "actor_id": "pc_001",
+            "action": "take",
+            "target_id": generated_routing_slip.stack_id,
+            "params": {},
+        },
+    )
+
+    applied_actions, tool_feedback = execute_tool_calls(
+        campaign,
+        "pc_001",
+        [take_routing, move_back_annex, move_archive, inspect_shelf],
+    )
+
+    assert tool_feedback is None
+    assert [action.tool for action in applied_actions] == [
+        "scene_action",
+        "move",
+        "move",
+        "scene_action",
+    ]
+    assert campaign.goal.status == "completed"
+    assert campaign.actors["pc_001"].inventory == {"routing_slip": 1}
+    assert campaign.actors["pc_001"].position == MIDNIGHT_ARCHIVE_TARGET_AREA_ID
+    assert campaign.entities["returns_cart"].state.get("search_generated_loot") is not True
+    assert campaign.entities["janitor_npc"].state["search_generated_loot"] is True
